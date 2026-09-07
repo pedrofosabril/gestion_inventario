@@ -30,7 +30,7 @@ export interface InventoryItem {
   codigoBarras?: string;
 }
 
-export type ActiveView = ItemCategory | 'all' | 'salidas' | 'ingresos' | 'gerencia';
+export type ActiveView = ItemCategory | 'all' | 'salidas' | 'ingresos' | 'administracion';
 
 export interface SalidaItemEntry {
   id: string;
@@ -129,7 +129,7 @@ export interface IngresoRecord {
   usuarioRegistro?: string;
 }
 
-export type UserRole = 'gerencia' | 'panolero' | 'ventas' | 'observador';
+export type UserRole = 'administracion' | 'panolero' | 'ventas' | 'observador';
 
 export interface UserAccount {
   id: string;
