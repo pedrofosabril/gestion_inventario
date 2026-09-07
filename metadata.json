@@ -1,0 +1,6 @@
+{
+  "name": "Verdu y Cía - Gestión de Pañol",
+  "description": "Sistema integral y responsivo de gestión de pañol e inventario para Verdu y Cía. con soporte para pistola lectora física de códigos de barras (USB/Bluetooth), perfiles de Gerencia, Pañol y Ventas con sincronización de stock en tiempo real, protección de datos confidenciales (precios, costos, totales y fechas de control ocultos para Ventas) y consulta de catálogo tipo libro Excel.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
