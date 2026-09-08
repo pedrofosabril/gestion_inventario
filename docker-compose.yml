@@ -4,4 +4,6 @@ services:
     container_name: verdu-panol
     ports:
       - "3000:80"
+    environment:
+      - PORT=80
     restart: unless-stopped
