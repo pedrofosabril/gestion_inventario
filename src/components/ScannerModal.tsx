@@ -166,8 +166,8 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
   } = useInventory();
 
   const isVentas = currentUser.rol === 'ventas';
-  const isAdministracion = currentUser.rol === 'administracion';
-  const showPrices = isAdministracion;
+  const isGerencia = currentUser.rol === 'gerencia';
+  const showPrices = isGerencia;
   
   // Scanner operational mode: 'salida' (retirar stock) vs 'devolucion' (reintegrar por empleado) vs 'ingreso' (agregar stock)
   const [scannerMode, setScannerMode] = useState<'salida' | 'ingreso' | 'devolucion'>(defaultMode);

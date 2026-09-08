@@ -12,7 +12,7 @@ import {
   Barcode
 } from 'lucide-react';
 import { useInventory } from '../context/InventoryContext';
-import { InventoryItem } from '../types';
+import { InventoryItem, SalidaRecord } from '../types';
 
 interface PanoleroSimpleViewProps {
   onOpenScanner: (initialCode?: string, mode?: 'salida' | 'ingreso' | 'devolucion') => void;
@@ -23,10 +23,9 @@ interface PanoleroSimpleViewProps {
 export const PanoleroSimpleView: React.FC<PanoleroSimpleViewProps> = ({
   onOpenScanner
 }) => {
-  const { items, currentUser, salidas, ingresos, devolucionGroups } = useInventory();
+  const { items, currentUser, salidas } = useInventory();
   const [searchTerm, setSearchTerm] = useState<string>('');
-  const [showHistory, setShowHistory] = useState<boolean>(false);
-  const [historyType, setHistoryType] = useState<'salidas' | 'ingresos' | 'devoluciones'>('salidas');
+  const [showRecentSalidas, setShowRecentSalidas] = useState<boolean>(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Listen to hardware barcode scanner on main view to fill the search box instead of auto-opening Salida
@@ -83,6 +82,20 @@ export const PanoleroSimpleView: React.FC<PanoleroSimpleViewProps> = ({
     setSearchTerm('');
     searchInputRef.current?.focus();
   };
+
+  // Group / deduplicate recent salidas so each product appears only once in the summary list
+  const uniqueRecentSalidas: SalidaRecord[] = (() => {
+    const seen = new Set<string>();
+    const res: SalidaRecord[] = [];
+    for (const s of salidas) {
+      const k = s.codigo.trim().toLowerCase();
+      if (!seen.has(k)) {
+        seen.add(k);
+        res.push(s);
+      }
+    }
+    return res.slice(0, 8);
+  })();
 
   return (
     <div className="max-w-4xl mx-auto py-4 sm:py-8 px-3 sm:px-6 font-['Plus_Jakarta_Sans',sans-serif]">
@@ -305,7 +318,7 @@ export const PanoleroSimpleView: React.FC<PanoleroSimpleViewProps> = ({
         )}
       </div>
 
-      {/* COMPLETE MOVEMENT HISTORY */}
+      {/* RECENT ACTIVITY ACCORDION */}
       <div className="bg-white rounded-3xl p-5 sm:p-6 border-2 border-[#b5dbf7] shadow-sm">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
@@ -314,62 +327,47 @@ export const PanoleroSimpleView: React.FC<PanoleroSimpleViewProps> = ({
             </div>
             <div>
               <span className="text-base sm:text-lg font-black text-sky-950 block">
-                Historial de Movimientos
+                Historial de Salidas
               </span>
               <span className="text-xs text-slate-500 font-medium">
-                Salidas, entradas y devoluciones registradas
+                {uniqueRecentSalidas.length} {uniqueRecentSalidas.length === 1 ? 'registro reciente' : 'registros recientes'}
               </span>
             </div>
           </div>
 
           <button
             type="button"
-            onClick={() => setShowHistory(!showHistory)}
+            onClick={() => setShowRecentSalidas(!showRecentSalidas)}
             className={`px-4 py-2.5 rounded-xl font-bold text-xs transition-all shadow-xs flex items-center gap-2 cursor-pointer ${
-              showHistory
+              showRecentSalidas
                 ? 'bg-slate-200 hover:bg-slate-300 text-slate-800 border border-slate-300'
                 : 'bg-[#006bb0] hover:bg-[#005590] text-white'
             }`}
           >
             <History className="w-4 h-4" />
-            <span>{showHistory ? 'Ocultar Historial' : 'Ver Historial Completo'}</span>
+            <span>{showRecentSalidas ? 'Ocultar Historial' : 'Ver Historial'}</span>
           </button>
         </div>
 
-        {showHistory && (
+        {showRecentSalidas && (
           <div className="mt-4 pt-4 border-t border-slate-100 space-y-2.5">
-            <div className="grid grid-cols-3 gap-2">
-              {([
-                ['salidas', 'Salidas', salidas.length, 'bg-rose-600 hover:bg-rose-700'],
-                ['ingresos', 'Entradas', ingresos.length, 'bg-emerald-600 hover:bg-emerald-700'],
-                ['devoluciones', 'Devoluciones', devolucionGroups.length, 'bg-amber-600 hover:bg-amber-700']
-              ] as const).map(([type, label, count, color]) => (
-                <button key={type} type="button" onClick={() => setHistoryType(type)} className={`rounded-xl px-2 py-2.5 text-xs font-black transition-colors ${historyType === type ? `${color} text-white` : 'bg-slate-100 hover:bg-slate-200 text-slate-700'}`}>
-                  {label} <span className="opacity-80">({count})</span>
-                </button>
-              ))}
-            </div>
-
-            <div className="max-h-[32rem] overflow-y-auto pr-1 space-y-2.5">
-              {historyType === 'salidas' && (salidas.length === 0 ? <p className="text-xs text-slate-500 text-center py-3">No hay salidas registradas aún.</p> : salidas.map(sal => (
-                <div key={sal.id} className="p-3.5 rounded-2xl bg-rose-50/40 border border-rose-100 flex items-center justify-between text-xs sm:text-sm">
-                  <div className="min-w-0"><span className="font-bold text-slate-900">{sal.descripcion}</span><div className="text-slate-500 text-xs mt-0.5">Código: <span className="font-mono font-bold text-slate-700">{sal.codigo}</span> · Retirado por: <strong className="text-slate-800">{sal.retira || 'Personal'}</strong>{sal.cliente ? ` · Cliente: ${sal.cliente}` : ''} · {sal.fechaSalida}</div></div>
-                  <span className="font-black text-rose-700 bg-rose-50 px-2.5 py-1 rounded-xl border border-rose-200 shrink-0 ml-2">-{sal.cantidad} u.</span>
+            {uniqueRecentSalidas.length === 0 ? (
+              <p className="text-xs text-slate-500 text-center py-3">No hay salidas registradas aún.</p>
+            ) : (
+              uniqueRecentSalidas.map(sal => (
+                <div key={sal.id} className="p-3.5 rounded-2xl bg-[#f8fbfe] border border-slate-200 flex items-center justify-between text-xs sm:text-sm">
+                  <div>
+                    <span className="font-bold text-slate-900">{sal.descripcion}</span>
+                    <div className="text-slate-500 text-xs mt-0.5">
+                      Código: <span className="font-mono font-bold text-slate-700">{sal.codigo}</span> · Retirado por: <strong className="text-slate-800">{sal.retira || 'Personal'}</strong> {sal.cliente ? `· Cliente: ${sal.cliente}` : ''}
+                    </div>
+                  </div>
+                  <span className="font-black text-rose-700 bg-rose-50 px-2.5 py-1 rounded-xl border border-rose-200 text-xs sm:text-sm shrink-0 ml-2">
+                    -{sal.cantidad} u.
+                  </span>
                 </div>
-              )))}
-              {historyType === 'ingresos' && (ingresos.length === 0 ? <p className="text-xs text-slate-500 text-center py-3">No hay entradas registradas aún.</p> : ingresos.map(ingreso => (
-                <div key={ingreso.id} className="p-3.5 rounded-2xl bg-emerald-50/50 border border-emerald-100 flex items-center justify-between text-xs sm:text-sm">
-                  <div className="min-w-0"><span className="font-bold text-slate-900">{ingreso.descripcion}</span><div className="text-slate-500 text-xs mt-0.5">Código: <span className="font-mono font-bold text-slate-700">{ingreso.codigo}</span> · Proveedor: <strong className="text-slate-800">{ingreso.proveedor || 'Sin proveedor'}</strong> · {ingreso.fechaIngreso}</div></div>
-                  <span className="font-black text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-xl border border-emerald-200 shrink-0 ml-2">+{ingreso.cantidad} u.</span>
-                </div>
-              )))}
-              {historyType === 'devoluciones' && (devolucionGroups.length === 0 ? <p className="text-xs text-slate-500 text-center py-3">No hay devoluciones registradas aún.</p> : devolucionGroups.map(group => (
-                <div key={group.id} className="p-3.5 rounded-2xl bg-amber-50/50 border border-amber-100 text-xs sm:text-sm">
-                  <div className="flex items-center justify-between gap-2"><span className="font-bold text-slate-900">{group.numeroDevolucionFormatted}</span><span className="font-black text-amber-700 bg-amber-50 px-2.5 py-1 rounded-xl border border-amber-200 shrink-0">+{group.totalUnidades} u.</span></div>
-                  <div className="text-slate-500 text-xs mt-1">Devuelto por: <strong className="text-slate-800">{group.empleadoDevuelve}</strong> · {group.fechaDevolucion} {group.horaDevolucion} · {group.items.map(item => `${item.codigo} (${item.cantidad} u.)`).join(', ')}</div>
-                </div>
-              )))}
-            </div>
+              ))
+            )}
           </div>
         )}
       </div>

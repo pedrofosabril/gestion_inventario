@@ -155,8 +155,8 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({
   const meta = CATEGORY_META[selectedCategory] || CATEGORY_META.all;
 
   const isVentas = currentUser?.rol === 'ventas';
-  const isAdministracion = currentUser?.rol === 'administracion';
-  const showPrices = isAdministracion;
+  const isGerencia = currentUser?.rol === 'gerencia';
+  const showPrices = isGerencia;
   const VENTAS_ALLOWED = ['panol', 'cajones_fluidos', 'submicronicos', 'rodamientos', 'entrepiso'];
 
   // Filter items
@@ -794,7 +794,7 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({
                             )}
 
                             {/* Delete (Gerencia only) */}
-                            {currentUser?.rol === 'administracion' && (
+                            {currentUser?.rol === 'gerencia' && (
                               <button
                                 onClick={() => {
                                   if (window.confirm(`¿Eliminar ${item.codigo} del inventario?`)) {

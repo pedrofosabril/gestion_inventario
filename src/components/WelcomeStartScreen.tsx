@@ -29,7 +29,7 @@ export const WelcomeStartScreen: React.FC = () => {
   // Register form state
   const [regNombre, setRegNombre] = useState<string>('');
   const [regUsername, setRegUsername] = useState<string>('');
-  const [regRol, setRegRol] = useState<UserRole>('administracion');
+  const [regRol, setRegRol] = useState<UserRole>('gerencia');
   const [regPassword, setRegPassword] = useState<string>('');
   const [regConfirmPassword, setRegConfirmPassword] = useState<string>('');
   const [showRegPassword, setShowRegPassword] = useState<boolean>(false);
@@ -263,18 +263,18 @@ export const WelcomeStartScreen: React.FC = () => {
                 Rol
               </label>
               <div className="grid grid-cols-3 gap-1.5">
-                {/* Administración */}
+                {/* Gerente */}
                 <button
                   type="button"
-                  onClick={() => setRegRol('administracion')}
+                  onClick={() => setRegRol('gerencia')}
                   className={`p-2 rounded-xl border text-center flex flex-col items-center justify-center gap-1 transition-all cursor-pointer ${
-                    regRol === 'administracion'
+                    regRol === 'gerencia'
                       ? 'border-[#006bb0] bg-sky-50 text-[#006bb0] font-bold ring-2 ring-[#006bb0]/20'
                       : 'border-[#cce4f7] bg-white text-slate-700 hover:border-[#006bb0] font-medium'
                   }`}
                 >
                   <ShieldCheck className="w-4 h-4" />
-                  <span className="text-[11px] leading-none">Administración</span>
+                  <span className="text-[11px] leading-none">Gerente</span>
                 </button>
 
                 {/* Pañolero */}

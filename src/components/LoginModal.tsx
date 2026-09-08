@@ -36,7 +36,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
 
   const getUserDescription = (rol: string) => {
     switch (rol) {
-      case 'administracion':
+      case 'gerencia':
         return 'Acceso ejecutivo total: valorización en ARS/USD, auditoría de precios, fechas de control, edición de stock y KPIs.';
       case 'ventas':
         return 'Consulta exclusiva de Pañol, Cajones/Fluidos, Submicrónicos, Rodamientos y Entrepiso (las demás secciones quedan reservadas para Gerencia). Oculta precios de costo y totales.';
@@ -76,7 +76,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
         <div className="bg-[#f4f9fd] border-b border-[#c4e1f7] px-6 py-3 flex items-center justify-between text-xs">
           <span className="text-slate-600 font-medium">Sesión activa actualmente:</span>
           <span className={`font-bold px-2.5 py-0.5 rounded-lg text-xs border ${
-            currentUser?.rol === 'administracion'
+            currentUser?.rol === 'gerencia'
               ? 'bg-purple-100 text-purple-900 border-purple-200'
               : currentUser?.rol === 'ventas'
                 ? 'bg-emerald-100 text-emerald-900 border-emerald-200'
@@ -109,9 +109,9 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
               <span className="text-[9px] font-mono text-emerald-700 font-semibold mt-0.5">clave: ventas</span>
             </button>
 
-            {users.find(u => u.rol === 'administracion') ? (
+            {users.find(u => u.rol === 'gerencia') ? (
               (() => {
-                const g = users.find(u => u.rol === 'administracion')!;
+                const g = users.find(u => u.rol === 'gerencia')!;
                 return (
                   <button
                     type="button"
@@ -124,7 +124,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
                   >
                     <div className="flex items-center gap-1.5 text-xs font-bold text-[#006bb0]">
                       <ShieldCheck className="w-3.5 h-3.5 text-[#006bb0] shrink-0" />
-                      <span>Administración</span>
+                      <span>Gerente</span>
                     </div>
                     <span className="text-[10px] text-slate-500 truncate">{g.nombre}</span>
                     <span className="text-[9px] font-mono text-[#006bb0] font-semibold mt-0.5">clave: {g.password || 'verdu'}</span>
@@ -134,7 +134,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
             ) : (
               <div className="p-2.5 rounded-xl border border-dashed border-slate-300 bg-slate-50 text-slate-400 flex flex-col items-center justify-center text-center">
                 <ShieldCheck className="w-4 h-4 text-slate-400 mb-0.5" />
-                <span className="text-[10px] font-medium">Sin Administración</span>
+                <span className="text-[10px] font-medium">Sin Gerente</span>
               </div>
             )}
 

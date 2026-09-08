@@ -48,7 +48,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   onOpenBarcode,
 }) => {
   const { currentUser } = useInventory();
-  const isAdministracion = currentUser?.rol === 'administracion';
+  const isGerencia = currentUser?.rol === 'gerencia';
   const isVentas = currentUser?.rol === 'ventas';
   const [copiedCode, setCopiedCode] = useState<boolean>(false);
 
@@ -217,10 +217,10 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
           </div>
 
           {/* Pricing & Additional Specifications Box */}
-          <div className={`grid grid-cols-1 ${isAdministracion ? 'sm:grid-cols-2' : ''} gap-3 bg-[#f8fbfe] border border-[#d2e8f8] p-4 rounded-2xl`}>
+          <div className={`grid grid-cols-1 ${isGerencia ? 'sm:grid-cols-2' : ''} gap-3 bg-[#f8fbfe] border border-[#d2e8f8] p-4 rounded-2xl`}>
             
-            {/* Precios - Solo visible para Administración */}
-            {isAdministracion && (
+            {/* Precios - Solo visible para Gerencia */}
+            {isGerencia && (
               <div className="flex flex-col gap-1">
                 <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1">
                   <DollarSign className="w-3.5 h-3.5 text-emerald-600" />

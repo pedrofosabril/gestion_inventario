@@ -43,8 +43,8 @@ export const SalidasLogView: React.FC<SalidasLogViewProps> = ({ onOpenScanner })
     cleanDuplicateSalidas
   } = useInventory();
   const isVentas = currentUser?.rol === 'ventas';
-  const isAdministracion = currentUser?.rol === 'administracion';
-  const showPrices = isAdministracion;
+  const isGerencia = currentUser?.rol === 'gerencia';
+  const showPrices = isGerencia;
   
   const [viewMode, setViewMode] = useState<'groups' | 'items'>('groups');
   const [searchTerm, setSearchTerm] = useState<string>('');

@@ -1,0 +1,11 @@
+services:
+  - type: static_site
+    name: verdu-panol
+    runtime: static
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    env: static
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

@@ -22,7 +22,7 @@ import {
 } from '../data/initialData';
 import { replaceYazWithYas, sanitizeYazObject } from '../utils/sanitizeUtils';
 
-export type MainNavSection = ItemCategory | 'salidas_log' | 'ingresos_log' | 'administracion_dashboard';
+export type MainNavSection = ItemCategory | 'salidas_log' | 'ingresos_log' | 'gerencia_dashboard';
 
 interface InventoryContextType {
   items: InventoryItem[];
@@ -126,7 +126,7 @@ interface InventoryContextType {
     rol: UserRole;
     password?: string;
   }) => { success: boolean; message: string; user?: UserAccount };
-  hasAdministrador: boolean;
+  hasGerente: boolean;
   logout: () => void;
   
   // Helpers & Stats
@@ -1501,7 +1501,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return { success: true, message: 'Cuenta creada con éxito. ¡Bienvenido a Verdu y Cía.!', user: newUser };
   };
 
-  const hasAdministrador = users.some(u => u.rol === 'administracion');
+  const hasGerente = users.some(u => u.rol === 'gerencia');
 
   const logout = () => {
     setCurrentUser(null);
@@ -1618,7 +1618,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         login,
         validateLogin,
         registerUser,
-        hasAdministrador,
+        hasGerente,
         logout,
         findItemByCode,
         getLowStockItems,

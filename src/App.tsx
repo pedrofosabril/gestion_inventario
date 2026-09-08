@@ -58,7 +58,7 @@ export const VENTAS_ALLOWED_CATEGORIES: ItemCategory[] = [
   'entrepiso'
 ];
 
-type ActiveView = ItemCategory | 'salidas' | 'ingresos' | 'administracion';
+type ActiveView = ItemCategory | 'salidas' | 'ingresos' | 'gerencia';
 
 const MainApp: React.FC = () => {
   const { 
@@ -74,7 +74,7 @@ const MainApp: React.FC = () => {
   } = useInventory();
 
   const isVentas = currentUser?.rol === 'ventas';
-  const isAdministracion = currentUser?.rol === 'administracion';
+  const isGerencia = currentUser?.rol === 'gerencia';
   const isPanolero = currentUser?.rol === 'panolero';
 
   const [activeView, setActiveView] = useState<ActiveView>('panol');
@@ -82,8 +82,8 @@ const MainApp: React.FC = () => {
   
   // Set initial default view according to role when currentUser changes
   useEffect(() => {
-    if (currentUser?.rol === 'administracion') {
-      setActiveView('administracion');
+    if (currentUser?.rol === 'gerencia') {
+      setActiveView('gerencia');
     } else {
       setActiveView('panol');
     }
@@ -264,7 +264,7 @@ const MainApp: React.FC = () => {
 
   // Sections for Gerencia & Ventas navigation tabs
   const ALL_SECTIONS: { id: ActiveView; label: string; icon: React.FC<{ className?: string }>; count?: number }[] = [
-    ...(isAdministracion ? [{ id: 'administracion' as ActiveView, label: 'Panel Administración', icon: ShieldCheck }] : []),
+    ...(isGerencia ? [{ id: 'gerencia' as ActiveView, label: 'Panel Gerencia', icon: ShieldCheck }] : []),
     { id: 'panol', label: 'Pañol (General)', icon: Warehouse, count: items.filter(i => i.categoria === 'panol').length },
     { id: 'cajones_fluidos', label: 'Cajones / Fluidos', icon: Droplet, count: items.filter(i => i.categoria === 'cajones_fluidos').length },
     { id: 'submicronicos', label: 'Submicrónicos', icon: CircleDot, count: items.filter(i => i.categoria === 'submicronicos').length },
@@ -292,7 +292,7 @@ const MainApp: React.FC = () => {
             
             {/* Logo */}
             <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-              <div onClick={() => setActiveView(isAdministracion ? 'administracion' : 'panol')} className="cursor-pointer">
+              <div onClick={() => setActiveView(isGerencia ? 'gerencia' : 'panol')} className="cursor-pointer">
                 <Logo />
               </div>
             </div>
@@ -438,10 +438,10 @@ const MainApp: React.FC = () => {
                 className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-xl bg-sky-50 border border-[#b8ddf5]"
                 title={`Sesión activa: ${currentUser.nombre || 'Marcelo'} (${currentUser.rol})`}
               >
-                {isAdministracion ? (
+                {isGerencia ? (
                   <>
                     <ShieldCheck className="w-4 h-4 text-[#006bb0]" />
-                    <span className="text-xs font-black text-[#006bb0] tracking-wide">Administración</span>
+                    <span className="text-xs font-black text-[#006bb0] tracking-wide">Gerencia</span>
                   </>
                 ) : isVentas ? (
                   <>
@@ -715,24 +715,24 @@ const MainApp: React.FC = () => {
             onOpenBarcode={handleOpenBarcode}
             onOpenDetail={handleOpenProductDetail}
           />
-        ) : activeView === 'administracion' ? (
-          currentUser.rol === 'administracion' ? (
+        ) : activeView === 'gerencia' ? (
+          currentUser.rol === 'gerencia' ? (
             <GerenciaDashboard onOpenScanner={handleOpenScanner} />
           ) : (
             <div className="bg-[#f4f9fd] rounded-2xl p-8 sm:p-12 text-center border border-[#c4e1f7] shadow-sm max-w-md mx-auto my-8">
               <div className="w-14 h-14 rounded-2xl bg-[#d6ecfa] text-[#006bb0] flex items-center justify-center mx-auto mb-4">
                 <Lock className="w-7 h-7" />
               </div>
-              <h2 className="text-lg font-bold text-sky-950">Acceso Restringido a Administración</h2>
+              <h2 className="text-lg font-bold text-sky-950">Acceso Restringido a Gerencia</h2>
               <p className="text-xs text-slate-600 mt-1 mb-6 leading-relaxed">
-                Ingresa con las credenciales de Administración para acceder a la valorización completa, auditoría de precios y reportes ejecutivos.
+                Ingresa con las credenciales de Gerencia para acceder a la valorización completa, auditoría de precios y reportes ejecutivos.
               </p>
               <button
                 onClick={logout}
                 className="w-full sm:w-auto px-6 py-2.5 bg-[#006bb0] text-white font-bold text-xs rounded-xl shadow-md hover:bg-[#005590] transition-colors inline-flex items-center justify-center gap-2 cursor-pointer"
               >
                 <ShieldCheck className="w-4 h-4" />
-                Ir al Home para Ingresar como Administración
+                Ir al Home para Ingresar como Gerencia
               </button>
             </div>
           )
@@ -813,15 +813,15 @@ const MainApp: React.FC = () => {
               </button>
             )}
 
-            {isAdministracion ? (
+            {isGerencia ? (
               <button
-                onClick={() => setActiveView('administracion')}
+                onClick={() => setActiveView('gerencia')}
                 className={`px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer ${
-                  activeView === 'administracion' ? 'bg-[#006bb0] text-white' : 'text-slate-700 hover:bg-[#e2f1fc]'
+                  activeView === 'gerencia' ? 'bg-[#006bb0] text-white' : 'text-slate-700 hover:bg-[#e2f1fc]'
                 }`}
               >
                 <ShieldCheck className="w-4 h-4 text-sky-200" />
-                <span>Administración</span>
+                <span>Gerencia</span>
               </button>
             ) : (
               <button
