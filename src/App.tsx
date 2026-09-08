@@ -541,19 +541,6 @@ const MainApp: React.FC = () => {
         {!isPanolero && (
           <div className="bg-[#e9f4fc] border-t border-[#c6e1f7] relative">
             <div className="max-w-[1720px] mx-auto px-2 sm:px-4 lg:px-6 flex items-center gap-1 sm:gap-2">
-              
-              {/* Left scroll navigation arrow button */}
-              <button
-                type="button"
-                onClick={() => scrollTabs('left')}
-                disabled={!canScrollLeft}
-                className={`p-1.5 sm:p-2 rounded-xl border border-[#badbf5] bg-white text-[#006bb0] hover:bg-sky-50 shadow-2xs transition-all shrink-0 z-10 flex items-center justify-center ${
-                  !canScrollLeft ? 'opacity-30 cursor-not-allowed' : 'opacity-100 hover:scale-105 active:scale-95 cursor-pointer hover:border-[#006bb0]'
-                }`}
-                title="Desplazar secciones a la izquierda ◄"
-              >
-                <ChevronLeft className="w-4 h-4" />
-              </button>
 
               {/* Scrollable nav container */}
               <div 
@@ -590,19 +577,6 @@ const MainApp: React.FC = () => {
                   })}
                 </nav>
               </div>
-
-              {/* Right scroll navigation arrow button */}
-              <button
-                type="button"
-                onClick={() => scrollTabs('right')}
-                disabled={!canScrollRight}
-                className={`p-1.5 sm:p-2 rounded-xl border border-[#badbf5] bg-white text-[#006bb0] hover:bg-sky-50 shadow-2xs transition-all shrink-0 z-10 flex items-center justify-center ${
-                  !canScrollRight ? 'opacity-30 cursor-not-allowed' : 'opacity-100 hover:scale-105 active:scale-95 cursor-pointer hover:border-[#006bb0]'
-                }`}
-                title="Desplazar secciones a la derecha ►"
-              >
-                <ChevronRight className="w-4 h-4" />
-              </button>
 
             </div>
           </div>
