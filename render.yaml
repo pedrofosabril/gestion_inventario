@@ -7,8 +7,3 @@ services:
     dockerfilePath: ./Dockerfile
     healthCheckPath: /index.html
     autoDeploy: true
-    envVars:
-      - key: APP_URL
-        sync: false
-      - key: GEMINI_API_KEY
-        sync: false
