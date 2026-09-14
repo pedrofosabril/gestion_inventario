@@ -15,7 +15,9 @@ import {
   Sparkles,
   RotateCcw,
   DatabaseBackup,
-  Download
+  Download,
+  ChevronDown,
+  Clock
 } from 'lucide-react';
 import { useInventory } from '../context/InventoryContext';
 import { ItemCategory } from '../types';
@@ -38,11 +40,13 @@ export const GerenciaDashboard: React.FC<GerenciaDashboardProps> = ({ onOpenScan
     getOutOfStockItems,
     clearAllData,
     resetToDefaults,
-    backupDatabase
+    backupDatabase,
+    backupHistory
   } = useInventory();
 
   const [isAddingProduct, setIsAddingProduct] = useState<boolean>(false);
   const [showHistorial, setShowHistorial] = useState<boolean>(false);
+  const [showBackupPanel, setShowBackupPanel] = useState<boolean>(false);
   const [backupAt, setBackupAt] = useState<string | null>(null);
 
   const handleBackup = () => {
@@ -121,15 +125,79 @@ export const GerenciaDashboard: React.FC<GerenciaDashboardProps> = ({ onOpenScan
           <ExcelImportDropzone />
 
           {/* Respaldo de Base de Datos */}
-          <button
-            type="button"
-            onClick={handleBackup}
-            className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-300 rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer active:scale-[0.99]"
-            title="Descarga una copia completa de la base de datos en formato JSON y Excel"
-          >
-            <DatabaseBackup className="w-4 h-4 text-emerald-700 stroke-[2.5]" />
-            <span>Respaldo de base de datos</span>
-          </button>
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setShowBackupPanel(prev => !prev)}
+              className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer active:scale-[0.99] border ${
+                showBackupPanel
+                  ? 'bg-emerald-100 text-emerald-900 border-emerald-400'
+                  : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border-emerald-300'
+              }`}
+              title="Generar una copia de la base de datos o ver el historial de respaldos"
+            >
+              <DatabaseBackup className="w-4 h-4 text-emerald-700 stroke-[2.5]" />
+              <span>Respaldo de base de datos</span>
+              <ChevronDown className={`w-3.5 h-3.5 text-emerald-700 transition-transform ${showBackupPanel ? 'rotate-180' : ''}`} />
+            </button>
+
+            {showBackupPanel && (
+              <>
+                <div className="fixed inset-0 z-20" onClick={() => setShowBackupPanel(false)} />
+                <div className="absolute z-30 right-0 sm:right-auto sm:left-0 mt-2 w-80 sm:w-96 bg-white rounded-2xl border border-[#c4e1f7] shadow-xl p-3 animate-in fade-in slide-in-from-top-2 duration-200">
+                  {/* Opción 1: Generar copia */}
+                  <button
+                    type="button"
+                    onClick={handleBackup}
+                    className="w-full inline-flex items-center gap-3 px-3 py-3 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 rounded-xl text-left transition-colors cursor-pointer"
+                  >
+                    <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                      <Download className="w-4 h-4" />
+                    </div>
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-xs font-black text-emerald-900">Generar copia de la base</span>
+                      <span className="text-[10px] text-slate-500 font-medium">
+                        Descarga los archivos .json y .xlsx con todos los datos
+                      </span>
+                    </div>
+                  </button>
+
+                  {/* Opción 2: Historial de respaldos */}
+                  <div className="mt-3">
+                    <div className="flex items-center justify-between px-1 mb-1.5">
+                      <span className="text-[11px] font-black uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                        <Clock className="w-3.5 h-3.5" />
+                        Historial de respaldos
+                      </span>
+                      <span className="text-[10px] font-bold text-slate-400">
+                        {backupHistory.length} {backupHistory.length === 1 ? 'copia' : 'copias'}
+                      </span>
+                    </div>
+
+                    {backupHistory.length === 0 ? (
+                      <p className="text-[11px] text-slate-400 bg-slate-50 border border-dashed border-slate-200 rounded-xl px-3 py-3 text-center font-medium">
+                        Todavía no se generaron copias. Presioná "Generar copia de la base".
+                      </p>
+                    ) : (
+                      <ul className="max-h-56 overflow-y-auto divide-y divide-slate-100 border border-slate-100 rounded-xl">
+                        {backupHistory.map(entry => (
+                          <li key={entry.id} className="px-3 py-2 flex flex-col gap-0.5">
+                            <span className="text-xs font-bold text-sky-950 flex items-center gap-1.5">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                              {entry.fechaDescarga}
+                            </span>
+                            <span className="text-[10px] text-slate-500 font-medium leading-relaxed">
+                              por {entry.generadoPor} · {entry.resumen.items.toLocaleString('es-AR')} ítems · {entry.resumen.salidas.toLocaleString('es-AR')} salidas · {entry.resumen.ingresos.toLocaleString('es-AR')} ingresos · {entry.resumen.users} usuarios
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
         </div>
 
         {backupAt && (

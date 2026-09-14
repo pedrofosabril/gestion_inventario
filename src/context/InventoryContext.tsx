@@ -11,7 +11,8 @@ import {
   IngresoRecord, 
   UserAccount, 
   UserRole,
-  ItemCategory 
+  ItemCategory,
+  BackupHistoryEntry
 } from '../types';
 import { 
   INITIAL_INVENTORY, 
@@ -33,6 +34,7 @@ interface InventoryContextType {
   currentUser: UserAccount | null;
   setCurrentUser: (user: UserAccount | null) => void;
   users: UserAccount[];
+  backupHistory: BackupHistoryEntry[];
   activeSection: MainNavSection;
   setActiveSection: (sec: MainNavSection) => void;
   activeSubCategory: string | null;
@@ -154,7 +156,8 @@ const STORAGE_KEYS = {
   DEVOLUCION_GROUPS: 'verdu_inventory_devolucion_groups_v1',
   INGRESOS: 'verdu_inventory_ingresos_v18_exact_mv_cajas',
   USER: 'verdu_inventory_user_v2',
-  USERS: 'verdu_inventory_users_list_v2'
+  USERS: 'verdu_inventory_users_list_v2',
+  BACKUP_HISTORY: 'verdu_backup_history_v1'
 };
 
 // Clean legacy cached demo data from previous versions & sanitize any Yaz occurrences
@@ -349,6 +352,15 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   });
 
+  const [backupHistory, setBackupHistory] = useState<BackupHistoryEntry[]>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.BACKUP_HISTORY);
+      return saved ? sanitizeYazObject(JSON.parse(saved)) : [];
+    } catch {
+      return [];
+    }
+  });
+
   const [activeSection, setActiveSection] = useState<MainNavSection>('panol');
   const [activeSubCategory, setActiveSubCategory] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -401,6 +413,14 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       console.error('Failed to save user', e);
     }
   }, [currentUser]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEYS.BACKUP_HISTORY, JSON.stringify(backupHistory));
+    } catch (e) {
+      console.error('Failed to save backup history', e);
+    }
+  }, [backupHistory]);
 
   // Audio Beep for Scanners
   const playBeep = (type: 'success' | 'warning' | 'error' = 'success') => {
@@ -1462,6 +1482,23 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     XLSX.writeFile(wb, `${baseName}.xlsx`);
 
+    // Record backup entry in history
+    const historyEntry: BackupHistoryEntry = {
+      id: `bk-${Date.now()}`,
+      timestamp: now.toISOString(),
+      fechaDescarga: now.toLocaleString('es-AR'),
+      generadoPor: currentUser?.nombre || 'desconocido',
+      resumen: {
+        items: items.length,
+        salidas: salidas.length,
+        salidaGroups: salidaGroups.length,
+        devolucionGroups: devolucionGroups.length,
+        ingresos: ingresos.length,
+        users: users.length
+      }
+    };
+    setBackupHistory(prev => [historyEntry, ...prev]);
+
     playBeep('success');
   };
 
@@ -1657,6 +1694,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         currentUser,
         setCurrentUser,
         users,
+        backupHistory,
         activeSection,
         setActiveSection,
         activeSubCategory,
