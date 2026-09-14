@@ -157,7 +157,7 @@ export const GerenciaDashboard: React.FC<GerenciaDashboardProps> = ({ onOpenScan
                     <div className="flex flex-col min-w-0">
                       <span className="text-xs font-black text-emerald-900">Generar copia de la base</span>
                       <span className="text-[10px] text-slate-500 font-medium">
-                        Descarga los archivos .json y .xlsx con todos los datos
+                        Descarga los archivos .json y .csv con todos los datos
                       </span>
                     </div>
                   </button>
@@ -203,7 +203,7 @@ export const GerenciaDashboard: React.FC<GerenciaDashboardProps> = ({ onOpenScan
         {backupAt && (
           <div className="flex items-center gap-2 text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2 text-xs font-bold animate-in fade-in">
             <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-            <span>Respaldo generado a las {backupAt}. Se descargaron los archivos .json y .xlsx.</span>
+            <span>Respaldo generado a las {backupAt}. Se descargaron los archivos .json y .csv.</span>
           </div>
         )}
       </div>

@@ -1422,7 +1422,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     XLSX.writeFile(wb, `Verdu_Panol_Inventario_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
-  // Full database backup: downloads a JSON snapshot + an Excel workbook with every collection
+  // Full database backup: downloads a JSON snapshot + one CSV file per collection
   const backupDatabase = () => {
     const now = new Date();
     const pad = (n: number) => String(n).padStart(2, '0');
@@ -1459,28 +1459,33 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     document.body.removeChild(jsonLink);
     URL.revokeObjectURL(jsonUrl);
 
-    // 2. Excel backup (one sheet per collection)
-    const wb = XLSX.utils.book_new();
-
+    // 2. CSV backups (one .csv file per collection)
     const sheets: { name: string; data: any[] }[] = [
       { name: 'INVENTARIO', data: items },
       { name: 'SALIDAS', data: salidas },
-      { name: 'GRUPOS SALIDA', data: salidaGroups },
+      { name: 'GRUPOS_SALIDA', data: salidaGroups },
       { name: 'DEVOLUCIONES', data: devolucionGroups },
       { name: 'INGRESOS', data: ingresos },
       { name: 'USUARIOS', data: users }
     ];
 
     if (currentUser) {
-      sheets.push({ name: 'SESION ACTUAL', data: [currentUser] });
+      sheets.push({ name: 'SESION_ACTUAL', data: [currentUser] });
     }
 
     for (const sheet of sheets) {
       const ws = XLSX.utils.json_to_sheet(sheet.data);
-      XLSX.utils.book_append_sheet(wb, ws, sheet.name.substring(0, 31));
+      const csvContent = XLSX.utils.sheet_to_csv(ws);
+      const csvBlob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const csvUrl = URL.createObjectURL(csvBlob);
+      const csvLink = document.createElement('a');
+      csvLink.href = csvUrl;
+      csvLink.download = `${baseName}__${sheet.name}.csv`;
+      document.body.appendChild(csvLink);
+      csvLink.click();
+      document.body.removeChild(csvLink);
+      URL.revokeObjectURL(csvUrl);
     }
-
-    XLSX.writeFile(wb, `${baseName}.xlsx`);
 
     // Record backup entry in history
     const historyEntry: BackupHistoryEntry = {
