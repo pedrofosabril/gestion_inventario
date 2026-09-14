@@ -262,9 +262,9 @@ const MainApp: React.FC = () => {
     setGlobalSearchResults(matches.slice(0, 15));
   };
 
-  // Sections for Gerencia & Ventas navigation tabs
+  // Sections for Administración & Ventas navigation tabs
   const ALL_SECTIONS: { id: ActiveView; label: string; icon: React.FC<{ className?: string }>; count?: number }[] = [
-    ...(isGerencia ? [{ id: 'gerencia' as ActiveView, label: 'Panel Gerencia', icon: ShieldCheck }] : []),
+    ...(isGerencia ? [{ id: 'gerencia' as ActiveView, label: 'Administración', icon: ShieldCheck }] : []),
     { id: 'panol', label: 'Pañol (General)', icon: Warehouse, count: items.filter(i => i.categoria === 'panol').length },
     { id: 'cajones_fluidos', label: 'Cajones / Fluidos', icon: Droplet, count: items.filter(i => i.categoria === 'cajones_fluidos').length },
     { id: 'submicronicos', label: 'Submicrónicos', icon: CircleDot, count: items.filter(i => i.categoria === 'submicronicos').length },
@@ -277,7 +277,7 @@ const MainApp: React.FC = () => {
     { id: 'ingresos', label: 'Historial Ingresos', icon: ArrowDownLeft }
   ];
 
-  // In Sales profile: only allowed product categories (NO salidas); Pañolero & Gerencia: all sections
+  // In Sales profile: only allowed product categories (NO salidas); Pañolero & Administración: all sections
   const NAV_ITEMS = isVentas
     ? ALL_SECTIONS.filter(sec => VENTAS_ALLOWED_CATEGORIES.includes(sec.id as ItemCategory))
     : ALL_SECTIONS;
@@ -436,12 +436,12 @@ const MainApp: React.FC = () => {
               {/* Current User Role Title */}
               <div 
                 className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-xl bg-sky-50 border border-[#b8ddf5]"
-                title={`Sesión activa: ${currentUser.nombre || 'Marcelo'} (${currentUser.rol})`}
+                title={`Sesión activa: ${currentUser.nombre || 'Marcelo'} (${currentUser.rol === 'gerencia' ? 'Administración' : currentUser.rol})`}
               >
                 {isGerencia ? (
                   <>
                     <ShieldCheck className="w-4 h-4 text-[#006bb0]" />
-                    <span className="text-xs font-black text-[#006bb0] tracking-wide">Gerencia</span>
+                    <span className="text-xs font-black text-[#006bb0] tracking-wide">Administración</span>
                   </>
                 ) : isVentas ? (
                   <>
@@ -723,16 +723,16 @@ const MainApp: React.FC = () => {
               <div className="w-14 h-14 rounded-2xl bg-[#d6ecfa] text-[#006bb0] flex items-center justify-center mx-auto mb-4">
                 <Lock className="w-7 h-7" />
               </div>
-              <h2 className="text-lg font-bold text-sky-950">Acceso Restringido a Gerencia</h2>
+              <h2 className="text-lg font-bold text-sky-950">Acceso Restringido a Administración</h2>
               <p className="text-xs text-slate-600 mt-1 mb-6 leading-relaxed">
-                Ingresa con las credenciales de Gerencia para acceder a la valorización completa, auditoría de precios y reportes ejecutivos.
+                Ingresa con las credenciales de Administración para acceder a la valorización completa, auditoría de precios y reportes ejecutivos.
               </p>
               <button
                 onClick={logout}
                 className="w-full sm:w-auto px-6 py-2.5 bg-[#006bb0] text-white font-bold text-xs rounded-xl shadow-md hover:bg-[#005590] transition-colors inline-flex items-center justify-center gap-2 cursor-pointer"
               >
                 <ShieldCheck className="w-4 h-4" />
-                Ir al Home para Ingresar como Gerencia
+                Ir al Home para Ingresar como Administración
               </button>
             </div>
           )
@@ -821,7 +821,7 @@ const MainApp: React.FC = () => {
                 }`}
               >
                 <ShieldCheck className="w-4 h-4 text-sky-200" />
-                <span>Gerencia</span>
+                <span>Administración</span>
               </button>
             ) : (
               <button

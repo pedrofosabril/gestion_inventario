@@ -116,6 +116,7 @@ interface InventoryContextType {
   ) => { added: number; updated: number; errors: string[] };
   
   exportCategoryToExcel: (category?: ItemCategory | 'all' | 'salidas' | 'ingresos') => void;
+  backupDatabase: () => void;
   
   // Auth
   login: (username: string, password?: string) => boolean;
@@ -1401,6 +1402,69 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     XLSX.writeFile(wb, `Verdu_Panol_Inventario_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
+  // Full database backup: downloads a JSON snapshot + an Excel workbook with every collection
+  const backupDatabase = () => {
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const dateStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+    const timeStr = `${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
+
+    const backup = {
+      app: 'Verdu y Cía - Gestión de Pañol',
+      tipo: 'Respaldo completo de base de datos',
+      generadoPor: currentUser?.nombre || 'desconocido',
+      generadoEl: now.toLocaleString('es-AR'),
+      timestamp: now.toISOString(),
+      colecciones: {
+        items,
+        salidas,
+        salidaGroups,
+        devolucionGroups,
+        ingresos,
+        users,
+        currentUser
+      }
+    };
+
+    const baseName = `Respaldo_Base_Verdu_${dateStr}_${timeStr}`;
+
+    // 1. JSON backup (full database snapshot / restorable)
+    const jsonBlob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+    const jsonUrl = URL.createObjectURL(jsonBlob);
+    const jsonLink = document.createElement('a');
+    jsonLink.href = jsonUrl;
+    jsonLink.download = `${baseName}.json`;
+    document.body.appendChild(jsonLink);
+    jsonLink.click();
+    document.body.removeChild(jsonLink);
+    URL.revokeObjectURL(jsonUrl);
+
+    // 2. Excel backup (one sheet per collection)
+    const wb = XLSX.utils.book_new();
+
+    const sheets: { name: string; data: any[] }[] = [
+      { name: 'INVENTARIO', data: items },
+      { name: 'SALIDAS', data: salidas },
+      { name: 'GRUPOS SALIDA', data: salidaGroups },
+      { name: 'DEVOLUCIONES', data: devolucionGroups },
+      { name: 'INGRESOS', data: ingresos },
+      { name: 'USUARIOS', data: users }
+    ];
+
+    if (currentUser) {
+      sheets.push({ name: 'SESION ACTUAL', data: [currentUser] });
+    }
+
+    for (const sheet of sheets) {
+      const ws = XLSX.utils.json_to_sheet(sheet.data);
+      XLSX.utils.book_append_sheet(wb, ws, sheet.name.substring(0, 31));
+    }
+
+    XLSX.writeFile(wb, `${baseName}.xlsx`);
+
+    playBeep('success');
+  };
+
   const validateLogin = (username: string, password?: string): { success: boolean; message: string; user?: UserAccount } => {
     const cleanUsername = (username || '').trim().toLowerCase();
     if (!cleanUsername) {
@@ -1615,6 +1679,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         registerIngreso,
         importExcelRows,
         exportCategoryToExcel,
+        backupDatabase,
         login,
         validateLogin,
         registerUser,

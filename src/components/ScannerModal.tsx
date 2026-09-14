@@ -410,7 +410,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
     }
 
     if (isVentas && !VENTAS_ALLOWED_CATEGORIES.includes(foundItem.categoria)) {
-      setErrorMessage(`El producto "${cleanCode}" pertenece a una sección reservada para Gerencia.`);
+      setErrorMessage(`El producto "${cleanCode}" pertenece a una sección reservada para Administración.`);
       if (soundEnabled) playScannerBeep('warning');
       return;
     }
