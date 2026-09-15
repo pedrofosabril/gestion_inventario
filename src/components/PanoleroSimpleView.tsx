@@ -108,7 +108,7 @@ export const PanoleroSimpleView: React.FC<PanoleroSimpleViewProps> = ({
       </div>
 
       {/* THREE MAIN ACTION BUTTONS: SALIDA, DEVOLUCIÓN & ENTRADA */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-6">
+      <div id="operaciones-panolero" className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-6">
         
         {/* BUTTON 1: SALIDA */}
         <button
@@ -283,7 +283,7 @@ export const PanoleroSimpleView: React.FC<PanoleroSimpleViewProps> = ({
                           STOCK ACTUAL
                         </span>
                         <span className="text-lg sm:text-xl font-black text-emerald-700">
-                          {item.stock} {item.unidad || 'u.'}
+                          {item.stock} u.
                         </span>
                       </div>
 
@@ -326,7 +326,7 @@ export const PanoleroSimpleView: React.FC<PanoleroSimpleViewProps> = ({
               <History className="w-5 h-5" />
             </div>
             <div>
-              <span className="text-base sm:text-lg font-black text-sky-950 block">
+              <span id="historial" className="text-base sm:text-lg font-black text-sky-950 block">
                 Historial de Salidas
               </span>
               <span className="text-xs text-slate-500 font-medium">

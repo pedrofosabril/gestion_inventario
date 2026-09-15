@@ -37,7 +37,7 @@ export const startTour = (rol?: string, userId?: string) => {
     popover: {
       title: '¡Bienvenido/a!',
       description:
-        rol === 'administracion'
+        rol === 'gerencia'
           ? 'Este es el panel de administración del pañol. Te mostramos las herramientas principales.'
           : rol === 'panolero'
             ? 'Esta es tu pantalla de trabajo diario: consulta de ubicación, stock e historial.'
@@ -85,7 +85,7 @@ export const startTour = (rol?: string, userId?: string) => {
 
   const excelStep: DriveStep = {
     element: '#excel',
-    data: { view: 'administracion' },
+    data: { view: 'gerencia' },
     waitForElement: 3000,
     popover: {
       title: 'Carga de Excel',
@@ -97,7 +97,7 @@ export const startTour = (rol?: string, userId?: string) => {
 
   const nuevoProductoStep: DriveStep = {
     element: '#nuevo-producto',
-    data: { view: 'administracion' },
+    data: { view: 'gerencia' },
     waitForElement: 3000,
     popover: {
       title: 'Carga de Producto',
@@ -109,11 +109,23 @@ export const startTour = (rol?: string, userId?: string) => {
 
   const estadisticasStep: DriveStep = {
     element: '#estadisticas',
-    data: { view: 'administracion' },
+    data: { view: 'gerencia' },
     waitForElement: 3000,
     popover: {
       title: 'Estadísticas',
       description: 'En esta seccion podemos ver la valuación total, stock crítico, productos sin stock y el desglose por sección.',
+      side: 'bottom',
+      align: 'center',
+    },
+  };
+
+  const respaldoStep: DriveStep = {
+    element: '#respaldo',
+    data: { view: 'gerencia' },
+    waitForElement: 3000,
+    popover: {
+      title: 'Respaldo de base de datos',
+      description: 'Acá podés generar una copia de seguridad de toda la base de datos (.json y .csv) o revisar el historial de respaldos.',
       side: 'bottom',
       align: 'center',
     },
@@ -155,7 +167,7 @@ export const startTour = (rol?: string, userId?: string) => {
 
   // Operaciones: SÓLO para el perfil de administración.
   let steps: DriveStep[];
-  if (rol === 'administracion') {
+  if (rol === 'gerencia') {
     steps = [
       welcomeStep,
       operacionesStep,
@@ -163,6 +175,7 @@ export const startTour = (rol?: string, userId?: string) => {
       excelStep,
       nuevoProductoStep,
       estadisticasStep,
+      respaldoStep,
       flechitaStep,
       buscadorGlobalStep,
     ];
@@ -192,17 +205,19 @@ export const startTour = (rol?: string, userId?: string) => {
     nextBtnText: 'Siguiente',
     prevBtnText: 'Anterior',
     doneBtnText: 'Entendido',
-    // Al avanzar, cambiamos de vista (p.ej. para mostrar la tabla) ANTES de mover el paso,
-    // así el elemento del paso siguiente ya existe cuando se intenta resaltar.
-    onNextClick: (_element, _step, opts) => {
-      const next = steps[(opts.index ?? 0) + 1];
+    // driver.js 1.8.0 llama a onNextClick/onPrevClick SIN argumentos desde el botón,
+    // por eso tomamos el índice activo de la propia API (getActiveIndex()).
+    onNextClick: () => {
+      const index = driverObj.getActiveIndex() ?? 0;
+      const next = steps[index + 1];
       const view = next?.data?.view;
       if (view) dispatchNavigate(String(view));
       driverObj.moveNext();
     },
     // Al retroceder, preparamos la vista del paso anterior.
-    onPrevClick: (_element, _step, opts) => {
-      const prev = steps[(opts.index ?? 0) - 1];
+    onPrevClick: () => {
+      const index = driverObj.getActiveIndex() ?? 0;
+      const prev = steps[index - 1];
       const view = prev?.data?.view;
       if (view) dispatchNavigate(String(view));
       driverObj.movePrevious();
