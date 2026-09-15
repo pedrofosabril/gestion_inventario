@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: verdu-panol
+    runtime: docker
+    plan: free
+    rootDir: .
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /index.html
+    autoDeploy: true

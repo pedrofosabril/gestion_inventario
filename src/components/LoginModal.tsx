@@ -24,7 +24,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
       setPassword('');
       onClose();
     } else {
-      setError(`Contraseña incorrecta. (Claves por defecto: "ventas" para Ventas, "verdu" para Gerencia, "panol" para Pañol)`);
+      setError(`Contraseña incorrecta. (Claves por defecto: "ventas" para Ventas, "verdu" para Administración, "panol" para Pañol)`);
     }
   };
 
@@ -36,10 +36,10 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
 
   const getUserDescription = (rol: string) => {
     switch (rol) {
-      case 'administracion':
+      case 'gerencia':
         return 'Acceso ejecutivo total: valorización en ARS/USD, auditoría de precios, fechas de control, edición de stock y KPIs.';
       case 'ventas':
-        return 'Consulta exclusiva de Pañol, Cajones/Fluidos, Submicrónicos, Rodamientos y Entrepiso (las demás secciones quedan reservadas para Gerencia). Oculta precios de costo y totales.';
+        return 'Consulta exclusiva de Pañol, Cajones/Fluidos, Submicrónicos, Rodamientos y Entrepiso (las demás secciones quedan reservadas para Administración). Oculta precios de costo y totales.';
       case 'panolero':
         return 'Gestión de pañol: escaneo con lector físico de código de barras, remitos de salida, recepción de ingresos y control de estantes.';
       default:
@@ -76,13 +76,13 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
         <div className="bg-[#f4f9fd] border-b border-[#c4e1f7] px-6 py-3 flex items-center justify-between text-xs">
           <span className="text-slate-600 font-medium">Sesión activa actualmente:</span>
           <span className={`font-bold px-2.5 py-0.5 rounded-lg text-xs border ${
-            currentUser?.rol === 'administracion'
+            currentUser?.rol === 'gerencia'
               ? 'bg-purple-100 text-purple-900 border-purple-200'
               : currentUser?.rol === 'ventas'
                 ? 'bg-emerald-100 text-emerald-900 border-emerald-200'
                 : 'bg-[#d6ecfa] text-[#006bb0] border-[#badbf5]'
           }`}>
-            {currentUser?.nombre || 'Sin sesión'} ({currentUser?.rol?.toUpperCase() || 'INVITADO'})
+            {currentUser?.nombre || 'Sin sesión'} ({currentUser?.rol === 'gerencia' ? 'ADMINISTRACIÓN' : currentUser?.rol?.toUpperCase() || 'INVITADO'})
           </span>
         </div>
 
@@ -109,9 +109,9 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
               <span className="text-[9px] font-mono text-emerald-700 font-semibold mt-0.5">clave: ventas</span>
             </button>
 
-            {users.find(u => u.rol === 'administracion') ? (
+            {users.find(u => u.rol === 'gerencia') ? (
               (() => {
-                const g = users.find(u => u.rol === 'administracion')!;
+                const g = users.find(u => u.rol === 'gerencia')!;
                 return (
                   <button
                     type="button"

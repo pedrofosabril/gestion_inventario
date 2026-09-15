@@ -30,7 +30,7 @@ export interface InventoryItem {
   codigoBarras?: string;
 }
 
-export type ActiveView = ItemCategory | 'all' | 'salidas' | 'ingresos' | 'administracion';
+export type ActiveView = ItemCategory | 'all' | 'salidas' | 'ingresos' | 'gerencia';
 
 export interface SalidaItemEntry {
   id: string;
@@ -129,7 +129,7 @@ export interface IngresoRecord {
   usuarioRegistro?: string;
 }
 
-export type UserRole = 'administracion' | 'panolero' | 'ventas' | 'observador';
+export type UserRole = 'gerencia' | 'panolero' | 'ventas' | 'observador';
 
 export interface UserAccount {
   id: string;
@@ -137,6 +137,21 @@ export interface UserAccount {
   nombre: string;
   rol: UserRole;
   password?: string;
+}
+
+export interface BackupHistoryEntry {
+  id: string;
+  timestamp: string;      // ISO datetime
+  fechaDescarga: string;  // Formatted local (ex: "14/09/2026 15:30:22")
+  generadoPor: string;    // User who generated the backup
+  resumen: {
+    items: number;
+    salidas: number;
+    salidaGroups: number;
+    devolucionGroups: number;
+    ingresos: number;
+    users: number;
+  };
 }
 
 export interface ImportPreviewRow {
