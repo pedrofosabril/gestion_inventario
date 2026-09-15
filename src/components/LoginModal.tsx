@@ -24,7 +24,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
       setPassword('');
       onClose();
     } else {
-      setError(`Contraseña incorrecta. (Claves por defecto: "ventas" para Ventas, "verdu" para Gerencia, "panol" para Pañol)`);
+      setError(`Contraseña incorrecta. (Claves por defecto: "ventas" para Ventas, "verdu" para Administración, "panol" para Pañol)`);
     }
   };
 
@@ -39,7 +39,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
       case 'gerencia':
         return 'Acceso ejecutivo total: valorización en ARS/USD, auditoría de precios, fechas de control, edición de stock y KPIs.';
       case 'ventas':
-        return 'Consulta exclusiva de Pañol, Cajones/Fluidos, Submicrónicos, Rodamientos y Entrepiso (las demás secciones quedan reservadas para Gerencia). Oculta precios de costo y totales.';
+        return 'Consulta exclusiva de Pañol, Cajones/Fluidos, Submicrónicos, Rodamientos y Entrepiso (las demás secciones quedan reservadas para Administración). Oculta precios de costo y totales.';
       case 'panolero':
         return 'Gestión de pañol: escaneo con lector físico de código de barras, remitos de salida, recepción de ingresos y control de estantes.';
       default:
@@ -82,7 +82,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
                 ? 'bg-emerald-100 text-emerald-900 border-emerald-200'
                 : 'bg-[#d6ecfa] text-[#006bb0] border-[#badbf5]'
           }`}>
-            {currentUser?.nombre || 'Sin sesión'} ({currentUser?.rol?.toUpperCase() || 'INVITADO'})
+            {currentUser?.nombre || 'Sin sesión'} ({currentUser?.rol === 'gerencia' ? 'ADMINISTRACIÓN' : currentUser?.rol?.toUpperCase() || 'INVITADO'})
           </span>
         </div>
 
@@ -124,7 +124,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
                   >
                     <div className="flex items-center gap-1.5 text-xs font-bold text-[#006bb0]">
                       <ShieldCheck className="w-3.5 h-3.5 text-[#006bb0] shrink-0" />
-                      <span>Gerente</span>
+                      <span>Administración</span>
                     </div>
                     <span className="text-[10px] text-slate-500 truncate">{g.nombre}</span>
                     <span className="text-[9px] font-mono text-[#006bb0] font-semibold mt-0.5">clave: {g.password || 'verdu'}</span>
@@ -134,7 +134,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
             ) : (
               <div className="p-2.5 rounded-xl border border-dashed border-slate-300 bg-slate-50 text-slate-400 flex flex-col items-center justify-center text-center">
                 <ShieldCheck className="w-4 h-4 text-slate-400 mb-0.5" />
-                <span className="text-[10px] font-medium">Sin Gerente</span>
+                <span className="text-[10px] font-medium">Sin Administración</span>
               </div>
             )}
 

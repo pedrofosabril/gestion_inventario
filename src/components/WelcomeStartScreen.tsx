@@ -263,7 +263,7 @@ export const WelcomeStartScreen: React.FC = () => {
                 Rol
               </label>
               <div className="grid grid-cols-3 gap-1.5">
-                {/* Gerente */}
+                {/* Administración */}
                 <button
                   type="button"
                   onClick={() => setRegRol('gerencia')}
@@ -274,7 +274,7 @@ export const WelcomeStartScreen: React.FC = () => {
                   }`}
                 >
                   <ShieldCheck className="w-4 h-4" />
-                  <span className="text-[11px] leading-none">Gerente</span>
+                  <span className="text-[11px] leading-none">Administración</span>
                 </button>
 
                 {/* Pañolero */}

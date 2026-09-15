@@ -13,7 +13,9 @@ import {
   Trash2,
   CheckCircle2,
   Sparkles,
-  RotateCcw
+  RotateCcw,
+  DatabaseBackup,
+  Download
 } from 'lucide-react';
 import { useInventory } from '../context/InventoryContext';
 import { ItemCategory } from '../types';
@@ -35,11 +37,19 @@ export const GerenciaDashboard: React.FC<GerenciaDashboardProps> = ({ onOpenScan
     getLowStockItems, 
     getOutOfStockItems,
     clearAllData,
-    resetToDefaults
+    resetToDefaults,
+    backupDatabase
   } = useInventory();
 
   const [isAddingProduct, setIsAddingProduct] = useState<boolean>(false);
   const [showHistorial, setShowHistorial] = useState<boolean>(false);
+  const [backupAt, setBackupAt] = useState<string | null>(null);
+
+  const handleBackup = () => {
+    backupDatabase();
+    setBackupAt(new Date().toLocaleTimeString('es-AR'));
+    window.setTimeout(() => setBackupAt(null), 6000);
+  };
 
   const lowStock = getLowStockItems();
   const outOfStock = getOutOfStockItems();
@@ -94,7 +104,7 @@ export const GerenciaDashboard: React.FC<GerenciaDashboardProps> = ({ onOpenScan
         </div>
       )}
 
-      {/* Actions Bar for Gerente */}
+      {/* Actions Bar for Administración */}
       <div className="bg-white rounded-2xl border border-[#c4e1f7] shadow-xs p-4 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2.5">
           {/* Registrar Producto Nuevo Button */}
@@ -109,7 +119,25 @@ export const GerenciaDashboard: React.FC<GerenciaDashboardProps> = ({ onOpenScan
 
           {/* Excel Auto Import */}
           <ExcelImportDropzone />
+
+          {/* Respaldo de Base de Datos */}
+          <button
+            type="button"
+            onClick={handleBackup}
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-300 rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer active:scale-[0.99]"
+            title="Descarga una copia completa de la base de datos en formato JSON y Excel"
+          >
+            <DatabaseBackup className="w-4 h-4 text-emerald-700 stroke-[2.5]" />
+            <span>Respaldo de base de datos</span>
+          </button>
         </div>
+
+        {backupAt && (
+          <div className="flex items-center gap-2 text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2 text-xs font-bold animate-in fade-in">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+            <span>Respaldo generado a las {backupAt}. Se descargaron los archivos .json y .xlsx.</span>
+          </div>
+        )}
       </div>
 
       {/* KPI Cards Row */}
@@ -231,7 +259,7 @@ export const GerenciaDashboard: React.FC<GerenciaDashboardProps> = ({ onOpenScan
         </div>
       </div>
 
-      {/* Historial de Movimientos y Salidas Integrado en Gerencia (Bajo demanda) */}
+      {/* Historial de Movimientos y Salidas Integrado en Administración (Bajo demanda) */}
       <div className="bg-[#f4f9fd] rounded-2xl border border-[#c4e1f7] shadow-xs p-5 flex flex-col gap-4 mt-1">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-3">
