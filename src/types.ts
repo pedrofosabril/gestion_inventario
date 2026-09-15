@@ -139,6 +139,21 @@ export interface UserAccount {
   password?: string;
 }
 
+export interface BackupHistoryEntry {
+  id: string;
+  timestamp: string;      // ISO datetime
+  fechaDescarga: string;  // Formatted local (ex: "14/09/2026 15:30:22")
+  generadoPor: string;    // User who generated the backup
+  resumen: {
+    items: number;
+    salidas: number;
+    salidaGroups: number;
+    devolucionGroups: number;
+    ingresos: number;
+    users: number;
+  };
+}
+
 export interface ImportPreviewRow {
   codigo: string;
   proveedor?: string;

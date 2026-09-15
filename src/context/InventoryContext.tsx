@@ -11,7 +11,8 @@ import {
   IngresoRecord, 
   UserAccount, 
   UserRole,
-  ItemCategory 
+  ItemCategory,
+  BackupHistoryEntry
 } from '../types';
 import { 
   INITIAL_INVENTORY, 
@@ -33,6 +34,7 @@ interface InventoryContextType {
   currentUser: UserAccount | null;
   setCurrentUser: (user: UserAccount | null) => void;
   users: UserAccount[];
+  backupHistory: BackupHistoryEntry[];
   activeSection: MainNavSection;
   setActiveSection: (sec: MainNavSection) => void;
   activeSubCategory: string | null;
@@ -154,7 +156,8 @@ const STORAGE_KEYS = {
   DEVOLUCION_GROUPS: 'verdu_inventory_devolucion_groups_v1',
   INGRESOS: 'verdu_inventory_ingresos_v18_exact_mv_cajas',
   USER: 'verdu_inventory_user_v2',
-  USERS: 'verdu_inventory_users_list_v2'
+  USERS: 'verdu_inventory_users_list_v2',
+  BACKUP_HISTORY: 'verdu_backup_history_v1'
 };
 
 // Clean legacy cached demo data from previous versions & sanitize any Yaz occurrences
@@ -349,6 +352,15 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   });
 
+  const [backupHistory, setBackupHistory] = useState<BackupHistoryEntry[]>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.BACKUP_HISTORY);
+      return saved ? sanitizeYazObject(JSON.parse(saved)) : [];
+    } catch {
+      return [];
+    }
+  });
+
   const [activeSection, setActiveSection] = useState<MainNavSection>('panol');
   const [activeSubCategory, setActiveSubCategory] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -401,6 +413,14 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       console.error('Failed to save user', e);
     }
   }, [currentUser]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEYS.BACKUP_HISTORY, JSON.stringify(backupHistory));
+    } catch (e) {
+      console.error('Failed to save backup history', e);
+    }
+  }, [backupHistory]);
 
   // Audio Beep for Scanners
   const playBeep = (type: 'success' | 'warning' | 'error' = 'success') => {
@@ -1402,7 +1422,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     XLSX.writeFile(wb, `Verdu_Panol_Inventario_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
-  // Full database backup: downloads a JSON snapshot + an Excel workbook with every collection
+  // Full database backup: downloads a JSON snapshot + one CSV file per collection
   const backupDatabase = () => {
     const now = new Date();
     const pad = (n: number) => String(n).padStart(2, '0');
@@ -1439,28 +1459,50 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     document.body.removeChild(jsonLink);
     URL.revokeObjectURL(jsonUrl);
 
-    // 2. Excel backup (one sheet per collection)
-    const wb = XLSX.utils.book_new();
-
+    // 2. CSV backups (one .csv file per collection)
     const sheets: { name: string; data: any[] }[] = [
       { name: 'INVENTARIO', data: items },
       { name: 'SALIDAS', data: salidas },
-      { name: 'GRUPOS SALIDA', data: salidaGroups },
+      { name: 'GRUPOS_SALIDA', data: salidaGroups },
       { name: 'DEVOLUCIONES', data: devolucionGroups },
       { name: 'INGRESOS', data: ingresos },
       { name: 'USUARIOS', data: users }
     ];
 
     if (currentUser) {
-      sheets.push({ name: 'SESION ACTUAL', data: [currentUser] });
+      sheets.push({ name: 'SESION_ACTUAL', data: [currentUser] });
     }
 
     for (const sheet of sheets) {
       const ws = XLSX.utils.json_to_sheet(sheet.data);
-      XLSX.utils.book_append_sheet(wb, ws, sheet.name.substring(0, 31));
+      const csvContent = XLSX.utils.sheet_to_csv(ws);
+      const csvBlob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const csvUrl = URL.createObjectURL(csvBlob);
+      const csvLink = document.createElement('a');
+      csvLink.href = csvUrl;
+      csvLink.download = `${baseName}__${sheet.name}.csv`;
+      document.body.appendChild(csvLink);
+      csvLink.click();
+      document.body.removeChild(csvLink);
+      URL.revokeObjectURL(csvUrl);
     }
 
-    XLSX.writeFile(wb, `${baseName}.xlsx`);
+    // Record backup entry in history
+    const historyEntry: BackupHistoryEntry = {
+      id: `bk-${Date.now()}`,
+      timestamp: now.toISOString(),
+      fechaDescarga: now.toLocaleString('es-AR'),
+      generadoPor: currentUser?.nombre || 'desconocido',
+      resumen: {
+        items: items.length,
+        salidas: salidas.length,
+        salidaGroups: salidaGroups.length,
+        devolucionGroups: devolucionGroups.length,
+        ingresos: ingresos.length,
+        users: users.length
+      }
+    };
+    setBackupHistory(prev => [historyEntry, ...prev]);
 
     playBeep('success');
   };
@@ -1657,6 +1699,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         currentUser,
         setCurrentUser,
         users,
+        backupHistory,
         activeSection,
         setActiveSection,
         activeSubCategory,
