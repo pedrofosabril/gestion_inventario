@@ -21,6 +21,7 @@ import {
   INITIAL_USERS 
 } from '../data/initialData';
 import { replaceYazWithYas, sanitizeYazObject } from '../utils/sanitizeUtils';
+import { createMovement, deleteInventoryItem, getInventory, saveInventoryItem } from '../lib/supabase';
 
 export type MainNavSection = ItemCategory | 'salidas_log' | 'ingresos_log' | 'administracion_dashboard';
 
@@ -255,17 +256,7 @@ const deduplicateSalidasList = (records: SalidaRecord[]): SalidaRecord[] => {
 };
 
 export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [items, setItems] = useState<InventoryItem[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEYS.ITEMS);
-      if (saved) {
-        return sanitizeYazObject(JSON.parse(saved));
-      }
-      return sanitizeYazObject(INITIAL_INVENTORY);
-    } catch {
-      return sanitizeYazObject(INITIAL_INVENTORY);
-    }
-  });
+  const [items, setItems] = useState<InventoryItem[]>([]);
 
   const [salidas, setSalidas] = useState<SalidaRecord[]>(() => {
     try {
@@ -352,15 +343,17 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [activeSubCategory, setActiveSubCategory] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
 
-  // Persist state
+  // Supabase is the source of truth for the inventory. Test data and browser
+  // storage are deliberately not used as a fallback.
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEYS.ITEMS, JSON.stringify(items));
-    } catch (e) {
-      console.error('Failed to save items to storage', e);
-    }
-  }, [items]);
+    let active = true;
+    getInventory()
+      .then(data => { if (active) setItems(data); })
+      .catch(error => console.error('No se pudo cargar el inventario de Supabase:', error));
+    return () => { active = false; };
+  }, []);
 
+  // Persist state
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEYS.SALIDAS, JSON.stringify(salidas));
@@ -482,7 +475,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   };
 
   const addItem = (newItemData: Omit<InventoryItem, 'id' | 'precioTotal'>): InventoryItem => {
-    const id = `item-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+    const id = newItemData.codigo.trim();
     const precioTotal = (newItemData.stock || 0) * (newItemData.precio || 0);
     const item: InventoryItem = sanitizeYazObject({
       ...newItemData,
@@ -492,11 +485,18 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     });
 
     setItems(prev => [item, ...prev]);
+    void saveInventoryItem(item).catch(error => console.error('No se pudo guardar el repuesto en Supabase:', error));
     return item;
   };
 
   const updateItem = (id: string, updates: Partial<InventoryItem>) => {
     const cleanUpdates = sanitizeYazObject(updates);
+    const current = items.find(item => item.id === id);
+    if (current) {
+      const updated = { ...current, ...cleanUpdates };
+      updated.precioTotal = (updated.stock || 0) * (updated.precio || 0);
+      void saveInventoryItem(updated).catch(error => console.error('No se pudo actualizar el repuesto en Supabase:', error));
+    }
     setItems(prev => prev.map(item => {
       if (item.id === id) {
         const updated = { ...item, ...cleanUpdates };
@@ -508,6 +508,10 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   };
 
   const deleteItem = (id: string) => {
+    const current = items.find(item => item.id === id);
+    if (current) {
+      void deleteInventoryItem(current.codigo).catch(error => console.error('No se pudo eliminar el repuesto en Supabase:', error));
+    }
     setItems(prev => prev.filter(item => item.id !== id));
   };
 
@@ -579,6 +583,10 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     };
 
     setSalidas(prev => [salidaRecord, ...prev]);
+    void createMovement({
+      tipo: esDevuelto ? 'Devolucion' : 'Salida', codigo: item.codigo, cantidad,
+      comprobante: salidaRecord.nroRemito, clienteProveedor: salidaRecord.cliente, responsable: salidaRecord.retira
+    }).catch(error => console.error('No se pudo registrar la salida en Supabase:', error));
     playBeep('success');
 
     // Confetti effect for exciting feedback on successful withdrawal
@@ -716,6 +724,16 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           categoria: item.categoria
         };
         dispatchedEntries.push(entry);
+
+        void saveInventoryItem({
+          ...item,
+          stock: newStock,
+          precioTotal: newStock * item.precio
+        }).catch(error => console.error('No se pudo actualizar el stock en Supabase:', error));
+        void createMovement({
+          tipo: 'Salida', codigo: item.codigo, cantidad: req.cantidad,
+          comprobante: remitoFinal, clienteProveedor: clientName, responsable: employeeName
+        }).catch(error => console.error('No se pudo registrar la salida en Supabase:', error));
 
         const salRecord: SalidaRecord = {
           id: `sal-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
@@ -1144,6 +1162,11 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     };
 
     setIngresos(prev => [ingresoRecord, ...prev]);
+    void createMovement({
+      tipo: 'Ingreso', codigo: ingresoRecord.codigo, cantidad,
+      comprobante: ingresoRecord.factura, clienteProveedor: ingresoRecord.proveedor,
+      responsable: ingresoRecord.usuarioRegistro
+    }).catch(error => console.error('No se pudo registrar el ingreso en Supabase:', error));
     playBeep('success');
 
     return {
@@ -1568,18 +1591,11 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   };
 
   const resetToDefaults = () => {
-    setItems(INITIAL_INVENTORY);
-    setSalidas(INITIAL_SALIDAS);
-    setSalidaGroups(INITIAL_SALIDA_GROUPS);
-    setIngresos(INITIAL_INGRESOS);
-    try {
-      localStorage.setItem(STORAGE_KEYS.ITEMS, JSON.stringify(INITIAL_INVENTORY));
-      localStorage.setItem(STORAGE_KEYS.SALIDAS, JSON.stringify(INITIAL_SALIDAS));
-      localStorage.setItem(STORAGE_KEYS.SALIDA_GROUPS, JSON.stringify(INITIAL_SALIDA_GROUPS));
-      localStorage.setItem(STORAGE_KEYS.INGRESOS, JSON.stringify(INITIAL_INGRESOS));
-    } catch (e) {
-      console.error('Error resetting to defaults:', e);
-    }
+    // "Restaurar" must never seed the inventory with bundled demo data.
+    // It now refreshes the current state stored in Supabase instead.
+    getInventory()
+      .then(setItems)
+      .catch(error => console.error('No se pudo restaurar el inventario desde Supabase:', error));
   };
 
   return (
