@@ -32,9 +32,51 @@ type StockRow = {
 
 const numberOf = (value: number | string | null | undefined) => Number(value ?? 0);
 
-const categoryOf = (value: string | null): ItemCategory => {
-  const categories: ItemCategory[] = ['panol', 'cajones_fluidos', 'submicronicos', 'rodamientos', 'entrepiso', 'importado', 'repuestos_mv', 'cajas'];
-  return categories.includes(value as ItemCategory) ? value as ItemCategory : 'panol';
+const normalize = (value: string | null | undefined) => (value ?? '').trim().toUpperCase();
+
+/**
+ * Reproduce la lógica de categorización de los scripts originales
+ * (scripts/buildData.py) para asignar cada repuesto a su división del pañol
+ * a partir de código, descripción, proveedor y ubicaciones del stock.
+ */
+const determineCategory = (
+  codigo: string,
+  descripcion: string,
+  proveedor: string,
+  ubicaciones: string[]
+): ItemCategory => {
+  const d = normalize(descripcion);
+  const p = normalize(proveedor);
+  const c = normalize(codigo);
+  const u = ubicaciones.map(normalize).join(' / ');
+
+  // 1. Filtros Submicrónicos (Elementos filtrantes FXF, FXH, FXC)
+  if (d.includes('FXF') || d.includes('FXH') || d.includes('FXC') || d.includes('SUBMIC') ||
+      c.startsWith('02250193-') || c.startsWith('02250195-')) return 'submicronicos';
+
+  // 2. Rodamientos
+  if (u.includes('RODAMIENTO') || d.includes('RODAMIENTO') ||
+      ['SKF', 'FAG', 'TIMKEN', 'NSK'].some(brand => p.includes(brand))) return 'rodamientos';
+
+  // 3. Entrepiso
+  if (u.includes('ENTREPISO')) return 'entrepiso';
+
+  // 4. Repuestos MV
+  if (u.includes('MV') || p.includes('REPUESTOS MV') || d.includes('MV-') || c.includes('MV-') || d.includes('M.V'))
+    return 'repuestos_mv';
+
+  // 5. Stock Importado
+  if (p === 'IMP' || p.includes('IMPORTADO')) return 'importado';
+
+  // 6. Cajas Estantes
+  if (u.includes('CAJA') && !u.includes('CAJON')) return 'cajas';
+
+  // 7. Cajones y Fluidos
+  if (u.includes('CAJON') || u.includes('FLUIDO') || u.includes('ESTANTE') || d.includes('SULLUBE') || d.includes('ACEITE'))
+    return 'cajones_fluidos';
+
+  // 8. Pañol General
+  return 'panol';
 };
 
 /** Reads the existing Supabase tables and maps them to the application model. */
@@ -58,11 +100,13 @@ export async function getInventory(): Promise<InventoryItem[]> {
     const quantity = rows.reduce((sum, row) => sum + numberOf(row.cantidad), 0);
     const price = rows.find(row => numberOf(row.precio) > 0)?.precio ?? repuesto.precio;
     const latestControl = rows.map(row => row.fecha_control).filter(Boolean).sort().at(-1);
+    const ubicaciones = rows.map(row => row.ubicacion).filter(Boolean) as string[];
     return {
       id: repuesto.codigo, codigo: repuesto.codigo, proveedor: repuesto.proveedor ?? '',
       descripcion: repuesto.descripcion ?? '', equivalencias: repuesto.equivalencias ?? undefined,
-      subcategoria: repuesto.uso_destino ?? undefined, categoria: categoryOf(repuesto.uso_destino),
-      stock: quantity, stockMinimo: 0, ubicacion: rows.map(row => row.ubicacion).filter(Boolean).join(' / '),
+      subcategoria: repuesto.uso_destino ?? undefined,
+      categoria: determineCategory(repuesto.codigo, repuesto.descripcion ?? '', repuesto.proveedor ?? '', ubicaciones),
+      stock: quantity, stockMinimo: 0, ubicacion: ubicaciones.join(' / '),
       fechaRegistro: latestControl ?? new Date().toISOString().slice(0, 10),
       fechaUltimoMovimiento: latestControl ?? undefined, precio: numberOf(price), precioTotal: quantity * numberOf(price)
     };
