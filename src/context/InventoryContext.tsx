@@ -12,7 +12,8 @@ import {
   UserAccount, 
   UserRole,
   ItemCategory,
-  BackupHistoryEntry
+  BackupHistoryEntry,
+  SavedSignature
 } from '../types';
 import { 
   INITIAL_INVENTORY, 
@@ -35,6 +36,7 @@ interface InventoryContextType {
   setCurrentUser: (user: UserAccount | null) => void;
   users: UserAccount[];
   backupHistory: BackupHistoryEntry[];
+  savedSignatures: SavedSignature[];
   activeSection: MainNavSection;
   setActiveSection: (sec: MainNavSection) => void;
   activeSubCategory: string | null;
@@ -77,6 +79,9 @@ interface InventoryContextType {
 
   deleteSalidaGroup: (groupId: string, restoreStock?: boolean) => { success: boolean; message: string };
   updateSalidaGroupSignature: (groupId: string, firmaDigital: string, firmadoPor?: string) => void;
+  updateSalidaGroupPanoleroSignature: (groupId: string, firmaPanolero: string, firmadoPor?: string) => void;
+  saveSignature: (dataUrl: string, nombre: string) => void;
+  deleteSavedSignature: (id: string) => void;
   deleteSalida: (salidaId: string, restoreStock?: boolean) => { success: boolean; message: string };
   cleanDuplicateSalidas: () => { removedGroups: number; removedSalidas: number; message: string };
   
@@ -97,6 +102,7 @@ interface InventoryContextType {
   };
   deleteDevolucionGroup: (groupId: string, subtractStock?: boolean) => { success: boolean; message: string };
   updateDevolucionGroupSignature: (groupId: string, firmaDigital: string, firmadoPor?: string) => void;
+  updateDevolucionGroupPanoleroSignature: (groupId: string, firmaPanolero: string, firmadoPor?: string) => void;
   getNextDevolucionNumber: () => number;
   
   registerIngreso: (data: {
@@ -157,7 +163,8 @@ const STORAGE_KEYS = {
   INGRESOS: 'verdu_inventory_ingresos_v18_exact_mv_cajas',
   USER: 'verdu_inventory_user_v2',
   USERS: 'verdu_inventory_users_list_v2',
-  BACKUP_HISTORY: 'verdu_backup_history_v1'
+  BACKUP_HISTORY: 'verdu_backup_history_v1',
+  SAVED_SIGNATURES: 'verdu_firmas_guardadas_v1'
 };
 
 // Clean legacy cached demo data from previous versions & sanitize any Yaz occurrences
@@ -361,6 +368,15 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   });
 
+  const [savedSignatures, setSavedSignatures] = useState<SavedSignature[]>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.SAVED_SIGNATURES);
+      return saved ? sanitizeYazObject(JSON.parse(saved)) : [];
+    } catch {
+      return [];
+    }
+  });
+
   const [activeSection, setActiveSection] = useState<MainNavSection>('panol');
   const [activeSubCategory, setActiveSubCategory] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -421,6 +437,14 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       console.error('Failed to save backup history', e);
     }
   }, [backupHistory]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEYS.SAVED_SIGNATURES, JSON.stringify(savedSignatures));
+    } catch (e) {
+      console.error('Failed to save savedSignatures', e);
+    }
+  }, [savedSignatures]);
 
   // Audio Beep for Scanners
   const playBeep = (type: 'success' | 'warning' | 'error' = 'success') => {
@@ -849,6 +873,21 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }));
   };
 
+  const updateSalidaGroupPanoleroSignature = (groupId: string, firmaPanolero: string, firmadoPor?: string) => {
+    const firmaPanoleroFecha = new Date().toLocaleString('es-AR');
+    setSalidaGroups(prev => prev.map(g => {
+      if (g.id === groupId) {
+        return {
+          ...g,
+          firmaPanolero,
+          firmaPanoleroFecha,
+          firmadoPorPanolero: firmadoPor || g.usuarioRegistro || currentUser?.nombre || ''
+        };
+      }
+      return g;
+    }));
+  };
+
   const getNextDevolucionNumber = (): number => {
     if (devolucionGroups.length === 0) return 1;
     const maxNum = Math.max(...devolucionGroups.map(g => g.numeroDevolucion || 0));
@@ -1027,6 +1066,38 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       }
       return g;
     }));
+  };
+
+  const updateDevolucionGroupPanoleroSignature = (groupId: string, firmaPanolero: string, firmadoPor?: string) => {
+    const firmaPanoleroFecha = new Date().toLocaleString('es-AR');
+    setDevolucionGroups(prev => prev.map(g => {
+      if (g.id === groupId) {
+        return {
+          ...g,
+          firmaPanolero,
+          firmaPanoleroFecha,
+          firmadoPorPanolero: firmadoPor || g.usuarioRegistro || currentUser?.nombre || ''
+        };
+      }
+      return g;
+    }));
+  };
+
+  const saveSignature = (dataUrl: string, nombre: string) => {
+    if (!dataUrl || !nombre) return;
+    const exists = savedSignatures.some(s => s.dataUrl === dataUrl);
+    if (exists) return;
+    const newSignature: SavedSignature = {
+      id: `firma_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      nombre,
+      dataUrl,
+      fechaCreacion: new Date().toLocaleString('es-AR')
+    };
+    setSavedSignatures(prev => [newSignature, ...prev]);
+  };
+
+  const deleteSavedSignature = (id: string) => {
+    setSavedSignatures(prev => prev.filter(s => s.id !== id));
   };
 
   const deleteSalida = (salidaId: string, restoreStock: boolean = true) => {
@@ -1699,7 +1770,10 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         currentUser,
         setCurrentUser,
         users,
-        backupHistory,
+backupHistory,
+        savedSignatures,
+        saveSignature,
+        deleteSavedSignature,
         activeSection,
         setActiveSection,
         activeSubCategory,
@@ -1713,11 +1787,13 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         registerSalidaGroup,
         deleteSalidaGroup,
         updateSalidaGroupSignature,
+        updateSalidaGroupPanoleroSignature,
         deleteSalida,
         cleanDuplicateSalidas,
         registerDevolucionGroup,
         deleteDevolucionGroup,
         updateDevolucionGroupSignature,
+        updateDevolucionGroupPanoleroSignature,
         getNextDevolucionNumber,
         registerIngreso,
         importExcelRows,

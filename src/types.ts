@@ -64,6 +64,9 @@ export interface SalidaGroupRecord {
   firmaDigital?: string;
   firmaFecha?: string;
   firmadoPor?: string;
+  firmaPanolero?: string;
+  firmaPanoleroFecha?: string;
+  firmadoPorPanolero?: string;
 }
 
 export interface DevolucionItemEntry {
@@ -91,6 +94,9 @@ export interface DevolucionGroupRecord {
   firmaDigital?: string;
   firmaFecha?: string;
   firmadoPor?: string;
+  firmaPanolero?: string;
+  firmaPanoleroFecha?: string;
+  firmadoPorPanolero?: string;
 }
 
 export interface SalidaRecord {
@@ -137,6 +143,13 @@ export interface UserAccount {
   nombre: string;
   rol: UserRole;
   password?: string;
+}
+
+export interface SavedSignature {
+  id: string;
+  nombre: string;      // Pañolero / emisor dueño de la firma
+  dataUrl: string;     // PNG data URL
+  fechaCreacion: string; // Formatted local (ex: "14/09/2026 15:30:22")
 }
 
 export interface BackupHistoryEntry {

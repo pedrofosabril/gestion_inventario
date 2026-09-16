@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState } from 'react';
 import { 
   CheckCircle2, 
   Download, 
@@ -17,13 +17,13 @@ import {
   PlusCircle,
   Trash2,
   AlertTriangle,
-  PenLine,
-  Eraser,
-  Check
+  PenLine
 } from 'lucide-react';
 import { SalidaGroupRecord, SalidaItemEntry } from '../types';
 import { useInventory } from '../context/InventoryContext';
 import { generateSalidaPDF } from '../utils/pdfGenerator';
+import { SignaturePad } from './SignaturePad';
+import { SavedSignaturePicker } from './SavedSignaturePicker';
 
 interface SalidaReceiptModalProps {
   salidaGroup: SalidaGroupRecord | null;
@@ -40,42 +40,18 @@ export const SalidaReceiptModal: React.FC<SalidaReceiptModalProps> = ({
   onNewSalida,
   onDeleted
 }) => {
-  const { currentUser, deleteSalidaGroup, updateSalidaGroupSignature, salidaGroups } = useInventory();
+  const { currentUser, deleteSalidaGroup, updateSalidaGroupSignature, updateSalidaGroupPanoleroSignature, salidaGroups, savedSignatures, saveSignature, deleteSavedSignature } = useInventory();
   const isVentas = currentUser?.rol === 'ventas';
   const [confirmDelete, setConfirmDelete] = useState<boolean>(false);
   const [isDownloading, setIsDownloading] = useState<boolean>(false);
   const [isSigning, setIsSigning] = useState<boolean>(false);
-  const [hasDrawn, setHasDrawn] = useState<boolean>(false);
-
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const isDrawingRef = useRef<boolean>(false);
+  const [isSigningPanolero, setIsSigningPanolero] = useState<boolean>(false);
+  const [showPanoleroPicker, setShowPanoleroPicker] = useState<boolean>(false);
 
   // Sync with live context state if signature updated
   const currentSalidaGroup = salidaGroup 
     ? (salidaGroups.find(g => g.id === salidaGroup.id) || salidaGroup)
     : null;
-
-  // Setup canvas when signature modal opens
-  useEffect(() => {
-    if (isSigning && canvasRef.current) {
-      const canvas = canvasRef.current;
-      const rect = canvas.getBoundingClientRect();
-      const dpr = window.devicePixelRatio || 1;
-      canvas.width = rect.width * dpr;
-      canvas.height = rect.height * dpr;
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        ctx.scale(dpr, dpr);
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-        ctx.strokeStyle = '#0f172a';
-        ctx.lineWidth = 2.5;
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(0, 0, rect.width, rect.height);
-      }
-      setHasDrawn(false);
-    }
-  }, [isSigning]);
 
   if (!isOpen || !currentSalidaGroup) return null;
 
@@ -98,72 +74,29 @@ export const SalidaReceiptModal: React.FC<SalidaReceiptModalProps> = ({
     if (onDeleted) onDeleted();
   };
 
-  // Drawing event helpers
-  const getCoordinates = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
-    if (!canvasRef.current) return { x: 0, y: 0 };
-    const rect = canvasRef.current.getBoundingClientRect();
-    if ('touches' in e) {
-      const touch = e.touches[0];
-      return {
-        x: touch.clientX - rect.left,
-        y: touch.clientY - rect.top
-      };
-    }
-    return {
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top
-    };
-  };
-
-  const handleStartDraw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
-    if ('touches' in e && e.cancelable) e.preventDefault();
-    isDrawingRef.current = true;
-    const { x, y } = getCoordinates(e);
-    const ctx = canvasRef.current?.getContext('2d');
-    if (ctx) {
-      ctx.beginPath();
-      ctx.moveTo(x, y);
-    }
-    setHasDrawn(true);
-  };
-
-  const handleMoveDraw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
-    if (!isDrawingRef.current || !canvasRef.current) return;
-    if ('touches' in e && e.cancelable) e.preventDefault();
-    const { x, y } = getCoordinates(e);
-    const ctx = canvasRef.current.getContext('2d');
-    if (ctx) {
-      ctx.lineTo(x, y);
-      ctx.stroke();
-    }
-  };
-
-  const handleEndDraw = () => {
-    if (isDrawingRef.current && canvasRef.current) {
-      const ctx = canvasRef.current.getContext('2d');
-      if (ctx) ctx.closePath();
-      isDrawingRef.current = false;
-    }
-  };
-
-  const handleClearSignature = () => {
-    if (!canvasRef.current) return;
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
-    if (ctx) {
-      const rect = canvas.getBoundingClientRect();
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, rect.width, rect.height);
-      ctx.beginPath();
-    }
-    setHasDrawn(false);
-  };
-
-  const handleSaveSignature = () => {
-    if (!canvasRef.current || !hasDrawn) return;
-    const dataUrl = canvasRef.current.toDataURL('image/png');
+  const handleSaveSignature = (dataUrl: string) => {
+    if (!currentSalidaGroup) return;
     updateSalidaGroupSignature(currentSalidaGroup.id, dataUrl, currentSalidaGroup.retira);
     setIsSigning(false);
+  };
+
+  const panoleroName = currentUser?.nombre || currentSalidaGroup.usuarioRegistro || 'Pañolero';
+
+  const handleSavePanoleroSignature = (dataUrl: string) => {
+    if (!currentSalidaGroup) return;
+    updateSalidaGroupPanoleroSignature(
+      currentSalidaGroup.id,
+      dataUrl,
+      panoleroName
+    );
+    saveSignature(dataUrl, panoleroName);
+    setIsSigningPanolero(false);
+  };
+
+  const handlePickPanoleroSignature = (dataUrl: string, nombre: string) => {
+    if (!currentSalidaGroup) return;
+    updateSalidaGroupPanoleroSignature(currentSalidaGroup.id, dataUrl, nombre);
+    setShowPanoleroPicker(false);
   };
 
   return (
@@ -400,11 +333,47 @@ export const SalidaReceiptModal: React.FC<SalidaReceiptModalProps> = ({
 
           {/* Signatures Section for Physical/Print Verification */}
           <div className="pt-6 grid grid-cols-2 gap-8 border-t border-slate-200 text-center text-xs text-slate-500">
+            {/* Firma Pañolero / Emisor */}
             <div className="flex flex-col items-center justify-end">
-              <div className="w-48 border-b border-slate-400 mb-1.5"></div>
+              {currentSalidaGroup.firmaPanolero ? (
+                <div className="flex flex-col items-center mb-1">
+                  <img 
+                    src={currentSalidaGroup.firmaPanolero} 
+                    alt="Firma del pañolero/emisor" 
+                    className="h-12 max-w-[180px] object-contain"
+                  />
+                  <div className="w-48 border-b border-slate-400 mb-1"></div>
+                  {!isVentas && (
+                    <button
+                      type="button"
+                      onClick={() => setShowPanoleroPicker(true)}
+                      className="print:hidden text-[10px] text-sky-600 hover:text-sky-800 underline font-semibold cursor-pointer mb-1"
+                    >
+                      Cambiar firma
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center mb-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setShowPanoleroPicker(true)}
+                    className="print:hidden mb-2 px-3.5 py-1.5 rounded-xl bg-[#006bb0] hover:bg-[#005590] text-white text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer active:scale-95"
+                    title="Agregar firma del pañolero/emisor para este comprobante"
+                  >
+                    <PenLine className="w-3.5 h-3.5" />
+                    <span>Agregar firma</span>
+                  </button>
+                  <div className="w-48 border-b border-slate-400"></div>
+                </div>
+              )}
               <span className="font-bold text-slate-800">Firma Pañolero / Emisor</span>
+              <span className="text-[11px] font-semibold text-slate-600 mt-0.5">
+                {currentSalidaGroup.firmadoPorPanolero || currentSalidaGroup.usuarioRegistro || ''}
+              </span>
             </div>
 
+            {/* Firma Empleado que Retira */}
             <div className="flex flex-col items-center justify-end">
               {currentSalidaGroup.firmaDigital ? (
                 <div className="flex flex-col items-center mb-1">
@@ -531,93 +500,46 @@ export const SalidaReceiptModal: React.FC<SalidaReceiptModalProps> = ({
 
       </div>
 
-      {/* Interactive Digital Signature Modal Pad */}
+      {/* Interactive Digital Signature Overlay - Empleado que Retira */}
       {isSigning && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 bg-black/60 backdrop-blur-xs animate-in fade-in">
-          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-md w-full overflow-hidden flex flex-col animate-in zoom-in-95">
-            {/* Pad Header */}
-            <div className="bg-[#006bb0] text-white p-4 flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-white/15 flex items-center justify-center">
-                  <PenLine className="w-4 h-4 text-white" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-white">Firma Digital de Recepción</h3>
-                  <p className="text-[11px] text-sky-100 font-medium">Receptor: <strong>{currentSalidaGroup.retira}</strong></p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsSigning(false)}
-                className="text-white/80 hover:text-white p-1 rounded-lg hover:bg-white/10 cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Canvas Area */}
-            <div className="p-4 bg-slate-50 flex flex-col">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-[11px] text-slate-600 font-medium">
-                  Dibuje la firma con el dedo, mouse o lápiz táctil:
-                </span>
-                <button
-                  type="button"
-                  onClick={handleClearSignature}
-                  className="text-[11px] text-slate-500 hover:text-rose-600 flex items-center gap-1 font-bold cursor-pointer"
-                >
-                  <Eraser className="w-3.5 h-3.5" />
-                  <span>Limpiar</span>
-                </button>
-              </div>
-
-              <div className="relative bg-white rounded-2xl border-2 border-dashed border-sky-300 shadow-inner overflow-hidden">
-                <canvas
-                  ref={canvasRef}
-                  onMouseDown={handleStartDraw}
-                  onMouseMove={handleMoveDraw}
-                  onMouseUp={handleEndDraw}
-                  onMouseLeave={handleEndDraw}
-                  onTouchStart={handleStartDraw}
-                  onTouchMove={handleMoveDraw}
-                  onTouchEnd={handleEndDraw}
-                  className="w-full h-44 cursor-crosshair touch-none"
-                />
-                <div className="pointer-events-none absolute bottom-5 left-8 right-8 border-b border-slate-200 flex justify-end">
-                  <span className="text-[9px] text-slate-300 font-mono pr-1 uppercase tracking-widest select-none">Línea de firma</span>
-                </div>
-              </div>
-
-              <p className="text-[10px] text-slate-400 mt-2 text-center">
-                Esta firma digital quedará incorporada en el comprobante y en el reporte PDF descargable.
-              </p>
-            </div>
-
-            {/* Pad Footer Actions */}
-            <div className="p-3 bg-white border-t border-slate-100 flex items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setIsSigning(false)}
-                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                disabled={!hasDrawn}
-                onClick={handleSaveSignature}
-                className={`px-5 py-2 rounded-xl text-xs font-bold text-white transition-all flex items-center gap-1.5 shadow-xs ${
-                  hasDrawn
-                    ? 'bg-[#006bb0] hover:bg-[#005590] cursor-pointer active:scale-95'
-                    : 'bg-slate-300 cursor-not-allowed text-slate-500'
-                }`}
-              >
-                <Check className="w-3.5 h-3.5" />
-                <span>Confirmar Firma</span>
-              </button>
-            </div>
-          </div>
+          <SignaturePad
+            title="Firma Digital de Recepción"
+            subtitle={`Receptor: ${currentSalidaGroup.retira}`}
+            accentColor="#006bb0"
+            onSave={handleSaveSignature}
+            onCancel={() => setIsSigning(false)}
+          />
         </div>
+      )}
+
+      {/* Interactive Digital Signature Overlay - Pañolero / Emisor */}
+      {isSigningPanolero && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 bg-black/60 backdrop-blur-xs animate-in fade-in">
+          <SignaturePad
+            title="Firma Pañolero / Emisor"
+            subtitle={panoleroName}
+            accentColor="#0f766e"
+            onSave={handleSavePanoleroSignature}
+            onCancel={() => setIsSigningPanolero(false)}
+          />
+        </div>
+      )}
+
+      {/* Saved Signatures Picker - Pañolero / Emisor */}
+      {showPanoleroPicker && (
+        <SavedSignaturePicker
+          ownerName={panoleroName}
+          savedSignatures={savedSignatures}
+          accentColor="#0f766e"
+          onPick={handlePickPanoleroSignature}
+          onCreateNew={() => {
+            setShowPanoleroPicker(false);
+            setIsSigningPanolero(true);
+          }}
+          onDelete={deleteSavedSignature}
+          onClose={() => setShowPanoleroPicker(false)}
+        />
       )}
 
     </div>

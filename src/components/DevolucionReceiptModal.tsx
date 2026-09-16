@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   CheckCircle2, 
   Download, 
@@ -12,14 +12,14 @@ import {
   MapPin,
   RotateCcw,
   PenLine,
-  Eraser,
-  Check,
   AlertTriangle,
   Trash2
 } from 'lucide-react';
 import { DevolucionGroupRecord } from '../types';
 import { useInventory } from '../context/InventoryContext';
 import { generateDevolucionPDF } from '../utils/devolucionPdfGenerator';
+import { SignaturePad } from './SignaturePad';
+import { SavedSignaturePicker } from './SavedSignaturePicker';
 
 interface DevolucionReceiptModalProps {
   devolucionGroup: DevolucionGroupRecord | null;
@@ -36,14 +36,12 @@ export const DevolucionReceiptModal: React.FC<DevolucionReceiptModalProps> = ({
   onNewDevolucion,
   onDeleted
 }) => {
-  const { currentUser, deleteDevolucionGroup, updateDevolucionGroupSignature, devolucionGroups } = useInventory();
+  const { currentUser, deleteDevolucionGroup, updateDevolucionGroupSignature, updateDevolucionGroupPanoleroSignature, devolucionGroups, savedSignatures, saveSignature, deleteSavedSignature } = useInventory();
   const [confirmDelete, setConfirmDelete] = useState<boolean>(false);
   const [isDownloading, setIsDownloading] = useState<boolean>(false);
   const [isSigning, setIsSigning] = useState<boolean>(false);
-  const [hasDrawn, setHasDrawn] = useState<boolean>(false);
-
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const isDrawingRef = useRef<boolean>(false);
+  const [isSigningPanolero, setIsSigningPanolero] = useState<boolean>(false);
+  const [showPanoleroPicker, setShowPanoleroPicker] = useState<boolean>(false);
 
   // Keep synced with context
   const currentDevolucionGroup = devolucionGroup
@@ -53,28 +51,15 @@ export const DevolucionReceiptModal: React.FC<DevolucionReceiptModalProps> = ({
   useEffect(() => {
     if (!isOpen) {
       setIsSigning(false);
+      setIsSigningPanolero(false);
+      setShowPanoleroPicker(false);
       setConfirmDelete(false);
     }
   }, [isOpen]);
 
-  // Setup Canvas when signing mode opens
-  useEffect(() => {
-    if (isSigning && canvasRef.current) {
-      const canvas = canvasRef.current;
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        ctx.strokeStyle = '#0f172a';
-        ctx.lineWidth = 2.5;
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-        // Clear canvas
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        setHasDrawn(false);
-      }
-    }
-  }, [isSigning]);
-
   if (!isOpen || !currentDevolucionGroup) return null;
+
+  const panoleroName = currentUser?.nombre || currentDevolucionGroup.usuarioRegistro || 'Pañolero';
 
   const handleDownloadPDF = () => {
     try {
@@ -87,74 +72,39 @@ export const DevolucionReceiptModal: React.FC<DevolucionReceiptModalProps> = ({
     }
   };
 
-  // Canvas drawing handlers (mouse & touch)
-  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
-    e.preventDefault();
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const rect = canvas.getBoundingClientRect();
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    isDrawingRef.current = true;
-    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
-    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
-    const x = clientX - rect.left;
-    const y = clientY - rect.top;
-
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-  };
-
-  const draw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
-    if (!isDrawingRef.current || !canvasRef.current) return;
-    e.preventDefault();
-    const canvas = canvasRef.current;
-    const rect = canvas.getBoundingClientRect();
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
-    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
-    const x = clientX - rect.left;
-    const y = clientY - rect.top;
-
-    ctx.lineTo(x, y);
-    ctx.stroke();
-    setHasDrawn(true);
-  };
-
-  const stopDrawing = () => {
-    isDrawingRef.current = false;
-  };
-
-  const clearCanvas = () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    setHasDrawn(false);
-  };
-
-  const saveSignature = () => {
-    const canvas = canvasRef.current;
-    if (!canvas || !currentDevolucionGroup) return;
-    const signatureDataUrl = canvas.toDataURL('image/png');
-    updateDevolucionGroupSignature(
-      currentDevolucionGroup.id,
-      signatureDataUrl,
-      currentDevolucionGroup.empleadoDevuelve
-    );
-    setIsSigning(false);
-  };
-
   const handleDelete = () => {
     if (!currentDevolucionGroup) return;
     deleteDevolucionGroup(currentDevolucionGroup.id, true);
     setConfirmDelete(false);
     onDeleted?.();
     onClose();
+  };
+
+  const handleSaveSignature = (dataUrl: string) => {
+    if (!currentDevolucionGroup) return;
+    updateDevolucionGroupSignature(
+      currentDevolucionGroup.id,
+      dataUrl,
+      currentDevolucionGroup.empleadoDevuelve
+    );
+    setIsSigning(false);
+  };
+
+  const handleSavePanoleroSignature = (dataUrl: string) => {
+    if (!currentDevolucionGroup) return;
+    updateDevolucionGroupPanoleroSignature(
+      currentDevolucionGroup.id,
+      dataUrl,
+      panoleroName
+    );
+    saveSignature(dataUrl, panoleroName);
+    setIsSigningPanolero(false);
+  };
+
+  const handlePickPanoleroSignature = (dataUrl: string, nombre: string) => {
+    if (!currentDevolucionGroup) return;
+    updateDevolucionGroupPanoleroSignature(currentDevolucionGroup.id, dataUrl, nombre);
+    setShowPanoleroPicker(false);
   };
 
   return (
@@ -288,7 +238,45 @@ export const DevolucionReceiptModal: React.FC<DevolucionReceiptModalProps> = ({
 
           {/* Signature / Firm Section */}
           <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4">
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+            {/* Firma Pañolero / Emisor */}
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pb-4 border-b border-slate-100">
+              <div>
+                <div className="text-xs font-bold text-slate-800">Firma Pañolero / Emisor</div>
+                <div className="text-[11px] text-slate-500">
+                  {panoleroName}
+                </div>
+              </div>
+
+              {currentDevolucionGroup.firmaPanolero ? (
+                <div className="flex flex-col items-center">
+                  <img 
+                    src={currentDevolucionGroup.firmaPanolero} 
+                    alt="Firma pañolero/emisor" 
+                    className="h-12 max-w-[180px] object-contain"
+                  />
+                  <div className="w-48 border-b border-slate-400 mb-1"></div>
+                  <button
+                    type="button"
+                    onClick={() => setShowPanoleroPicker(true)}
+                    className="text-[10px] text-amber-700 hover:text-amber-900 underline font-semibold cursor-pointer mb-1"
+                  >
+                    Cambiar firma
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setShowPanoleroPicker(true)}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-xl text-xs font-bold shadow-2xs transition-all cursor-pointer"
+                >
+                  <PenLine className="w-3.5 h-3.5 text-amber-600" />
+                  <span>Agregar firma</span>
+                </button>
+              )}
+            </div>
+
+            {/* Firma Empleado que Devuelve */}
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4">
               <div>
                 <div className="text-xs font-bold text-slate-800">Firma del empleado que devuelve</div>
                 <div className="text-[11px] text-slate-500">
@@ -296,7 +284,6 @@ export const DevolucionReceiptModal: React.FC<DevolucionReceiptModalProps> = ({
                 </div>
               </div>
 
-              {/* Digital signature display or button */}
               {currentDevolucionGroup.firmaDigital ? (
                 <div className="flex flex-col items-center">
                   <img 
@@ -324,58 +311,6 @@ export const DevolucionReceiptModal: React.FC<DevolucionReceiptModalProps> = ({
                 </button>
               )}
             </div>
-
-            {/* In-place Signature Canvas Drawer */}
-            {isSigning && (
-              <div className="mt-4 pt-4 border-t border-slate-200 animate-in fade-in">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-bold text-slate-700">Dibujar firma abajo:</span>
-                  <button
-                    type="button"
-                    onClick={clearCanvas}
-                    className="inline-flex items-center gap-1 text-[11px] text-slate-600 hover:text-slate-800 font-semibold cursor-pointer"
-                  >
-                    <Eraser className="w-3 h-3" />
-                    <span>Limpiar</span>
-                  </button>
-                </div>
-
-                <div className="border-2 border-dashed border-amber-300 bg-white rounded-xl overflow-hidden touch-none flex justify-center">
-                  <canvas
-                    ref={canvasRef}
-                    width={360}
-                    height={120}
-                    className="cursor-crosshair w-full max-w-[360px] h-[120px] bg-white"
-                    onMouseDown={startDrawing}
-                    onMouseMove={draw}
-                    onMouseUp={stopDrawing}
-                    onMouseLeave={stopDrawing}
-                    onTouchStart={startDrawing}
-                    onTouchMove={draw}
-                    onTouchEnd={stopDrawing}
-                  />
-                </div>
-
-                <div className="flex items-center justify-end gap-2 mt-3">
-                  <button
-                    type="button"
-                    onClick={() => setIsSigning(false)}
-                    className="px-3 py-1.5 text-xs text-slate-600 hover:text-slate-800 font-semibold cursor-pointer"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    type="button"
-                    onClick={saveSignature}
-                    disabled={!hasDrawn}
-                    className="inline-flex items-center gap-1.5 px-4 py-1.5 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white text-xs font-bold rounded-xl transition-all cursor-pointer shadow-xs"
-                  >
-                    <Check className="w-3.5 h-3.5" />
-                    <span>Guardar firma</span>
-                  </button>
-                </div>
-              </div>
-            )}
           </div>
 
           {/* Confirm Delete Section */}
@@ -440,6 +375,48 @@ export const DevolucionReceiptModal: React.FC<DevolucionReceiptModalProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Signature Overlay - Empleado que Devuelve */}
+      {isSigning && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 bg-black/60 backdrop-blur-xs animate-in fade-in">
+          <SignaturePad
+            title="Firma del Empleado que Devuelve"
+            subtitle={`Empleado: ${currentDevolucionGroup.empleadoDevuelve}`}
+            accentColor="#d97706"
+            onSave={handleSaveSignature}
+            onCancel={() => setIsSigning(false)}
+          />
+        </div>
+      )}
+
+      {/* Signature Overlay - Pañolero / Emisor */}
+      {isSigningPanolero && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 bg-black/60 backdrop-blur-xs animate-in fade-in">
+          <SignaturePad
+            title="Firma Pañolero / Emisor"
+            subtitle={panoleroName}
+            accentColor="#0f766e"
+            onSave={handleSavePanoleroSignature}
+            onCancel={() => setIsSigningPanolero(false)}
+          />
+        </div>
+      )}
+
+      {/* Saved Signatures Picker - Pañolero / Emisor */}
+      {showPanoleroPicker && (
+        <SavedSignaturePicker
+          ownerName={panoleroName}
+          savedSignatures={savedSignatures}
+          accentColor="#0f766e"
+          onPick={handlePickPanoleroSignature}
+          onCreateNew={() => {
+            setShowPanoleroPicker(false);
+            setIsSigningPanolero(true);
+          }}
+          onDelete={deleteSavedSignature}
+          onClose={() => setShowPanoleroPicker(false)}
+        />
+      )}
     </div>
   );
 };
