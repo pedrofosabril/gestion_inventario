@@ -209,7 +209,15 @@ export const generateSalidaPDF = (rawSalidaGroup: SalidaGroupRecord) => {
   // --- SIGNATURES ---
   const signY = Math.max(finalY + 30, 240);
 
-  // If digital signature exists, render it
+  // If digital signatures exist, render them
+  if (salidaGroup.firmaPanolero) {
+    try {
+      doc.addImage(salidaGroup.firmaPanolero, 'PNG', 25, signY - 20, 50, 18);
+    } catch (e) {
+      console.warn('Could not attach pañolero digital signature image to PDF', e);
+    }
+  }
+
   if (salidaGroup.firmaDigital) {
     try {
       doc.addImage(salidaGroup.firmaDigital, 'PNG', 130, signY - 20, 50, 18);

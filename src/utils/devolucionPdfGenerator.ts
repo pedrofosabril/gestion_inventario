@@ -180,6 +180,15 @@ export const generateDevolucionPDF = (rawDevolucionGroup: DevolucionGroupRecord)
   // Receptor Pañol Box
   doc.setDrawColor(203, 213, 225);
   doc.line(20, signY, 85, signY);
+
+  if (devolucionGroup.firmaPanolero) {
+    try {
+      doc.addImage(devolucionGroup.firmaPanolero, 'PNG', 25, signY - 20, 45, 18);
+    } catch (e) {
+      console.error('Failed to embed pañolero digital signature in PDF', e);
+    }
+  }
+
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8.5);
   doc.setTextColor(...darkColor);

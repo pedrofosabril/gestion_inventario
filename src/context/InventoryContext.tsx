@@ -77,6 +77,7 @@ interface InventoryContextType {
 
   deleteSalidaGroup: (groupId: string, restoreStock?: boolean) => { success: boolean; message: string };
   updateSalidaGroupSignature: (groupId: string, firmaDigital: string, firmadoPor?: string) => void;
+  updateSalidaGroupPanoleroSignature: (groupId: string, firmaPanolero: string, firmadoPor?: string) => void;
   deleteSalida: (salidaId: string, restoreStock?: boolean) => { success: boolean; message: string };
   cleanDuplicateSalidas: () => { removedGroups: number; removedSalidas: number; message: string };
   
@@ -97,6 +98,7 @@ interface InventoryContextType {
   };
   deleteDevolucionGroup: (groupId: string, subtractStock?: boolean) => { success: boolean; message: string };
   updateDevolucionGroupSignature: (groupId: string, firmaDigital: string, firmadoPor?: string) => void;
+  updateDevolucionGroupPanoleroSignature: (groupId: string, firmaPanolero: string, firmadoPor?: string) => void;
   getNextDevolucionNumber: () => number;
   
   registerIngreso: (data: {
@@ -849,6 +851,21 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }));
   };
 
+  const updateSalidaGroupPanoleroSignature = (groupId: string, firmaPanolero: string, firmadoPor?: string) => {
+    const firmaPanoleroFecha = new Date().toLocaleString('es-AR');
+    setSalidaGroups(prev => prev.map(g => {
+      if (g.id === groupId) {
+        return {
+          ...g,
+          firmaPanolero,
+          firmaPanoleroFecha,
+          firmadoPorPanolero: firmadoPor || g.usuarioRegistro || currentUser?.nombre || ''
+        };
+      }
+      return g;
+    }));
+  };
+
   const getNextDevolucionNumber = (): number => {
     if (devolucionGroups.length === 0) return 1;
     const maxNum = Math.max(...devolucionGroups.map(g => g.numeroDevolucion || 0));
@@ -1023,6 +1040,21 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           firmaDigital,
           firmaFecha,
           firmadoPor: firmadoPor || g.empleadoDevuelve
+        };
+      }
+      return g;
+    }));
+  };
+
+  const updateDevolucionGroupPanoleroSignature = (groupId: string, firmaPanolero: string, firmadoPor?: string) => {
+    const firmaPanoleroFecha = new Date().toLocaleString('es-AR');
+    setDevolucionGroups(prev => prev.map(g => {
+      if (g.id === groupId) {
+        return {
+          ...g,
+          firmaPanolero,
+          firmaPanoleroFecha,
+          firmadoPorPanolero: firmadoPor || g.usuarioRegistro || currentUser?.nombre || ''
         };
       }
       return g;
@@ -1713,11 +1745,13 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         registerSalidaGroup,
         deleteSalidaGroup,
         updateSalidaGroupSignature,
+        updateSalidaGroupPanoleroSignature,
         deleteSalida,
         cleanDuplicateSalidas,
         registerDevolucionGroup,
         deleteDevolucionGroup,
         updateDevolucionGroupSignature,
+        updateDevolucionGroupPanoleroSignature,
         getNextDevolucionNumber,
         registerIngreso,
         importExcelRows,

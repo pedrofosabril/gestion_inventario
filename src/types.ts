@@ -64,6 +64,9 @@ export interface SalidaGroupRecord {
   firmaDigital?: string;
   firmaFecha?: string;
   firmadoPor?: string;
+  firmaPanolero?: string;
+  firmaPanoleroFecha?: string;
+  firmadoPorPanolero?: string;
 }
 
 export interface DevolucionItemEntry {
@@ -91,6 +94,9 @@ export interface DevolucionGroupRecord {
   firmaDigital?: string;
   firmaFecha?: string;
   firmadoPor?: string;
+  firmaPanolero?: string;
+  firmaPanoleroFecha?: string;
+  firmadoPorPanolero?: string;
 }
 
 export interface SalidaRecord {
