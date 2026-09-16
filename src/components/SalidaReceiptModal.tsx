@@ -23,6 +23,7 @@ import { SalidaGroupRecord, SalidaItemEntry } from '../types';
 import { useInventory } from '../context/InventoryContext';
 import { generateSalidaPDF } from '../utils/pdfGenerator';
 import { SignaturePad } from './SignaturePad';
+import { SavedSignaturePicker } from './SavedSignaturePicker';
 
 interface SalidaReceiptModalProps {
   salidaGroup: SalidaGroupRecord | null;
@@ -39,12 +40,13 @@ export const SalidaReceiptModal: React.FC<SalidaReceiptModalProps> = ({
   onNewSalida,
   onDeleted
 }) => {
-  const { currentUser, deleteSalidaGroup, updateSalidaGroupSignature, updateSalidaGroupPanoleroSignature, salidaGroups } = useInventory();
+  const { currentUser, deleteSalidaGroup, updateSalidaGroupSignature, updateSalidaGroupPanoleroSignature, salidaGroups, savedSignatures, saveSignature, deleteSavedSignature } = useInventory();
   const isVentas = currentUser?.rol === 'ventas';
   const [confirmDelete, setConfirmDelete] = useState<boolean>(false);
   const [isDownloading, setIsDownloading] = useState<boolean>(false);
   const [isSigning, setIsSigning] = useState<boolean>(false);
   const [isSigningPanolero, setIsSigningPanolero] = useState<boolean>(false);
+  const [showPanoleroPicker, setShowPanoleroPicker] = useState<boolean>(false);
 
   // Sync with live context state if signature updated
   const currentSalidaGroup = salidaGroup 
@@ -78,14 +80,23 @@ export const SalidaReceiptModal: React.FC<SalidaReceiptModalProps> = ({
     setIsSigning(false);
   };
 
+  const panoleroName = currentUser?.nombre || currentSalidaGroup.usuarioRegistro || 'Pañolero';
+
   const handleSavePanoleroSignature = (dataUrl: string) => {
     if (!currentSalidaGroup) return;
     updateSalidaGroupPanoleroSignature(
       currentSalidaGroup.id,
       dataUrl,
-      currentUser?.nombre || currentSalidaGroup.usuarioRegistro || 'Pañolero'
+      panoleroName
     );
+    saveSignature(dataUrl, panoleroName);
     setIsSigningPanolero(false);
+  };
+
+  const handlePickPanoleroSignature = (dataUrl: string, nombre: string) => {
+    if (!currentSalidaGroup) return;
+    updateSalidaGroupPanoleroSignature(currentSalidaGroup.id, dataUrl, nombre);
+    setShowPanoleroPicker(false);
   };
 
   return (
@@ -335,10 +346,10 @@ export const SalidaReceiptModal: React.FC<SalidaReceiptModalProps> = ({
                   {!isVentas && (
                     <button
                       type="button"
-                      onClick={() => setIsSigningPanolero(true)}
+                      onClick={() => setShowPanoleroPicker(true)}
                       className="print:hidden text-[10px] text-sky-600 hover:text-sky-800 underline font-semibold cursor-pointer mb-1"
                     >
-                      Volver a firmar
+                      Cambiar firma
                     </button>
                   )}
                 </div>
@@ -346,12 +357,12 @@ export const SalidaReceiptModal: React.FC<SalidaReceiptModalProps> = ({
                 <div className="flex flex-col items-center mb-1.5">
                   <button
                     type="button"
-                    onClick={() => setIsSigningPanolero(true)}
+                    onClick={() => setShowPanoleroPicker(true)}
                     className="print:hidden mb-2 px-3.5 py-1.5 rounded-xl bg-[#006bb0] hover:bg-[#005590] text-white text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer active:scale-95"
-                    title="Firmar como pañolero/emisor para este comprobante"
+                    title="Agregar firma del pañolero/emisor para este comprobante"
                   >
                     <PenLine className="w-3.5 h-3.5" />
-                    <span>Firmar</span>
+                    <span>Agregar firma</span>
                   </button>
                   <div className="w-48 border-b border-slate-400"></div>
                 </div>
@@ -507,12 +518,28 @@ export const SalidaReceiptModal: React.FC<SalidaReceiptModalProps> = ({
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 bg-black/60 backdrop-blur-xs animate-in fade-in">
           <SignaturePad
             title="Firma Pañolero / Emisor"
-            subtitle={currentUser?.nombre || currentSalidaGroup.usuarioRegistro || 'Emisor'}
+            subtitle={panoleroName}
             accentColor="#0f766e"
             onSave={handleSavePanoleroSignature}
             onCancel={() => setIsSigningPanolero(false)}
           />
         </div>
+      )}
+
+      {/* Saved Signatures Picker - Pañolero / Emisor */}
+      {showPanoleroPicker && (
+        <SavedSignaturePicker
+          ownerName={panoleroName}
+          savedSignatures={savedSignatures}
+          accentColor="#0f766e"
+          onPick={handlePickPanoleroSignature}
+          onCreateNew={() => {
+            setShowPanoleroPicker(false);
+            setIsSigningPanolero(true);
+          }}
+          onDelete={deleteSavedSignature}
+          onClose={() => setShowPanoleroPicker(false)}
+        />
       )}
 
     </div>

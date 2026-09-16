@@ -16,7 +16,7 @@ export const SignaturePad: React.FC<SignaturePadProps> = ({
   title = 'Firma Digital',
   subtitle,
   accentColor = '#006bb0',
-  height = 176,
+  height = 320,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const isDrawingRef = useRef(false);
@@ -108,17 +108,17 @@ export const SignaturePad: React.FC<SignaturePadProps> = ({
   };
 
   return (
-    <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-md w-full overflow-hidden flex flex-col animate-in zoom-in-95">
+    <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-2xl w-full overflow-hidden flex flex-col animate-in zoom-in-95">
       {/* Header */}
-      <div className="text-white p-4 flex items-center justify-between" style={{ backgroundColor: accentColor }}>
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-xl bg-white/15 flex items-center justify-center">
-            <PenLine className="w-4 h-4 text-white" />
+      <div className="text-white p-5 flex items-center justify-between" style={{ backgroundColor: accentColor }}>
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-white/15 flex items-center justify-center">
+            <PenLine className="w-5 h-5 text-white" />
           </div>
           <div>
-            <h3 className="text-sm font-bold text-white">{title}</h3>
+            <h3 className="text-base font-bold text-white">{title}</h3>
             {subtitle && (
-              <p className="text-[11px] text-white/80 font-medium">{subtitle}</p>
+              <p className="text-xs text-white/80 font-medium">{subtitle}</p>
             )}
           </div>
         </div>
@@ -127,14 +127,14 @@ export const SignaturePad: React.FC<SignaturePadProps> = ({
           onClick={onCancel}
           className="text-white/80 hover:text-white p-1 rounded-lg hover:bg-white/10 cursor-pointer"
         >
-          <X className="w-4 h-4" />
+          <X className="w-5 h-5" />
         </button>
       </div>
 
       {/* Canvas Area */}
-      <div className="p-4 bg-slate-50 flex flex-col">
+      <div className="p-5 bg-slate-50 flex flex-col">
         <div className="flex items-center justify-between mb-2">
-          <span className="text-[11px] text-slate-600 font-medium">
+          <span className="text-xs text-slate-600 font-medium">
             Dibuje la firma con dedo, mouse o tableta gráfica:
           </span>
           <button
@@ -157,7 +157,7 @@ export const SignaturePad: React.FC<SignaturePadProps> = ({
             className="w-full cursor-crosshair touch-none"
             style={{ height: `${height}px` }}
           />
-          <div className="pointer-events-none absolute bottom-5 left-8 right-8 border-b border-slate-200 flex justify-end">
+          <div className="pointer-events-none absolute bottom-6 left-10 right-10 border-b border-slate-200 flex justify-end">
             <span className="text-[9px] text-slate-300 font-mono pr-1 uppercase tracking-widest select-none">
               Línea de firma
             </span>
@@ -170,7 +170,7 @@ export const SignaturePad: React.FC<SignaturePadProps> = ({
       </div>
 
       {/* Footer Actions */}
-      <div className="p-3 bg-white border-t border-slate-100 flex items-center justify-end gap-2">
+      <div className="p-4 bg-white border-t border-slate-100 flex items-center justify-end gap-2">
         <button
           type="button"
           onClick={onCancel}

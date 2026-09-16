@@ -19,6 +19,7 @@ import { DevolucionGroupRecord } from '../types';
 import { useInventory } from '../context/InventoryContext';
 import { generateDevolucionPDF } from '../utils/devolucionPdfGenerator';
 import { SignaturePad } from './SignaturePad';
+import { SavedSignaturePicker } from './SavedSignaturePicker';
 
 interface DevolucionReceiptModalProps {
   devolucionGroup: DevolucionGroupRecord | null;
@@ -35,11 +36,12 @@ export const DevolucionReceiptModal: React.FC<DevolucionReceiptModalProps> = ({
   onNewDevolucion,
   onDeleted
 }) => {
-  const { currentUser, deleteDevolucionGroup, updateDevolucionGroupSignature, updateDevolucionGroupPanoleroSignature, devolucionGroups } = useInventory();
+  const { currentUser, deleteDevolucionGroup, updateDevolucionGroupSignature, updateDevolucionGroupPanoleroSignature, devolucionGroups, savedSignatures, saveSignature, deleteSavedSignature } = useInventory();
   const [confirmDelete, setConfirmDelete] = useState<boolean>(false);
   const [isDownloading, setIsDownloading] = useState<boolean>(false);
   const [isSigning, setIsSigning] = useState<boolean>(false);
   const [isSigningPanolero, setIsSigningPanolero] = useState<boolean>(false);
+  const [showPanoleroPicker, setShowPanoleroPicker] = useState<boolean>(false);
 
   // Keep synced with context
   const currentDevolucionGroup = devolucionGroup
@@ -50,11 +52,14 @@ export const DevolucionReceiptModal: React.FC<DevolucionReceiptModalProps> = ({
     if (!isOpen) {
       setIsSigning(false);
       setIsSigningPanolero(false);
+      setShowPanoleroPicker(false);
       setConfirmDelete(false);
     }
   }, [isOpen]);
 
   if (!isOpen || !currentDevolucionGroup) return null;
+
+  const panoleroName = currentUser?.nombre || currentDevolucionGroup.usuarioRegistro || 'Pañolero';
 
   const handleDownloadPDF = () => {
     try {
@@ -90,9 +95,16 @@ export const DevolucionReceiptModal: React.FC<DevolucionReceiptModalProps> = ({
     updateDevolucionGroupPanoleroSignature(
       currentDevolucionGroup.id,
       dataUrl,
-      currentUser?.nombre || currentDevolucionGroup.usuarioRegistro || 'Pañolero'
+      panoleroName
     );
+    saveSignature(dataUrl, panoleroName);
     setIsSigningPanolero(false);
+  };
+
+  const handlePickPanoleroSignature = (dataUrl: string, nombre: string) => {
+    if (!currentDevolucionGroup) return;
+    updateDevolucionGroupPanoleroSignature(currentDevolucionGroup.id, dataUrl, nombre);
+    setShowPanoleroPicker(false);
   };
 
   return (
@@ -231,7 +243,7 @@ export const DevolucionReceiptModal: React.FC<DevolucionReceiptModalProps> = ({
               <div>
                 <div className="text-xs font-bold text-slate-800">Firma Pañolero / Emisor</div>
                 <div className="text-[11px] text-slate-500">
-                  {currentUser?.nombre || currentDevolucionGroup.usuarioRegistro}
+                  {panoleroName}
                 </div>
               </div>
 
@@ -245,20 +257,20 @@ export const DevolucionReceiptModal: React.FC<DevolucionReceiptModalProps> = ({
                   <div className="w-48 border-b border-slate-400 mb-1"></div>
                   <button
                     type="button"
-                    onClick={() => setIsSigningPanolero(true)}
+                    onClick={() => setShowPanoleroPicker(true)}
                     className="text-[10px] text-amber-700 hover:text-amber-900 underline font-semibold cursor-pointer mb-1"
                   >
-                    Volver a firmar
+                    Cambiar firma
                   </button>
                 </div>
               ) : (
                 <button
                   type="button"
-                  onClick={() => setIsSigningPanolero(true)}
+                  onClick={() => setShowPanoleroPicker(true)}
                   className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-xl text-xs font-bold shadow-2xs transition-all cursor-pointer"
                 >
                   <PenLine className="w-3.5 h-3.5 text-amber-600" />
-                  <span>Firmar como emisor</span>
+                  <span>Agregar firma</span>
                 </button>
               )}
             </div>
@@ -382,12 +394,28 @@ export const DevolucionReceiptModal: React.FC<DevolucionReceiptModalProps> = ({
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 bg-black/60 backdrop-blur-xs animate-in fade-in">
           <SignaturePad
             title="Firma Pañolero / Emisor"
-            subtitle={currentUser?.nombre || currentDevolucionGroup.usuarioRegistro || 'Emisor'}
+            subtitle={panoleroName}
             accentColor="#0f766e"
             onSave={handleSavePanoleroSignature}
             onCancel={() => setIsSigningPanolero(false)}
           />
         </div>
+      )}
+
+      {/* Saved Signatures Picker - Pañolero / Emisor */}
+      {showPanoleroPicker && (
+        <SavedSignaturePicker
+          ownerName={panoleroName}
+          savedSignatures={savedSignatures}
+          accentColor="#0f766e"
+          onPick={handlePickPanoleroSignature}
+          onCreateNew={() => {
+            setShowPanoleroPicker(false);
+            setIsSigningPanolero(true);
+          }}
+          onDelete={deleteSavedSignature}
+          onClose={() => setShowPanoleroPicker(false)}
+        />
       )}
     </div>
   );

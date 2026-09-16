@@ -145,6 +145,13 @@ export interface UserAccount {
   password?: string;
 }
 
+export interface SavedSignature {
+  id: string;
+  nombre: string;      // Pañolero / emisor dueño de la firma
+  dataUrl: string;     // PNG data URL
+  fechaCreacion: string; // Formatted local (ex: "14/09/2026 15:30:22")
+}
+
 export interface BackupHistoryEntry {
   id: string;
   timestamp: string;      // ISO datetime
