@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { InventoryItem, ItemCategory } from '../types';
+import { CATEGORY_MAP, type CategoryEntry } from '../data/categoryMap';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -95,22 +96,57 @@ export async function getInventory(): Promise<InventoryItem[]> {
     stockByCode.set(row.codigo, rows);
   }
 
-  return ((repuestos ?? []) as RepuestoRow[]).map(repuesto => {
+  const result: InventoryItem[] = [];
+
+  for (const repuesto of (repuestos ?? []) as RepuestoRow[]) {
     const rows = stockByCode.get(repuesto.codigo) ?? [];
     const quantity = rows.reduce((sum, row) => sum + numberOf(row.cantidad), 0);
     const price = rows.find(row => numberOf(row.precio) > 0)?.precio ?? repuesto.precio;
     const latestControl = rows.map(row => row.fecha_control).filter(Boolean).sort().at(-1);
     const ubicaciones = rows.map(row => row.ubicacion).filter(Boolean) as string[];
-    return {
-      id: repuesto.codigo, codigo: repuesto.codigo, proveedor: repuesto.proveedor ?? '',
-      descripcion: repuesto.descripcion ?? '', equivalencias: repuesto.equivalencias ?? undefined,
-      subcategoria: repuesto.uso_destino ?? undefined,
-      categoria: determineCategory(repuesto.codigo, repuesto.descripcion ?? '', repuesto.proveedor ?? '', ubicaciones),
-      stock: quantity, stockMinimo: 0, ubicacion: ubicaciones.join(' / '),
-      fechaRegistro: latestControl ?? new Date().toISOString().slice(0, 10),
-      fechaUltimoMovimiento: latestControl ?? undefined, precio: numberOf(price), precioTotal: quantity * numberOf(price)
-    };
-  });
+    const isPorEncargo = rows.length === 0;
+    const mapped: CategoryEntry[] | undefined = CATEGORY_MAP[repuesto.codigo];
+
+    if (mapped && mapped.length > 0) {
+      mapped.forEach((entry, idx) => {
+        result.push({
+          id: mapped.length === 1 ? repuesto.codigo : `${repuesto.codigo}#${idx}`,
+          codigo: repuesto.codigo,
+          proveedor: repuesto.proveedor ?? '',
+          descripcion: repuesto.descripcion ?? '',
+          equivalencias: repuesto.equivalencias ?? undefined,
+          subcategoria: entry.subcategoria ?? repuesto.uso_destino ?? undefined,
+          categoria: entry.categoria as ItemCategory,
+          stock: quantity, stockMinimo: 0,
+          ubicacion: ubicaciones.join(' / '),
+          fechaRegistro: latestControl ?? new Date().toISOString().slice(0, 10),
+          fechaUltimoMovimiento: latestControl ?? undefined,
+          precio: numberOf(price),
+          precioTotal: quantity * numberOf(price),
+          porEncargo: isPorEncargo || undefined
+        });
+      });
+    } else {
+      result.push({
+        id: repuesto.codigo,
+        codigo: repuesto.codigo,
+        proveedor: repuesto.proveedor ?? '',
+        descripcion: repuesto.descripcion ?? '',
+        equivalencias: repuesto.equivalencias ?? undefined,
+        subcategoria: repuesto.uso_destino ?? undefined,
+        categoria: determineCategory(repuesto.codigo, repuesto.descripcion ?? '', repuesto.proveedor ?? '', ubicaciones),
+        stock: quantity, stockMinimo: 0,
+        ubicacion: ubicaciones.join(' / '),
+        fechaRegistro: latestControl ?? new Date().toISOString().slice(0, 10),
+        fechaUltimoMovimiento: latestControl ?? undefined,
+        precio: numberOf(price),
+        precioTotal: quantity * numberOf(price),
+        porEncargo: isPorEncargo || undefined
+      });
+    }
+  }
+
+  return result;
 }
 
 export async function saveInventoryItem(item: InventoryItem): Promise<void> {
