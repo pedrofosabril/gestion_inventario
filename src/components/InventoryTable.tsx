@@ -499,8 +499,9 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({
                 >
                   <div className="flex items-center gap-1">
                     <span className="font-black text-sky-950 group-hover:text-[#006bb0] transition-colors">
-                      UBICACIÓN ↕
+                      UBICACIÓN
                     </span>
+                    <span id="flechita" className="text-sky-600 font-black">↕</span>
                   </div>
                 </th>
 
@@ -845,7 +846,7 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({
       <AddProductModal
         isOpen={isAddingItem}
         onClose={() => setIsAddingItem(false)}
-        defaultCategory={category}
+        defaultCategory={category === 'all' ? undefined : category}
       />
 
     </div>

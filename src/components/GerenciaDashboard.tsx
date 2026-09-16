@@ -113,6 +113,7 @@ export const GerenciaDashboard: React.FC<GerenciaDashboardProps> = ({ onOpenScan
         <div className="flex flex-wrap items-center gap-2.5">
           {/* Registrar Producto Nuevo Button */}
           <button
+            id="nuevo-producto"
             type="button"
             onClick={() => setIsAddingProduct(true)}
             className="inline-flex items-center gap-2 px-4 py-2.5 bg-sky-800 hover:bg-sky-900 text-white rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer active:scale-[0.99]"
@@ -122,10 +123,12 @@ export const GerenciaDashboard: React.FC<GerenciaDashboardProps> = ({ onOpenScan
           </button>
 
           {/* Excel Auto Import */}
-          <ExcelImportDropzone />
+          <div id="excel">
+            <ExcelImportDropzone />
+          </div>
 
           {/* Respaldo de Base de Datos */}
-          <div className="relative">
+          <div id="respaldo" className="relative">
             <button
               type="button"
               onClick={() => setShowBackupPanel(prev => !prev)}
@@ -209,7 +212,7 @@ export const GerenciaDashboard: React.FC<GerenciaDashboardProps> = ({ onOpenScan
       </div>
 
       {/* KPI Cards Row */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div id="estadisticas" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         
         {/* Total Valuation */}
         <div className="bg-[#f4f9fd] rounded-2xl p-4 border border-[#c4e1f7] shadow-xs flex flex-col justify-between">
