@@ -542,6 +542,20 @@ const MainApp: React.FC = () => {
           <div className="bg-[#e9f4fc] border-t border-[#c6e1f7] relative">
             <div className="max-w-[1720px] mx-auto px-2 sm:px-4 lg:px-6 flex items-center gap-1 sm:gap-2">
 
+              {/* Left scroll arrow */}
+              <button
+                onClick={() => scrollTabs('left')}
+                disabled={!canScrollLeft}
+                title="Anterior"
+                className={`shrink-0 p-1.5 rounded-lg transition-all cursor-pointer ${
+                  canScrollLeft
+                    ? 'text-[#006bb0] hover:bg-[#d8edfa] active:scale-90'
+                    : 'text-slate-300 cursor-not-allowed opacity-50'
+                }`}
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+
               {/* Scrollable nav container */}
               <div 
                 ref={tabsNavRef}
@@ -577,6 +591,20 @@ const MainApp: React.FC = () => {
                   })}
                 </nav>
               </div>
+
+              {/* Right scroll arrow */}
+              <button
+                onClick={() => scrollTabs('right')}
+                disabled={!canScrollRight}
+                title="Siguiente"
+                className={`shrink-0 p-1.5 rounded-lg transition-all cursor-pointer ${
+                  canScrollRight
+                    ? 'text-[#006bb0] hover:bg-[#d8edfa] active:scale-90'
+                    : 'text-slate-300 cursor-not-allowed opacity-50'
+                }`}
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
 
             </div>
           </div>
