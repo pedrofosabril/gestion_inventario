@@ -33,6 +33,22 @@ type StockRow = {
 
 const numberOf = (value: number | string | null | undefined) => Number(value ?? 0);
 
+/** Fetch all rows from a table, paginating past Supabase's 1000-row default limit. */
+async function fetchAllRows<T>(table: string, columns: string): Promise<T[]> {
+  const all: T[] = [];
+  const pageSize = 1000;
+  let from = 0;
+  while (true) {
+    const { data, error } = await supabase.from(table).select(columns).range(from, from + pageSize - 1);
+    if (error) throw error;
+    const rows = (data ?? []) as T[];
+    all.push(...rows);
+    if (rows.length < pageSize) break;
+    from += pageSize;
+  }
+  return all;
+}
+
 const normalize = (value: string | null | undefined) => (value ?? '').trim().toUpperCase();
 
 /**
@@ -82,12 +98,10 @@ const determineCategory = (
 
 /** Reads the existing Supabase tables and maps them to the application model. */
 export async function getInventory(): Promise<InventoryItem[]> {
-  const [{ data: repuestos, error: repuestosError }, { data: stock, error: stockError }] = await Promise.all([
-    supabase.from('repuestos').select('codigo, proveedor, descripcion, equivalencias, uso_destino, precio'),
-    supabase.from('stock').select('id_stock, codigo, cantidad, ubicacion, precio, fecha_control')
+  const [repuestos, stock] = await Promise.all([
+    fetchAllRows<RepuestoRow>('repuestos', 'codigo, proveedor, descripcion, equivalencias, uso_destino, precio'),
+    fetchAllRows<StockRow>('stock', 'id_stock, codigo, cantidad, ubicacion, precio, fecha_control')
   ]);
-  if (repuestosError) throw repuestosError;
-  if (stockError) throw stockError;
 
   const stockByCode = new Map<string, StockRow[]>();
   for (const row of (stock ?? []) as StockRow[]) {
