@@ -245,26 +245,6 @@ export const SalidasLogView: React.FC<SalidasLogViewProps> = ({ onOpenScanner })
               <span>Por Ítem Individual</span>
             </button>
           </div>
-
-          {!isVentas && (
-            <button
-              type="button"
-              onClick={handleCleanDuplicates}
-              className="px-3.5 py-2 border border-[#badbf5] bg-white hover:bg-[#eaf4fb] text-slate-800 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer"
-              title="Detectar y eliminar automáticamente salidas o registros duplicados"
-            >
-              <Sparkles className="w-3.5 h-3.5 text-[#006bb0]" />
-              <span>Borrar Duplicados</span>
-            </button>
-          )}
-
-          <button
-            onClick={() => onOpenScanner()}
-            className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
-          >
-            <ArrowUpRight className="w-4 h-4" />
-            {isVentas ? 'Consultar Stock' : 'Nueva Salida'}
-          </button>
           
           <button
             onClick={() => exportCategoryToExcel('salidas')}
