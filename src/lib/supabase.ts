@@ -20,6 +20,7 @@ type RepuestoRow = {
   equivalencias: string | null;
   uso_destino: string | null;
   precio: number | string | null;
+  barra: string | null;
 };
 
 type StockRow = {
@@ -99,7 +100,7 @@ const determineCategory = (
 /** Reads the existing Supabase tables and maps them to the application model. */
 export async function getInventory(): Promise<InventoryItem[]> {
   const [repuestos, stock] = await Promise.all([
-    fetchAllRows<RepuestoRow>('repuestos', 'codigo, proveedor, descripcion, equivalencias, uso_destino, precio'),
+    fetchAllRows<RepuestoRow>('repuestos', 'codigo, proveedor, descripcion, equivalencias, uso_destino, precio, barra'),
     fetchAllRows<StockRow>('stock', 'id_stock, codigo, cantidad, ubicacion, precio, fecha_control')
   ]);
 
@@ -137,7 +138,8 @@ export async function getInventory(): Promise<InventoryItem[]> {
           fechaUltimoMovimiento: latestControl ?? undefined,
           precio: numberOf(price),
           precioTotal: quantity * numberOf(price),
-          porEncargo: isPorEncargo || undefined
+          porEncargo: isPorEncargo || undefined,
+          codigoBarras: repuesto.barra ?? undefined
         });
       });
     } else {
@@ -155,7 +157,8 @@ export async function getInventory(): Promise<InventoryItem[]> {
         fechaUltimoMovimiento: latestControl ?? undefined,
         precio: numberOf(price),
         precioTotal: quantity * numberOf(price),
-        porEncargo: isPorEncargo || undefined
+        porEncargo: isPorEncargo || undefined,
+        codigoBarras: repuesto.barra ?? undefined
       });
     }
   }
@@ -170,7 +173,8 @@ export async function saveInventoryItem(item: InventoryItem): Promise<void> {
     descripcion: item.descripcion,
     equivalencias: item.equivalencias ?? null,
     uso_destino: item.subcategoria ?? null,
-    precio: item.precio
+    precio: item.precio,
+    barra: item.codigoBarras ?? null
   }, { onConflict: 'codigo' });
   if (repuestoError) throw repuestoError;
 
