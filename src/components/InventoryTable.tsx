@@ -155,8 +155,8 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({
   const meta = CATEGORY_META[selectedCategory] || CATEGORY_META.all;
 
   const isVentas = currentUser?.rol === 'ventas';
-  const isAdministracion = currentUser?.rol === 'administracion';
-  const showPrices = isAdministracion;
+  const isGerencia = currentUser?.rol === 'gerencia';
+  const showPrices = isGerencia;
   const VENTAS_ALLOWED = ['panol', 'cajones_fluidos', 'submicronicos', 'rodamientos', 'entrepiso'];
 
   // Filter items
@@ -235,7 +235,7 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({
         <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center mb-3">
           <Package className="w-6 h-6" />
         </div>
-        <h2 className="text-base font-black text-sky-950">Sección Reservada para Pañol y Gerencia</h2>
+        <h2 className="text-base font-black text-sky-950">Sección Reservada para Pañol y Administración</h2>
         <p className="text-xs text-slate-600 mt-1.5 leading-relaxed">
           El perfil de Ventas tiene acceso exclusivo a las tablas de Pañol, Cajones / Fluidos, Submicrónicos, Rodamientos y Entrepiso.
         </p>
@@ -499,8 +499,9 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({
                 >
                   <div className="flex items-center gap-1">
                     <span className="font-black text-sky-950 group-hover:text-[#006bb0] transition-colors">
-                      UBICACIÓN ↕
+                      UBICACIÓN
                     </span>
+                    <span id="flechita" className="text-sky-600 font-black">↕</span>
                   </div>
                 </th>
 
@@ -527,7 +528,7 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({
                   <th className="px-3 py-2.5 text-center whitespace-nowrap">P/SERVICIO</th>
                 )}
 
-                {/* Precio Unitario - Only for Gerencia */}
+                {/* Precio Unitario - Only for Administración */}
                 {showPrices && (
                   <th 
                     onClick={() => { setSortBy('precio'); setSortAsc(!sortAsc); }}
@@ -540,7 +541,7 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({
                   </th>
                 )}
 
-                {/* Total Valor - Only for Gerencia */}
+                {/* Total Valor - Only for Administración */}
                 {meta.showTotal && showPrices && (
                   <th className="px-3 py-2.5 text-right whitespace-nowrap font-black text-sky-950">
                     TOTAL VALOR
@@ -702,7 +703,7 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({
                         </td>
                       )}
 
-                      {/* Precio Unitario - Only for Gerencia */}
+                      {/* Precio Unitario - Only for Administración */}
                       {showPrices && (
                         <td className="px-3 py-2 text-right font-mono whitespace-nowrap text-slate-800 font-semibold">
                           {isEditing ? (
@@ -721,7 +722,7 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({
                         </td>
                       )}
 
-                      {/* Total - Only for Gerencia */}
+                      {/* Total - Only for Administración */}
                       {meta.showTotal && showPrices && (
                         <td className="px-3 py-2 text-right font-mono font-bold text-sky-950 whitespace-nowrap">
                           ${(item.precioTotal || (item.stock * item.precio) || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
@@ -782,7 +783,7 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({
                               <Barcode className="w-3.5 h-3.5" />
                             </button>
 
-                            {/* Edit (Restricted: Pañol & Gerencia only) */}
+                            {/* Edit (Restricted: Pañol & Administración only) */}
                             {!isVentas && (
                               <button
                                 onClick={() => handleStartInlineEdit(item)}
@@ -793,8 +794,8 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({
                               </button>
                             )}
 
-                            {/* Delete (Gerencia only) */}
-                            {currentUser?.rol === 'administracion' && (
+                            {/* Delete (Administración only) */}
+                            {currentUser?.rol === 'gerencia' && (
                               <button
                                 onClick={() => {
                                   if (window.confirm(`¿Eliminar ${item.codigo} del inventario?`)) {
@@ -845,7 +846,7 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({
       <AddProductModal
         isOpen={isAddingItem}
         onClose={() => setIsAddingItem(false)}
-        defaultCategory={category}
+        defaultCategory={category === 'all' ? undefined : category}
       />
 
     </div>

@@ -49,6 +49,7 @@ import { SalidasLogView } from './components/SalidasLogView';
 import { IngresosLogView } from './components/IngresosLogView';
 import { ItemCategory, InventoryItem } from './types';
 import { OfflineStatusBadge } from './components/OfflineStatusBanner';
+import { startTour, hasSeenTour } from './utils/tour';
 
 export const VENTAS_ALLOWED_CATEGORIES: ItemCategory[] = [
   'panol',
@@ -58,7 +59,7 @@ export const VENTAS_ALLOWED_CATEGORIES: ItemCategory[] = [
   'entrepiso'
 ];
 
-type ActiveView = ItemCategory | 'salidas' | 'ingresos' | 'administracion';
+type ActiveView = ItemCategory | 'salidas' | 'ingresos' | 'gerencia';
 
 const MainApp: React.FC = () => {
   const { 
@@ -74,7 +75,7 @@ const MainApp: React.FC = () => {
   } = useInventory();
 
   const isVentas = currentUser?.rol === 'ventas';
-  const isAdministracion = currentUser?.rol === 'administracion';
+  const isGerencia = currentUser?.rol === 'gerencia';
   const isPanolero = currentUser?.rol === 'panolero';
 
   const [activeView, setActiveView] = useState<ActiveView>('panol');
@@ -82,8 +83,8 @@ const MainApp: React.FC = () => {
   
   // Set initial default view according to role when currentUser changes
   useEffect(() => {
-    if (currentUser?.rol === 'administracion') {
-      setActiveView('administracion');
+    if (currentUser?.rol === 'gerencia') {
+      setActiveView('gerencia');
     } else {
       setActiveView('panol');
     }
@@ -95,6 +96,38 @@ const MainApp: React.FC = () => {
       setActiveView('panol');
     }
   }, [isVentas, activeView]);
+
+  // Tutorial de bienvenida: se muestra una sola vez por usuario, al ingresar por primera vez
+  useEffect(() => {
+    if (currentUser && !hasSeenTour(currentUser.id)) {
+      startTour(currentUser.rol, currentUser.id);
+    }
+  }, [currentUser]);
+
+  // Cambio de vista solicitado por el tutorial (pasos que navegan entre panol y gerencia)
+  useEffect(() => {
+    const handleTourNavigate = (e: Event) => {
+      const view = (e as CustomEvent<string>).detail;
+      const validViews: ActiveView[] = [
+        'panol',
+        'cajones_fluidos',
+        'submicronicos',
+        'rodamientos',
+        'entrepiso',
+        'importado',
+        'repuestos_mv',
+        'cajas',
+        'salidas',
+        'ingresos',
+        'gerencia',
+      ];
+      if (view && validViews.includes(view as ActiveView)) {
+        setActiveView(view as ActiveView);
+      }
+    };
+    window.addEventListener('verdu-tour-navigate', handleTourNavigate);
+    return () => window.removeEventListener('verdu-tour-navigate', handleTourNavigate);
+  }, []);
   
   // Modals state
   const [isScannerOpen, setIsScannerOpen] = useState<boolean>(false);
@@ -262,9 +295,9 @@ const MainApp: React.FC = () => {
     setGlobalSearchResults(matches.slice(0, 15));
   };
 
-  // Sections for Gerencia & Ventas navigation tabs
+  // Sections for Administración & Ventas navigation tabs
   const ALL_SECTIONS: { id: ActiveView; label: string; icon: React.FC<{ className?: string }>; count?: number }[] = [
-    ...(isAdministracion ? [{ id: 'administracion' as ActiveView, label: 'Panel Administración', icon: ShieldCheck }] : []),
+    ...(isGerencia ? [{ id: 'gerencia' as ActiveView, label: 'Administración', icon: ShieldCheck }] : []),
     { id: 'panol', label: 'Pañol (General)', icon: Warehouse, count: items.filter(i => i.categoria === 'panol').length },
     { id: 'cajones_fluidos', label: 'Cajones / Fluidos', icon: Droplet, count: items.filter(i => i.categoria === 'cajones_fluidos').length },
     { id: 'submicronicos', label: 'Submicrónicos', icon: CircleDot, count: items.filter(i => i.categoria === 'submicronicos').length },
@@ -277,7 +310,7 @@ const MainApp: React.FC = () => {
     { id: 'ingresos', label: 'Historial Ingresos', icon: ArrowDownLeft }
   ];
 
-  // In Sales profile: only allowed product categories (NO salidas); Pañolero & Gerencia: all sections
+  // In Sales profile: only allowed product categories (NO salidas); Pañolero & Administración: all sections
   const NAV_ITEMS = isVentas
     ? ALL_SECTIONS.filter(sec => VENTAS_ALLOWED_CATEGORIES.includes(sec.id as ItemCategory))
     : ALL_SECTIONS;
@@ -292,7 +325,7 @@ const MainApp: React.FC = () => {
             
             {/* Logo */}
             <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-              <div onClick={() => setActiveView(isAdministracion ? 'administracion' : 'panol')} className="cursor-pointer">
+              <div onClick={() => setActiveView(isGerencia ? 'gerencia' : 'panol')} className="cursor-pointer">
                 <Logo />
               </div>
             </div>
@@ -302,6 +335,7 @@ const MainApp: React.FC = () => {
               <div className="hidden md:flex items-center flex-1 max-w-md mx-4 relative">
                 <div className="relative w-full">
                   <input
+                    id="buscador-global"
                     type="text"
                     value={globalSearch}
                     onChange={e => handleGlobalSearchChange(e.target.value)}
@@ -397,8 +431,10 @@ const MainApp: React.FC = () => {
                 </button>
               )}
 
-              {/* Botón SALIDA (oculto en cuenta ventas y pañolero porque tiene sus botones táctiles dedicados) */}
-              {!isPanolero && !isVentas && (
+              {/* Operaciones (SALIDA / DEVOLUCIÓN / ENTRADA): solo para el perfil de administración (gerencia) */}
+              {isGerencia && (
+                <div id="operaciones" className="flex items-center gap-2">
+                {/* Botón SALIDA (oculto en cuenta ventas y pañolero porque tiene sus botones táctiles dedicados) */}
                 <button
                   onClick={() => handleOpenScanner(undefined, 'salida')}
                   className="text-white font-black rounded-xl shadow-xs hover:shadow-md transition-all flex items-center group active:scale-95 cursor-pointer px-3 sm:px-4 py-2 sm:py-2.5 text-xs sm:text-sm bg-rose-600 hover:bg-rose-700 gap-1.5 border border-rose-500"
@@ -407,10 +443,8 @@ const MainApp: React.FC = () => {
                   <ArrowUpRight className="w-4 h-4 group-hover:scale-110 transition-transform" />
                   <span>Salida</span>
                 </button>
-              )}
 
-              {/* Botón DEVOLUCIÓN (oculto en cuenta ventas y pañolero) */}
-              {!isPanolero && !isVentas && (
+                {/* Botón DEVOLUCIÓN (oculto en cuenta ventas y pañolero) */}
                 <button
                   onClick={() => handleOpenScanner(undefined, 'devolucion')}
                   className="text-white font-black rounded-xl shadow-xs hover:shadow-md transition-all flex items-center group active:scale-95 cursor-pointer px-3 sm:px-4 py-2 sm:py-2.5 text-xs sm:text-sm bg-amber-600 hover:bg-amber-700 gap-1.5 border border-amber-500"
@@ -419,10 +453,8 @@ const MainApp: React.FC = () => {
                   <RotateCcw className="w-4 h-4 group-hover:scale-110 transition-transform" />
                   <span>Devolución</span>
                 </button>
-              )}
 
-              {/* Botón ENTRADA (oculto en cuenta ventas y pañolero) */}
-              {!isPanolero && !isVentas && (
+                {/* Botón ENTRADA (oculto en cuenta ventas y pañolero) */}
                 <button
                   onClick={() => handleOpenScanner(undefined, 'ingreso')}
                   className="text-white font-black rounded-xl shadow-xs hover:shadow-md transition-all flex items-center group active:scale-95 cursor-pointer px-3 sm:px-4 py-2 sm:py-2.5 text-xs sm:text-sm bg-emerald-600 hover:bg-emerald-700 gap-1.5 border border-emerald-500"
@@ -431,14 +463,15 @@ const MainApp: React.FC = () => {
                   <PackagePlus className="w-4 h-4 group-hover:scale-110 transition-transform" />
                   <span>Entrada</span>
                 </button>
+                </div>
               )}
 
               {/* Current User Role Title */}
               <div 
                 className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-xl bg-sky-50 border border-[#b8ddf5]"
-                title={`Sesión activa: ${currentUser.nombre || 'Marcelo'} (${currentUser.rol})`}
+                title={`Sesión activa: ${currentUser.nombre || 'Marcelo'} (${currentUser.rol === 'gerencia' ? 'Administración' : currentUser.rol})`}
               >
-                {isAdministracion ? (
+                {isGerencia ? (
                   <>
                     <ShieldCheck className="w-4 h-4 text-[#006bb0]" />
                     <span className="text-xs font-black text-[#006bb0] tracking-wide">Administración</span>
@@ -539,7 +572,7 @@ const MainApp: React.FC = () => {
 
         {/* Categories / Sections Navigation Sub-Bar (Oculto para pañolero, que utiliza su pantalla táctil dedicada) */}
         {!isPanolero && (
-          <div className="bg-[#e9f4fc] border-t border-[#c6e1f7] relative">
+          <div id="ubicaciones" className="bg-[#e9f4fc] border-t border-[#c6e1f7] relative">
             <div className="max-w-[1720px] mx-auto px-2 sm:px-4 lg:px-6 flex items-center gap-1 sm:gap-2">
 
               {/* Left scroll arrow */}
@@ -717,8 +750,8 @@ const MainApp: React.FC = () => {
             onOpenBarcode={handleOpenBarcode}
             onOpenDetail={handleOpenProductDetail}
           />
-        ) : activeView === 'administracion' ? (
-          currentUser.rol === 'administracion' ? (
+        ) : activeView === 'gerencia' ? (
+          currentUser.rol === 'gerencia' ? (
             <GerenciaDashboard onOpenScanner={handleOpenScanner} />
           ) : (
             <div className="bg-[#f4f9fd] rounded-2xl p-8 sm:p-12 text-center border border-[#c4e1f7] shadow-sm max-w-md mx-auto my-8">
@@ -815,11 +848,11 @@ const MainApp: React.FC = () => {
               </button>
             )}
 
-            {isAdministracion ? (
+            {isGerencia ? (
               <button
-                onClick={() => setActiveView('administracion')}
+                onClick={() => setActiveView('gerencia')}
                 className={`px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer ${
-                  activeView === 'administracion' ? 'bg-[#006bb0] text-white' : 'text-slate-700 hover:bg-[#e2f1fc]'
+                  activeView === 'gerencia' ? 'bg-[#006bb0] text-white' : 'text-slate-700 hover:bg-[#e2f1fc]'
                 }`}
               >
                 <ShieldCheck className="w-4 h-4 text-sky-200" />

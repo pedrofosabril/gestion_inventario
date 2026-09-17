@@ -45,7 +45,7 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
 }) => {
   const { addItem, items } = useInventory();
 
-  const [categoria, setCategoria] = useState<ItemCategory>(defaultCategory === 'stock_antiguo' ? 'panol' : defaultCategory);
+  const [categoria, setCategoria] = useState<ItemCategory>(defaultCategory === ('stock_antiguo' as ItemCategory) ? 'panol' : defaultCategory);
   const [subcategoria, setSubcategoria] = useState<string>('');
   const [codigo, setCodigo] = useState<string>('');
   const [descripcion, setDescripcion] = useState<string>('');
