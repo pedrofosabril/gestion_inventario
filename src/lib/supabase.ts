@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { InventoryItem, ItemCategory } from '../types';
 import { CATEGORY_MAP, type CategoryEntry } from '../data/categoryMap';
+import { isSullairProveedor } from '../utils/barcodeUtils';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -139,7 +140,7 @@ export async function getInventory(): Promise<InventoryItem[]> {
           precio: numberOf(price),
           precioTotal: quantity * numberOf(price),
           porEncargo: isPorEncargo || undefined,
-          codigoBarras: repuesto.barra ?? undefined
+          codigoBarras: repuesto.barra || (isSullairProveedor(repuesto.proveedor ?? '') ? repuesto.codigo : undefined)
         });
       });
     } else {
@@ -156,9 +157,9 @@ export async function getInventory(): Promise<InventoryItem[]> {
         fechaRegistro: latestControl ?? new Date().toISOString().slice(0, 10),
         fechaUltimoMovimiento: latestControl ?? undefined,
         precio: numberOf(price),
-        precioTotal: quantity * numberOf(price),
+precioTotal: quantity * numberOf(price),
         porEncargo: isPorEncargo || undefined,
-        codigoBarras: repuesto.barra ?? undefined
+        codigoBarras: repuesto.barra || (isSullairProveedor(repuesto.proveedor ?? '') ? repuesto.codigo : undefined)
       });
     }
   }
@@ -174,7 +175,7 @@ export async function saveInventoryItem(item: InventoryItem): Promise<void> {
     equivalencias: item.equivalencias ?? null,
     uso_destino: item.subcategoria ?? null,
     precio: item.precio,
-    barra: item.codigoBarras ?? null
+    barra: item.codigoBarras || (isSullairProveedor(item.proveedor) && item.codigo ? item.codigo : null)
   }, { onConflict: 'codigo' });
   if (repuestoError) throw repuestoError;
 

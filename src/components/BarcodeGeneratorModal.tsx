@@ -487,6 +487,18 @@ export const BarcodeGeneratorModal: React.FC<BarcodeGeneratorModalProps> = ({
                 Al disparar el lector de código de barras USB, se guardará y asociará automáticamente a este producto.
               </span>
             </p>
+
+            {!hasLinkedBarcode && (
+              <button
+                type="button"
+                onClick={() => handleSaveBarcode(currentItem.codigo)}
+                className="w-full flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-2xl bg-white hover:bg-[#eaf4fb] text-[#006bb0] border-2 border-dashed border-[#94c9f1] font-bold text-xs transition-colors cursor-pointer active:scale-95"
+                title="Generar el código de barras a partir del código del producto"
+              >
+                <Sparkles className="w-4 h-4" />
+                <span>Usar el código del producto ({currentItem.codigo}) como código de barras</span>
+              </button>
+            )}
           </div>
 
           {/* Printable Label Preview (only if barcode is assigned) */}
