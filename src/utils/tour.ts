@@ -70,11 +70,11 @@ export const startTour = (rol?: string, userId?: string) => {
     },
   };
 
-  // Anclado a la barra superior de secciones/ubicaciones del inventario (visible en la vista principal).
+  // Anclado a la barra superior de secciones/ubicaciones del inventario (visible SIEMPRE para admin/cajero).
   const ubicacionesStep: DriveStep = {
     element: '#ubicaciones',
-    data: { view: 'panol' },
-    waitForElement: 3000,
+    data: { view: null },
+    waitForElement: 800,
     popover: {
       title: 'Ubicaciones',
       description: 'Acá podes encontrar cada producto por su ubicacion. Tocá cada sección para ver sus productos.',
@@ -86,7 +86,7 @@ export const startTour = (rol?: string, userId?: string) => {
   const excelStep: DriveStep = {
     element: '#excel',
     data: { view: 'gerencia' },
-    waitForElement: 3000,
+    waitForElement: 800,
     popover: {
       title: 'Carga de Excel',
       description: 'Arrastrá o subí un archivo Excel para importar o actualizar el inventario de forma masiva.',
@@ -98,7 +98,7 @@ export const startTour = (rol?: string, userId?: string) => {
   const nuevoProductoStep: DriveStep = {
     element: '#nuevo-producto',
     data: { view: 'gerencia' },
-    waitForElement: 3000,
+    waitForElement: 800,
     popover: {
       title: 'Carga de Producto',
       description: 'Registrá un producto nuevo al inventario completando los datos manualmente.',
@@ -110,7 +110,7 @@ export const startTour = (rol?: string, userId?: string) => {
   const estadisticasStep: DriveStep = {
     element: '#estadisticas',
     data: { view: 'gerencia' },
-    waitForElement: 3000,
+    waitForElement: 800,
     popover: {
       title: 'Estadísticas',
       description: 'En esta seccion podemos ver la valuación total, stock crítico, productos sin stock y el desglose por sección.',
@@ -122,7 +122,7 @@ export const startTour = (rol?: string, userId?: string) => {
   const respaldoStep: DriveStep = {
     element: '#respaldo',
     data: { view: 'gerencia' },
-    waitForElement: 3000,
+    waitForElement: 800,
     popover: {
       title: 'Respaldo de base de datos',
       description: 'Acá podés generar una copia de seguridad de toda la base de datos (.json y .csv) o revisar el historial de respaldos.',
@@ -134,7 +134,7 @@ export const startTour = (rol?: string, userId?: string) => {
   const flechitaStep: DriveStep = {
     element: '#flechita',
     data: { view: 'panol' },
-    waitForElement: 3000,
+    waitForElement: 800,
     popover: {
       title: 'Flechita',
       description: 'Con estas flechas podemos ordenar de mayor a menos o viceversa.',
@@ -198,6 +198,41 @@ export const startTour = (rol?: string, userId?: string) => {
   }
 
   let driverObj: ReturnType<typeof driver>;
+
+  // Espera (en tiempo real) a que exista el elemento del paso destino. Evita que el driver
+  // entre en su "waitForElement" (que deja el resaltado anterior sin legendario unos segundos)
+  // cuando React todavía está re-renderizando la vista destino.
+  const waitForTourElement = (selector: string, timeout = 1000): Promise<void> =>
+    new Promise(resolve => {
+      if (document.querySelector(selector)) {
+        resolve();
+        return;
+      }
+      const started = Date.now();
+      const timer = window.setInterval(() => {
+        if (document.querySelector(selector) || Date.now() - started > timeout) {
+          window.clearInterval(timer);
+          resolve();
+        }
+      }, 30);
+    });
+
+  let navigating = false;
+  const goTo = async (dir: 1 | -1) => {
+    if (navigating) return;
+    navigating = true;
+    try {
+      const index = driverObj.getActiveIndex() ?? 0;
+      const target = steps[index + dir];
+      if (target?.data?.view) dispatchNavigate(String(target.data.view));
+      if (target?.element) await waitForTourElement(String(target.element));
+      if (dir === 1) driverObj.moveNext();
+      else driverObj.movePrevious();
+    } finally {
+      navigating = false;
+    }
+  };
+
   driverObj = driver({
     showProgress: true,
     skipMissingElement: true,
@@ -208,19 +243,11 @@ export const startTour = (rol?: string, userId?: string) => {
     // driver.js 1.8.0 llama a onNextClick/onPrevClick SIN argumentos desde el botón,
     // por eso tomamos el índice activo de la propia API (getActiveIndex()).
     onNextClick: () => {
-      const index = driverObj.getActiveIndex() ?? 0;
-      const next = steps[index + 1];
-      const view = next?.data?.view;
-      if (view) dispatchNavigate(String(view));
-      driverObj.moveNext();
+      void goTo(1);
     },
     // Al retroceder, preparamos la vista del paso anterior.
     onPrevClick: () => {
-      const index = driverObj.getActiveIndex() ?? 0;
-      const prev = steps[index - 1];
-      const view = prev?.data?.view;
-      if (view) dispatchNavigate(String(view));
-      driverObj.movePrevious();
+      void goTo(-1);
     },
     onDestroyStarted: () => {
       if (userId) markTourSeen(userId);
