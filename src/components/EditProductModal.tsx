@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { 
   X, 
-  PackagePlus, 
+  Pencil, 
   Tag, 
   Building2, 
   MapPin, 
@@ -12,56 +12,64 @@ import {
   Barcode,
   Sparkles,
   Calculator,
-  Coins
+  Coins,
+  FileText,
+  StickyNote
 } from 'lucide-react';
 import { useInventory } from '../context/InventoryContext';
 import { ItemCategory, InventoryItem, PARAMETRIZED_SUPPLIERS } from '../types';
 import { isSullairProveedor } from '../utils/barcodeUtils';
+import { CATEGORY_OPTIONS, COMMON_UBICACIONES } from './AddProductModal';
 
-interface AddProductModalProps {
+interface EditProductModalProps {
   isOpen: boolean;
+  item: InventoryItem | null;
   onClose: () => void;
-  defaultCategory?: ItemCategory;
-  onProductCreated?: (item: InventoryItem) => void;
 }
 
-export const CATEGORY_OPTIONS: { id: ItemCategory; label: string; subcats: string[] }[] = [
-  { id: 'panol', label: 'Pañol General', subcats: ['Filtros', 'Repuestos', 'Consumibles', 'Herramientas'] },
-  { id: 'cajones_fluidos', label: 'Cajones y Fluidos', subcats: ['Fluidos', 'Cajones', 'Estante'] },
-  { id: 'submicronicos', label: 'Filtros Submicrónicos', subcats: ['FXF', 'FXH', 'SCF', 'SCH', 'MPH/MPF'] },
-  { id: 'rodamientos', label: 'Rodamientos', subcats: ['SKF', 'TIMKEN', 'FAG', 'NSK', 'NTN', 'ZKL', 'KOYO', 'ROLLWAY'] },
-  { id: 'entrepiso', label: 'Entrepiso Pañol', subcats: ['FLEETGUARD', 'LANSS', 'CATERPILLAR', 'DONALDSON', 'MAHLE', 'VARIOS'] },
-  { id: 'importado', label: 'Stock Importado', subcats: ['Separadores', 'Kits', 'Válvulas'] },
-  { id: 'repuestos_mv', label: 'Repuestos MV', subcats: ['MV', 'MV-5V', 'MV-7', 'MV-10', 'MV-15/20', 'MV-40', 'MV-50'] },
-  { id: 'cajas', label: 'Cajas Estantes', subcats: ['Caja Estante A', 'Caja Estante B'] },
-];
+export const EditProductModal: React.FC<EditProductModalProps> = ({ isOpen, item, onClose }) => {
+  const { updateItem } = useInventory();
 
-export const COMMON_UBICACIONES = ['A', 'B', 'C', 'C GRIS', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'CAJONES', 'ESTANTE'];
-
-export const AddProductModal: React.FC<AddProductModalProps> = ({
-  isOpen,
-  onClose,
-  defaultCategory = 'panol',
-  onProductCreated
-}) => {
-  const { addItem, items } = useInventory();
-
-  const [categoria, setCategoria] = useState<ItemCategory>(defaultCategory === ('stock_antiguo' as ItemCategory) ? 'panol' : defaultCategory);
+  const [categoria, setCategoria] = useState<ItemCategory>('panol');
   const [subcategoria, setSubcategoria] = useState<string>('');
-  const [codigo, setCodigo] = useState<string>('');
   const [descripcion, setDescripcion] = useState<string>('');
   const [equivalencias, setEquivalencias] = useState<string>('');
-  const [proveedor, setProveedor] = useState<string>('SULLAIR');
+  const [proveedor, setProveedor] = useState<string>('');
   const [codigoBarrasInput, setCodigoBarrasInput] = useState<string>('');
-  const [ubicacion, setUbicacion] = useState<string>('A');
-  const [stock, setStock] = useState<number>(1);
-  const [stockMinimo, setStockMinimo] = useState<number>(1);
+  const [ubicacion, setUbicacion] = useState<string>('');
+  const [stock, setStock] = useState<number>(0);
+  const [stockMinimo, setStockMinimo] = useState<number>(0);
   const [precio, setPrecio] = useState<number>(0);
+  const [paraServicio, setParaServicio] = useState<number>(0);
+  const [factura, setFactura] = useState<string>('');
+  const [notas, setNotas] = useState<string>('');
   const [porEncargo, setPorEncargo] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<boolean>(false);
 
-  if (!isOpen) return null;
+  // Sync form state whenever the modal opens with a different item
+  const isOpenWithItem = isOpen && !!item;
+  React.useEffect(() => {
+    if (!item) return;
+    setCategoria(item.categoria);
+    setSubcategoria(item.subcategoria || '');
+    setDescripcion(item.descripcion || '');
+    setEquivalencias(item.equivalencias || '');
+    setProveedor(item.proveedor || '');
+    setCodigoBarrasInput(item.codigoBarras || '');
+    setUbicacion(item.ubicacion || '');
+    setStock(item.stock || 0);
+    setStockMinimo(item.stockMinimo ?? 0);
+    setPrecio(item.precio || 0);
+    setParaServicio(item.paraServicio ?? 0);
+    setFactura(item.factura || '');
+    setNotas(item.notas || '');
+    setPorEncargo(!!item.porEncargo);
+    setError(null);
+    setSuccess(false);
+  }, [item, isOpen]);
+
+  if (!isOpenWithItem || !item) return null;
 
   const currentCategoryMeta = CATEGORY_OPTIONS.find(c => c.id === categoria) || CATEGORY_OPTIONS[0];
 
@@ -69,59 +77,37 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
     e.preventDefault();
     setError(null);
 
-    const cleanCode = codigo.trim().toUpperCase();
     const cleanDesc = descripcion.trim().toUpperCase();
     const cleanProv = proveedor.trim().toUpperCase() || 'SULLAIR';
     const cleanUbi = ubicacion.trim().toUpperCase() || 'A';
 
-    if (!cleanCode) {
-      setError('Por favor ingresa el código del producto.');
-      return;
-    }
     if (!cleanDesc) {
       setError('Por favor ingresa la descripción del producto.');
       return;
     }
 
-    // Check if code already exists
-    const existing = items.find(i => i.codigo.toUpperCase() === cleanCode);
-    if (existing) {
-      setError(`Ya existe un producto con el código "${cleanCode}" en la categoría ${existing.categoria} (${existing.descripcion}). Usa otro código o actualiza el existente.`);
-      return;
-    }
-
-    const newItem = addItem({
-      codigo: cleanCode,
+    updateItem(item.id, {
       descripcion: cleanDesc,
       proveedor: cleanProv,
       ubicacion: cleanUbi,
       categoria: categoria,
-      subcategoria: subcategoria.trim() || undefined,
-      equivalencias: equivalencias.trim() || undefined,
+      subcategoria: subcategoria.trim().toUpperCase() || undefined,
+      equivalencias: equivalencias.trim().toUpperCase() || undefined,
       stock: Math.max(0, stock),
       stockMinimo: Math.max(0, stockMinimo),
       precio: Math.max(0, precio),
+      paraServicio: Math.max(0, paraServicio) || undefined,
+      factura: factura.trim().toUpperCase() || undefined,
+      notas: notas.trim() || undefined,
       porEncargo: porEncargo,
-      codigoBarras: isSullairProveedor(cleanProv) ? cleanCode : (codigoBarrasInput.trim() || undefined),
-      fechaRegistro: new Date().toISOString().split('T')[0],
+      codigoBarras: isSullairProveedor(cleanProv) ? item.codigo : (codigoBarrasInput.trim().toUpperCase() || undefined),
       fechaUltimoMovimiento: new Date().toISOString().split('T')[0],
     });
 
     setSuccess(true);
-    if (onProductCreated) {
-      onProductCreated(newItem);
-    }
-
     setTimeout(() => {
       setSuccess(false);
       onClose();
-      // Reset form
-      setCodigo('');
-      setDescripcion('');
-      setStock(1);
-      setPrecio(0);
-      setCodigoBarrasInput('');
-      setError(null);
     }, 1200);
   };
 
@@ -135,12 +121,15 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
         <div className="bg-[#006bb0] p-4 sm:p-5 text-white flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-white/15 flex items-center justify-center shrink-0">
-              <PackagePlus className="w-5 h-5 text-white" />
+              <Pencil className="w-5 h-5 text-white" />
             </div>
             <div>
               <h2 className="text-base sm:text-lg font-black tracking-tight">
-                Registrar Producto Nuevo
+                Editar Producto
               </h2>
+              <p className="text-[11px] text-white/90 font-mono font-bold">
+                {item.codigo}
+              </p>
             </div>
           </div>
           <button 
@@ -165,9 +154,22 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
           {success && (
             <div className="p-3 bg-emerald-50 border border-emerald-300 text-emerald-800 rounded-xl flex items-center gap-2 text-xs font-bold animate-in zoom-in-95">
               <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-              <span>Producto registrado correctamente</span>
+              <span>Cambios guardados correctamente</span>
             </div>
           )}
+
+          {/* Código (fijo) */}
+          <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center gap-2.5">
+            <Barcode className="w-4 h-4 text-slate-500 shrink-0" />
+            <div className="flex flex-col min-w-0">
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+                Código del Producto (no editable)
+              </span>
+              <span className="font-mono font-black text-sky-950 text-sm truncate">
+                {item.codigo}
+              </span>
+            </div>
+          </div>
 
           {/* Categoría & Subcategoría */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -198,53 +200,35 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
               </label>
               <input
                 type="text"
-                list="subcat-options-list"
+                list="edit-subcat-options-list"
                 value={subcategoria}
-                onChange={e => setSubcategoria(e.target.value)}
+                onChange={e => setSubcategoria(e.target.value.toUpperCase())}
                 placeholder="Ej: FXF, SKF, Fluidos, MV-10..."
                 className="w-full px-3 py-2 text-xs rounded-xl border border-[#b8ddf5] bg-white focus:ring-2 focus:ring-[#006bb0] focus:border-[#006bb0]"
               />
-              <datalist id="subcat-options-list">
+              <datalist id="edit-subcat-options-list">
                 {currentCategoryMeta.subcats.map(s => <option key={s} value={s} />)}
               </datalist>
             </div>
           </div>
 
-          {/* Código & Proveedor */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="flex flex-col gap-1">
-              <label className="font-bold text-sky-950 uppercase tracking-wider flex items-center gap-1 text-[11px]">
-                <Barcode className="w-3.5 h-3.5 text-[#006bb0]" />
-                Código del Producto / SKU <span className="text-rose-500">*</span>
-              </label>
-              <input
-                type="text"
-                required
-                value={codigo}
-                onChange={e => setCodigo(e.target.value.toUpperCase())}
-                placeholder="Ej: 250022-669, 6205-2RS, 02250100-756..."
-                className="w-full px-3 py-2 text-xs font-mono font-black uppercase text-sky-950 rounded-xl border border-[#b8ddf5] bg-white focus:ring-2 focus:ring-[#006bb0] focus:border-[#006bb0]"
-                autoFocus
-              />
-            </div>
-
-            <div className="flex flex-col gap-1">
-              <label className="font-bold text-sky-950 uppercase tracking-wider flex items-center gap-1 text-[11px]">
-                <Building2 className="w-3.5 h-3.5 text-[#006bb0]" />
-                Proveedor / Fabricante
-              </label>
-              <input
-                type="text"
-                list="suppliers-modal-list"
-                value={proveedor}
-                onChange={e => setProveedor(e.target.value.toUpperCase())}
-                placeholder="Ej: SULLAIR, SKF, DONALDSON, FLEETGUARD..."
-                className="w-full px-3 py-2 text-xs font-semibold text-slate-800 uppercase rounded-xl border border-[#b8ddf5] bg-white focus:ring-2 focus:ring-[#006bb0] focus:border-[#006bb0]"
-              />
-              <datalist id="suppliers-modal-list">
-                {PARAMETRIZED_SUPPLIERS.map(s => <option key={s} value={s} />)}
-              </datalist>
-            </div>
+          {/* Proveedor */}
+          <div className="flex flex-col gap-1">
+            <label className="font-bold text-sky-950 uppercase tracking-wider flex items-center gap-1 text-[11px]">
+              <Building2 className="w-3.5 h-3.5 text-[#006bb0]" />
+              Proveedor / Fabricante
+            </label>
+            <input
+              type="text"
+              list="edit-suppliers-modal-list"
+              value={proveedor}
+              onChange={e => setProveedor(e.target.value.toUpperCase())}
+              placeholder="Ej: SULLAIR, SKF, DONALDSON, FLEETGUARD..."
+              className="w-full px-3 py-2 text-xs font-semibold text-slate-800 uppercase rounded-xl border border-[#b8ddf5] bg-white focus:ring-2 focus:ring-[#006bb0] focus:border-[#006bb0]"
+            />
+            <datalist id="edit-suppliers-modal-list">
+              {PARAMETRIZED_SUPPLIERS.map(s => <option key={s} value={s} />)}
+            </datalist>
           </div>
 
           {/* Descripción */}
@@ -300,7 +284,7 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
             )}
           </div>
 
-          {/* Ubicación, Stock Inicial, Stock Mínimo y Precio */}
+          {/* Ubicación, Stock, Stock Mínimo, Precio */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div className="flex flex-col gap-1">
               <label className="font-bold text-sky-950 uppercase tracking-wider flex items-center gap-1 text-[11px]">
@@ -309,20 +293,20 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
               </label>
               <input
                 type="text"
-                list="ubicacion-chips-list"
+                list="edit-ubicacion-chips-list"
                 value={ubicacion}
                 onChange={e => setUbicacion(e.target.value.toUpperCase())}
                 placeholder="Ej: A, B, C..."
                 className="w-full px-3 py-2 text-xs font-mono font-bold uppercase rounded-xl border border-[#b8ddf5] bg-white focus:ring-2 focus:ring-[#006bb0]"
               />
-              <datalist id="ubicacion-chips-list">
+              <datalist id="edit-ubicacion-chips-list">
                 {COMMON_UBICACIONES.map(u => <option key={u} value={u} />)}
               </datalist>
             </div>
 
             <div className="flex flex-col gap-1">
               <label className="font-bold text-sky-950 uppercase tracking-wider text-[11px]">
-                Stock Inicial
+                Stock
               </label>
               <input
                 type="number"
@@ -362,6 +346,53 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
             </div>
           </div>
 
+          {/* P/Servicio & Factura */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1">
+              <label className="font-bold text-sky-950 uppercase tracking-wider flex items-center gap-1 text-[11px]">
+                <Coins className="w-3.5 h-3.5 text-[#006bb0]" />
+                P/Servicio (cant. reservada)
+              </label>
+              <input
+                type="number"
+                min="0"
+                value={paraServicio}
+                onChange={e => setParaServicio(parseInt(e.target.value) || 0)}
+                placeholder="0"
+                className="w-full px-3 py-2 text-xs font-bold rounded-xl border border-[#b8ddf5] bg-white focus:ring-2 focus:ring-[#006bb0]"
+              />
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <label className="font-bold text-sky-950 uppercase tracking-wider flex items-center gap-1 text-[11px]">
+                <FileText className="w-3.5 h-3.5 text-[#006bb0]" />
+                Factura / Comprobante
+              </label>
+              <input
+                type="text"
+                value={factura}
+                onChange={e => setFactura(e.target.value.toUpperCase())}
+                placeholder="Ej: 0001-00012345"
+                className="w-full px-3 py-2 text-xs font-mono font-bold uppercase rounded-xl border border-[#b8ddf5] bg-white focus:ring-2 focus:ring-[#006bb0]"
+              />
+            </div>
+          </div>
+
+          {/* Notas */}
+          <div className="flex flex-col gap-1">
+            <label className="font-bold text-sky-950 uppercase tracking-wider flex items-center gap-1 text-[11px]">
+              <StickyNote className="w-3.5 h-3.5 text-[#006bb0]" />
+              Notas
+            </label>
+            <textarea
+              value={notas}
+              onChange={e => setNotas(e.target.value)}
+              rows={2}
+              placeholder="Observaciones adicionales sobre este repuesto..."
+              className="w-full px-3 py-2 text-xs rounded-xl border border-[#b8ddf5] bg-white focus:ring-2 focus:ring-[#006bb0] focus:border-[#006bb0] resize-none"
+            />
+          </div>
+
           {/* Dynamic Valor Total Calculation Card */}
           <div className="p-3.5 bg-gradient-to-r from-emerald-50 via-teal-50 to-sky-50 border border-emerald-300 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs">
             <div className="flex items-center gap-3">
@@ -395,33 +426,38 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
           <div className="p-3 bg-purple-50/80 rounded-2xl border border-purple-200 flex items-center gap-3">
             <input
               type="checkbox"
-              id="modalPorEncargoCheck"
+              id="editPorEncargoCheck"
               checked={porEncargo}
               onChange={e => setPorEncargo(e.target.checked)}
               className="w-4 h-4 rounded text-purple-700 focus:ring-purple-500 cursor-pointer"
             />
-            <label htmlFor="modalPorEncargoCheck" className="text-xs font-bold text-purple-950 cursor-pointer">
+            <label htmlFor="editPorEncargoCheck" className="text-xs font-bold text-purple-950 cursor-pointer">
               Artículo a pedido / por encargo (No genera alerta de stock faltante)
             </label>
           </div>
 
           {/* Action Footer */}
-          <div className="pt-3 border-t border-[#c4e1f7] flex items-center justify-end gap-2.5">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2.5 text-xs font-bold text-slate-600 hover:text-slate-900 rounded-xl border border-[#b8ddf5] hover:bg-[#e4f2fb] transition-all cursor-pointer"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              disabled={success}
-              className="px-6 py-2.5 text-xs font-black text-white bg-[#006bb0] hover:bg-[#005590] rounded-xl shadow-xs transition-all active:scale-[0.99] flex items-center gap-2 cursor-pointer disabled:opacity-50"
-            >
-              <PackagePlus className="w-4 h-4" />
-              <span>Guardar y Habilitar Producto</span>
-            </button>
+          <div className="pt-3 border-t border-[#c4e1f7] flex items-center justify-between gap-2.5">
+            <span className="text-[10px] text-slate-400 font-medium">
+              Código de barras y valores de stock/precio se recalculan al guardar.
+            </span>
+            <div className="flex items-center gap-2.5">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2.5 text-xs font-bold text-slate-600 hover:text-slate-900 rounded-xl border border-[#b8ddf5] hover:bg-[#e4f2fb] transition-all cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                disabled={success}
+                className="px-6 py-2.5 text-xs font-black text-white bg-[#006bb0] hover:bg-[#005590] rounded-xl shadow-xs transition-all active:scale-[0.99] flex items-center gap-2 cursor-pointer disabled:opacity-50"
+              >
+                <Pencil className="w-4 h-4" />
+                <span>Guardar Cambios</span>
+              </button>
+            </div>
           </div>
 
         </form>

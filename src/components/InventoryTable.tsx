@@ -8,7 +8,6 @@ import {
   Download, 
   Edit3, 
   Trash2, 
-  Check, 
   X, 
   ArrowUpDown, 
   Package
@@ -16,6 +15,7 @@ import {
 import { useInventory } from '../context/InventoryContext';
 import { ItemCategory, InventoryItem } from '../types';
 import { AddProductModal } from './AddProductModal';
+import { EditProductModal } from './EditProductModal';
 
 export type TableCategory = ItemCategory | 'all';
 
@@ -34,7 +34,6 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({
 }) => {
   const { 
     items, 
-    updateItem, 
     deleteItem, 
     exportCategoryToExcel, 
     currentUser 
@@ -60,12 +59,8 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({
   // Add item modal
   const [isAddingItem, setIsAddingItem] = useState<boolean>(false);
 
-  // Edit item inline
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editPrice, setEditPrice] = useState<number>(0);
-  const [editStock, setEditStock] = useState<number>(0);
-  const [editUbicacion, setEditUbicacion] = useState<string>('');
-  const [editPorEncargo, setEditPorEncargo] = useState<boolean>(false);
+  // Edit item modal
+  const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
 
   const CATEGORY_NAMES: Record<string, string> = {
     all: 'Todo el Inventario',
@@ -255,23 +250,7 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({
 
   const handleStartInlineEdit = (item: InventoryItem) => {
     if (isVentas) return;
-    setEditingId(item.id);
-    setEditPrice(item.precio);
-    setEditStock(item.stock);
-    setEditUbicacion(item.ubicacion);
-    setEditPorEncargo(!!item.porEncargo);
-  };
-
-  const handleSaveInlineEdit = (id: string) => {
-    if (isVentas) return;
-    updateItem(id, {
-      precio: editPrice,
-      stock: editStock,
-      ubicacion: editUbicacion,
-      porEncargo: editPorEncargo,
-      precioTotal: editStock * editPrice
-    });
-    setEditingId(null);
+    setEditingItem(item);
   };
 
   const porEncargoCount = categoryItems.filter(i => i.porEncargo).length;
@@ -555,8 +534,7 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({
             <tbody className="divide-y divide-[#e2effa] bg-white">
               {sortedItems.length > 0 ? (
                 sortedItems.map((item, idx) => {
-                  const isEditing = editingId === item.id;
-                  const isPorEncargo = item.porEncargo === true;
+const isPorEncargo = !!item.porEncargo;
                   const isOutOfStock = !isPorEncargo && item.stock === 0;
                   const isLowStock = !isPorEncargo && item.stock > 0 && item.stock <= (item.stockMinimo || 1);
 
@@ -639,61 +617,32 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({
 
                       {/* Ubicación */}
                       <td className="px-3 py-2 whitespace-nowrap">
-                        {isEditing ? (
-                          <input
-                            type="text"
-                            value={editUbicacion}
-                            onChange={e => setEditUbicacion(e.target.value)}
-                            className="w-16 px-1.5 py-0.5 text-xs rounded border border-[#006bb0] font-bold uppercase bg-white"
-                          />
-                        ) : (
-                          <span className="px-1.5 py-0.5 rounded-md font-mono font-bold text-xs bg-[#e8f4fc] text-sky-950 border border-[#c4e1f7]">
-                            {item.ubicacion || 'A'}
-                          </span>
-                        )}
+                        <span className="px-1.5 py-0.5 rounded-md font-mono font-bold text-xs bg-[#e8f4fc] text-sky-950 border border-[#c4e1f7]">
+                          {item.ubicacion || 'A'}
+                        </span>
                       </td>
 
                       {/* Stock & Disponibilidad */}
                       <td className="px-3 py-2 text-right whitespace-nowrap">
-                        {isEditing ? (
-                          <div className="flex flex-col items-end gap-1">
-                            <input
-                              type="number"
-                              value={editStock}
-                              onChange={e => setEditStock(parseInt(e.target.value) || 0)}
-                              className="w-16 px-1.5 py-0.5 text-right text-xs rounded border border-[#006bb0] font-bold bg-white"
-                            />
-                            <label className="flex items-center gap-1 text-[10px] font-bold text-purple-900 cursor-pointer">
-                              <input
-                                type="checkbox"
-                                checked={editPorEncargo}
-                                onChange={e => setEditPorEncargo(e.target.checked)}
-                                className="rounded text-purple-700"
-                              />
-                              Por encargo
-                            </label>
-                          </div>
-                        ) : (
-                          <div className="flex items-center justify-end gap-1">
-                            {isPorEncargo ? (
-                              <span className="px-2 py-0.5 rounded-full text-xs font-bold font-mono bg-purple-100 text-purple-900 border border-purple-200">
-                                {item.stock > 0 ? `${item.stock} u.` : 'A pedido'}
-                              </span>
-                            ) : isOutOfStock ? (
-                              <span className="px-2 py-0.5 rounded-full text-xs font-black font-mono bg-rose-100 text-rose-800 border border-rose-200">
-                                0 u.
-                              </span>
-                            ) : isLowStock ? (
-                              <span className="px-2 py-0.5 rounded-full text-xs font-black font-mono bg-amber-100 text-amber-800 border border-amber-200">
-                                {item.stock} u. Bajo
-                              </span>
-                            ) : (
-                              <span className="px-2 py-0.5 rounded-full text-xs font-black font-mono bg-emerald-100 text-emerald-800 border border-emerald-200">
-                                {item.stock} u.
-                              </span>
-                            )}
-                          </div>
-                        )}
+                        <div className="flex items-center justify-end gap-1">
+                          {isPorEncargo ? (
+                            <span className="px-2 py-0.5 rounded-full text-xs font-bold font-mono bg-purple-100 text-purple-900 border border-purple-200">
+                              {item.stock > 0 ? `${item.stock} u.` : 'A pedido'}
+                            </span>
+                          ) : isOutOfStock ? (
+                            <span className="px-2 py-0.5 rounded-full text-xs font-black font-mono bg-rose-100 text-rose-800 border border-rose-200">
+                              0 u.
+                            </span>
+                          ) : isLowStock ? (
+                            <span className="px-2 py-0.5 rounded-full text-xs font-black font-mono bg-amber-100 text-amber-800 border border-amber-200">
+                              {item.stock} u. Bajo
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded-full text-xs font-black font-mono bg-emerald-100 text-emerald-800 border border-emerald-200">
+                              {item.stock} u.
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       {/* P/Servicio */}
@@ -706,19 +655,9 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({
                       {/* Precio Unitario - Only for Administración */}
                       {showPrices && (
                         <td className="px-3 py-2 text-right font-mono whitespace-nowrap text-slate-800 font-semibold">
-                          {isEditing ? (
-                            <input
-                              type="number"
-                              step="0.1"
-                              value={editPrice}
-                              onChange={e => setEditPrice(parseFloat(e.target.value) || 0)}
-                              className="w-20 px-1.5 py-0.5 text-right text-xs rounded border border-[#006bb0] font-bold bg-white"
-                            />
-                          ) : (
-                            item.precio > 0 
-                              ? `$${item.precio.toLocaleString('es-AR', { minimumFractionDigits: 2 })}` 
-                              : <span className="text-slate-400">$0,00</span>
-                          )}
+                          {item.precio > 0 
+                            ? `$${item.precio.toLocaleString('es-AR', { minimumFractionDigits: 2 })}` 
+                            : <span className="text-slate-400">$0,00</span>}
                         </td>
                       )}
 
@@ -731,85 +670,66 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({
 
                       {/* Actions */}
                       <td className="px-3 py-2 text-center whitespace-nowrap">
-                        {isEditing ? (
-                          <div className="flex items-center justify-center gap-1">
+                        <div className="flex items-center justify-center gap-1">
+                          {/* Fast Scanner / Salida trigger (Hidden in Ventas) */}
+                          {!isVentas && (
                             <button
-                              onClick={() => handleSaveInlineEdit(item.id)}
-                              className="p-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md transition-colors cursor-pointer"
-                              title="Guardar cambios"
-                            >
-                              <Check className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              onClick={() => setEditingId(null)}
-                              className="p-1 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-md transition-colors cursor-pointer"
-                              title="Cancelar"
-                            >
-                              <X className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="flex items-center justify-center gap-1">
-                            {/* Fast Scanner / Salida trigger (Hidden in Ventas) */}
-                            {!isVentas && (
-                              <button
-                                onClick={() => onOpenScanner(item.codigo)}
-                                className={`p-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer ${
-                                  item.stock > 0
-                                    ? 'bg-[#006bb0] hover:bg-[#005590] text-white shadow-xs'
-                                    : 'bg-white border border-[#c4e1f7] text-slate-500 hover:bg-[#e4f2fb]'
-                                }`}
-                                title="Despachar este producto"
-                              >
-                                <Scan className="w-3 h-3" />
-                                <span className="hidden sm:inline">Salida</span>
-                              </button>
-                            )}
-
-                            {/* Barcode scan and link button */}
-                            <button
-                              onClick={() => onOpenBarcode(item)}
-                              className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
-                                item.codigoBarras && item.codigoBarras.trim() !== ''
-                                  ? 'text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 shadow-2xs'
-                                  : 'text-slate-500 hover:text-[#006bb0] hover:bg-[#e2f1fc]'
+                              onClick={() => onOpenScanner(item.codigo)}
+                              className={`p-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer ${
+                                item.stock > 0
+                                  ? 'bg-[#006bb0] hover:bg-[#005590] text-white shadow-xs'
+                                  : 'bg-white border border-[#c4e1f7] text-slate-500 hover:bg-[#e4f2fb]'
                               }`}
-                              title={
-                                item.codigoBarras && item.codigoBarras.trim() !== ''
-                                  ? `Código de barras vinculado: ${item.codigoBarras} (clic para ver o cambiar)`
-                                  : 'Vincular código de barras (lector USB o manual)'
-                              }
+                              title="Despachar este producto"
                             >
-                              <Barcode className="w-3.5 h-3.5" />
+                              <Scan className="w-3 h-3" />
+                              <span className="hidden sm:inline">Salida</span>
                             </button>
+                          )}
 
-                            {/* Edit (Restricted: Pañol & Administración only) */}
-                            {!isVentas && (
-                              <button
-                                onClick={() => handleStartInlineEdit(item)}
-                                className="p-1.5 text-slate-500 hover:text-[#006bb0] hover:bg-[#e2f1fc] rounded-lg transition-colors cursor-pointer"
-                                title="Editar precio/stock/tipo"
-                              >
-                                <Edit3 className="w-3.5 h-3.5" />
-                              </button>
-                            )}
+                          {/* Barcode scan and link button */}
+                          <button
+                            onClick={() => onOpenBarcode(item)}
+                            className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                              item.codigoBarras && item.codigoBarras.trim() !== ''
+                                ? 'text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 shadow-2xs'
+                                : 'text-slate-500 hover:text-[#006bb0] hover:bg-[#e2f1fc]'
+                            }`}
+                            title={
+                              item.codigoBarras && item.codigoBarras.trim() !== ''
+                                ? `Código de barras vinculado: ${item.codigoBarras} (clic para ver o cambiar)`
+                                : 'Vincular código de barras (lector USB o manual)'
+                            }
+                          >
+                            <Barcode className="w-3.5 h-3.5" />
+                          </button>
 
-                            {/* Delete (Administración only) */}
-                            {currentUser?.rol === 'gerencia' && (
-                              <button
-                                onClick={() => {
-                                  if (window.confirm(`¿Eliminar ${item.codigo} del inventario?`)) {
-                                    deleteItem(item.id);
-                                  }
-                                }}
-                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                                title="Eliminar registro"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            )}
-                          </div>
-                        )}
+                          {/* Edit (Restricted: Pañol & Administración only) */}
+                          {!isVentas && (
+                            <button
+                              onClick={() => handleStartInlineEdit(item)}
+                              className="p-1.5 text-slate-500 hover:text-[#006bb0] hover:bg-[#e2f1fc] rounded-lg transition-colors cursor-pointer"
+                              title="Editar todo el registro del producto"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+
+                          {/* Delete (Administración only) */}
+                          {currentUser?.rol === 'gerencia' && (
+                            <button
+                              onClick={() => {
+                                if (window.confirm(`¿Eliminar ${item.codigo} del inventario?`)) {
+                                  deleteItem(item.id);
+                                }
+                              }}
+                              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                              title="Eliminar registro"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
                       </td>
 
                     </tr>
@@ -847,6 +767,13 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({
         isOpen={isAddingItem}
         onClose={() => setIsAddingItem(false)}
         defaultCategory={category === 'all' ? undefined : category}
+      />
+
+      {/* Modal: Edit Product */}
+      <EditProductModal
+        isOpen={!!editingItem}
+        item={editingItem}
+        onClose={() => setEditingItem(null)}
       />
 
     </div>
