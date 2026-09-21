@@ -82,32 +82,40 @@ export function renderLabelToCanvas(
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, W, H);
 
-  // Numeral debajo, en grande
-  const codeFontPx = Math.max(28, Math.round(H * 0.13));
+  // Numeral debajo del código, en grande
+  const numFont = Math.max(26, Math.round(H * 0.12));
   ctx.fillStyle = '#000000';
-  ctx.font = `bold ${codeFontPx}px monospace`;
+  ctx.font = `bold ${numFont}px monospace`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'alphabetic';
-  const codeY = H - margin;
-  ctx.fillText(code, W / 2, codeY);
+  const numBaseline = H - Math.round(H * 0.07);
+  ctx.fillText(code, W / 2, numBaseline);
 
-  // Código de barras ocupando el resto de la altura
+  // Código de barras horizontal, ancho, centrado y con aire por los bordes
   const barcodeCanvas = document.createElement('canvas');
   JsBarcode(barcodeCanvas, code, {
     format: 'CODE128',
     width: 2,
-    height: Math.round(H * 0.8),
+    height: Math.max(40, Math.round(H * 0.2)),
     displayValue: false,
+    margin: 8,
     lineColor: '#000000',
     background: '#ffffff',
   });
 
-  const availW = W - margin * 2;
-  const availH = codeY - margin - Math.round(codeFontPx * 0.4) - (H - codeY);
+  const availW = Math.round(W * 0.9); // 90% del ancho: deja aire a los costados
+  const topY = Math.round(H * 0.07);
+  const botY = numBaseline - Math.round(numFont * 0.5);
+  const availH = botY - topY;
+
   const barcodeW = Math.min(barcodeCanvas.width, availW);
-  const barcodeH = Math.min((barcodeCanvas.height * barcodeW) / barcodeCanvas.width, availH);
+  let barcodeH = (barcodeCanvas.height * barcodeW) / barcodeCanvas.width;
+  // Nunca más alto que ancho: para códigos cortos el origen puede quedar
+  // cuadrado/alto, y eso imprimiría un código en vertical.
+  barcodeH = Math.min(barcodeH, barcodeW);
+  barcodeH = Math.min(barcodeH, availH);
   const barcodeX = (W - barcodeW) / 2;
-  const barcodeY = margin + (availH - barcodeH) / 2;
+  const barcodeY = topY + Math.max(0, (availH - barcodeH) / 2);
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(barcodeCanvas, barcodeX, barcodeY, barcodeW, barcodeH);
