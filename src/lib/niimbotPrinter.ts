@@ -88,7 +88,7 @@ export function renderLabelToCanvas(
   ctx.font = `bold ${numFont}px monospace`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'alphabetic';
-  const numBaseline = Math.round(H * 0.854);
+  const numBaseline = Math.round(H * 0.848);
   ctx.fillText(code, Math.round(W * 0.47), numBaseline);
 
   // Código de barras horizontal: el ANCHO manda, el alto queda limitado
@@ -96,7 +96,7 @@ export function renderLabelToCanvas(
   JsBarcode(barcodeCanvas, code, {
     format: 'CODE128',
     width: 2,
-    height: Math.max(40, Math.round(H * 0.25)),
+    height: Math.max(36, Math.round(H * 0.2)),
     displayValue: false,
     margin: 8,
     lineColor: '#000000',
