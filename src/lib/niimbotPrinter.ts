@@ -82,13 +82,13 @@ export function renderLabelToCanvas(
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, W, H);
 
-  // Numeral debajo del código, en grande
-  const numFont = Math.max(26, Math.round(H * 0.12));
+  // Numeral debajo del código
+  const numFont = Math.max(26, Math.round(H * 0.1));
   ctx.fillStyle = '#000000';
   ctx.font = `bold ${numFont}px monospace`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'alphabetic';
-  const numBaseline = H - Math.round(H * 0.07);
+  const numBaseline = H - Math.round(H * 0.08);
   ctx.fillText(code, W / 2, numBaseline);
 
   // Código de barras horizontal, ancho, centrado y con aire por los bordes
@@ -96,16 +96,16 @@ export function renderLabelToCanvas(
   JsBarcode(barcodeCanvas, code, {
     format: 'CODE128',
     width: 2,
-    height: Math.max(40, Math.round(H * 0.2)),
+    height: Math.max(40, Math.round(H * 0.3)),
     displayValue: false,
     margin: 8,
     lineColor: '#000000',
     background: '#ffffff',
   });
 
-  const availW = Math.round(W * 0.9); // 90% del ancho: deja aire a los costados
-  const topY = Math.round(H * 0.07);
-  const botY = numBaseline - Math.round(numFont * 0.5);
+  const availW = Math.round(W * 0.94); // casi todo el ancho, aire mínimo
+  const topY = Math.round(H * 0.06);
+  const botY = numBaseline - Math.round(numFont * 0.45);
   const availH = botY - topY;
 
   const barcodeW = Math.min(barcodeCanvas.width, availW);
