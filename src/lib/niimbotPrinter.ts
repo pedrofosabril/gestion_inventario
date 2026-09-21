@@ -82,14 +82,14 @@ export function renderLabelToCanvas(
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, W, H);
 
-  // Numeral debajo del código, ubicado más arriba
+  // Numeral debajo del código: apenas más arriba y levemente a la izquierda
   const numFont = Math.max(26, Math.round(H * 0.1));
   ctx.fillStyle = '#000000';
   ctx.font = `bold ${numFont}px monospace`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'alphabetic';
-  const numBaseline = Math.round(H * 0.86);
-  ctx.fillText(code, W / 2, numBaseline);
+  const numBaseline = Math.round(H * 0.854);
+  ctx.fillText(code, Math.round(W * 0.47), numBaseline);
 
   // Código de barras horizontal: el ANCHO manda, el alto queda limitado
   const barcodeCanvas = document.createElement('canvas');
@@ -105,7 +105,7 @@ export function renderLabelToCanvas(
 
   const availW = Math.round(W * 0.98); // casi todo el ancho
   const topY = Math.round(H * 0.04);
-  const capH = Math.round(H * 0.42); // tope del alto: nunca domina el ancho
+  const capH = Math.round(H * 0.46); // tope del alto: nunca domina el ancho
   const availH = numBaseline - topY;
 
   // Escala uniforme: se limita por ancho (preferido) o por el tope de alto.
@@ -115,8 +115,13 @@ export function renderLabelToCanvas(
   );
   const barcodeW = barcodeCanvas.width * scale;
   const barcodeH = barcodeCanvas.height * scale;
-  // Casi pegado a la izquierda pero corrido un 30% hacia el centro.
-  const barcodeX = margin + (W - barcodeW - margin * 2) * 0.3;
+  // Borde izquierdo fijo en la posición actual (30% hacia el centro):
+  // el ancho crece hacia la derecha sin desplazar el código.
+  const refW = Math.min(
+    availW,
+    barcodeCanvas.width * (Math.round(H * 0.42) / barcodeCanvas.height)
+  );
+  const barcodeX = margin + (W - refW - margin * 2) * 0.3;
   const barcodeY = topY + Math.max(0, (availH - barcodeH) / 2);
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
