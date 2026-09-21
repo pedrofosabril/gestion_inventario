@@ -105,7 +105,7 @@ export function renderLabelToCanvas(
 
   const availW = Math.round(W * 0.98); // casi todo el ancho
   const topY = Math.round(H * 0.04);
-  const capH = Math.round(H * 0.38); // tope del alto: nunca domina el ancho
+  const capH = Math.round(H * 0.42); // tope del alto: nunca domina el ancho
   const availH = numBaseline - topY;
 
   // Escala uniforme: se limita por ancho (preferido) o por el tope de alto.
@@ -115,8 +115,8 @@ export function renderLabelToCanvas(
   );
   const barcodeW = barcodeCanvas.width * scale;
   const barcodeH = barcodeCanvas.height * scale;
-  // Borde izquierdo fijo al margen: el ancho crece hacia la derecha.
-  const barcodeX = margin;
+  // Casi pegado a la izquierda pero corrido un 30% hacia el centro.
+  const barcodeX = margin + (W - barcodeW - margin * 2) * 0.3;
   const barcodeY = topY + Math.max(0, (availH - barcodeH) / 2);
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
