@@ -42,13 +42,17 @@ export class NiimbotSerialClient {
     if (!navigator.serial) throw new Error('Web Serial no está disponible en este navegador. Usá Chrome o Edge.');
     if (this.port) return;
 
-    let port: SerialPort;
+    let port: SerialPort | undefined;
     try {
+      // First try the known NIIMBOT VID/PID so the dialog is pre-filtered.
       port = await navigator.serial.requestPort({ filters: [{ usbVendorId: NIIMBOT_USB_VID, usbProductId: NIIMBOT_USB_PID }] });
     } catch (err: any) {
-      if (err?.name === 'NotFoundError') throw new Error('Selección cancelada.');
-      throw err;
+      if (err?.name !== 'NotFoundError') throw err;
+      // No match by VID/PID: the device may report different IDs. Fall back to
+      // an unfiltered picker so the user can select the printer manually.
+      port = await navigator.serial.requestPort();
     }
+    if (!port) throw new Error('Selección cancelada.');
 
     await port.open({ baudRate: SERIAL_BAUD });
     this.port = port;
