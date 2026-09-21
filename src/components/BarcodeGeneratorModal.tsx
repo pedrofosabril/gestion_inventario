@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { InventoryItem } from '../types';
 import { useInventory } from '../context/InventoryContext';
+import { isNiimbotSupported, printToNiimbot } from '../lib/niimbotPrinter';
 
 interface BarcodeGeneratorModalProps {
   isOpen: boolean;
@@ -36,6 +37,9 @@ export const BarcodeGeneratorModal: React.FC<BarcodeGeneratorModalProps> = ({
   const [saveSuccessMessage, setSaveSuccessMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [conflictItem, setConflictItem] = useState<InventoryItem | null>(null);
+  const [niimbotPrinting, setNiimbotPrinting] = useState(false);
+  const [niimbotProgress, setNiimbotProgress] = useState<string | null>(null);
+  const [copiesCount, setCopiesCount] = useState(1);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -244,6 +248,51 @@ export const BarcodeGeneratorModal: React.FC<BarcodeGeneratorModalProps> = ({
 
   const handlePrint = () => {
     handleDownloadBarcodePDF();
+  };
+
+  const handlePrintToNiimbot = async () => {
+    if (!currentItem || !currentItem.codigoBarras?.trim()) return;
+    if (niimbotPrinting) return;
+
+    setNiimbotPrinting(true);
+    setNiimbotProgress(null);
+    setErrorMessage(null);
+    setSaveSuccessMessage(null);
+
+    try {
+      await printToNiimbot(
+        {
+          codigo: currentItem.codigo,
+          proveedor: currentItem.proveedor,
+          descripcion: currentItem.descripcion,
+          ubicacion: currentItem.ubicacion,
+          codigoBarras: currentItem.codigoBarras,
+        },
+        {
+          copies: Math.max(1, Math.min(50, copiesCount)),
+          onProgress: (status) => setNiimbotProgress(status),
+        }
+      );
+      playSuccessSound();
+      setSaveSuccessMessage(
+        `Etiqueta impresa en la NIIMBOT (${copiesCount} copia${copiesCount > 1 ? 's' : ''}).`
+      );
+      setTimeout(() => setSaveSuccessMessage(null), 4000);
+    } catch (err) {
+      let msg = 'Ocurrió un error al imprimir en la NIIMBOT.';
+      if (err instanceof Error) {
+        if (msg.includes('canceled') || err.name === 'NotFoundError') {
+          msg = 'Conexión cancelada o impresora no encontrada.';
+        } else {
+          msg = err.message;
+        }
+      }
+      console.error('Niimbot print failed:', msg);
+      setErrorMessage(msg);
+    } finally {
+      setNiimbotPrinting(false);
+      setNiimbotProgress(null);
+    }
   };
 
   return (
@@ -523,6 +572,61 @@ export const BarcodeGeneratorModal: React.FC<BarcodeGeneratorModalProps> = ({
                 <FileDown className="w-4 h-4" />
                 <span>Descargar Etiqueta en PDF</span>
               </button>
+
+              <div className="mt-3 w-full flex flex-col items-center gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+                    Copias:
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setCopiesCount(c => Math.max(1, c - 1))}
+                    disabled={niimbotPrinting}
+                    className="w-7 h-7 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700 font-black text-sm flex items-center justify-center cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    −
+                  </button>
+                  <span className="w-8 text-center text-sm font-black text-slate-800">
+                    {copiesCount}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setCopiesCount(c => Math.min(50, c + 1))}
+                    disabled={niimbotPrinting}
+                    className="w-7 h-7 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700 font-black text-sm flex items-center justify-center cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    +
+                  </button>
+                </div>
+
+                {niimbotPrinting ? (
+                  <div className="px-4 py-2 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-800 font-bold text-xs flex items-center gap-2">
+                    <span className="w-3 h-3 rounded-full border-2 border-emerald-400 border-t-transparent animate-spin" />
+                    <span>{niimbotProgress || 'Imprimiendo…'}</span>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handlePrintToNiimbot}
+                    disabled={!isNiimbotSupported()}
+                    className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs transition-colors flex items-center gap-2 cursor-pointer shadow-xs disabled:bg-slate-400 disabled:cursor-not-allowed"
+                    title={
+                      isNiimbotSupported()
+                        ? 'Imprimir directo en la NIIMBOT B1 por Bluetooth'
+                        : 'Web Bluetooth no disponible: usá Chrome o Edge desde HTTPS o localhost'
+                    }
+                  >
+                    <Printer className="w-4 h-4" />
+                    <span>Imprimir en NIIMBOT</span>
+                  </button>
+                )}
+
+                {!isNiimbotSupported() && (
+                  <span className="text-[10px] text-slate-400 font-semibold">
+                    Requiere Chrome o Edge con HTTPS / localhost.
+                  </span>
+                )}
+              </div>
             </div>
           )}
 
