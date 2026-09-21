@@ -154,14 +154,14 @@ export class NiimbotSerialClient {
     url: string,
     opts: {
       copies?: number;
+      size?: NiimbotSize;
       onProgress?: (s: string) => void;
     } = {}
   ): Promise<void> {
     if (!this.port) throw new Error('Impresora USB no conectada.');
     const copies = Math.max(1, opts.copies | 0);
     const onProgress = opts.onProgress || (() => {});
-
-    const size = NIIMBOT_T50X30_B1;
+    const size = opts.size || NIIMBOT_T50X30_B1;
     const W = size.w_px, H = size.h_px;
 
     await this.b1Handshake();
@@ -270,16 +270,18 @@ export async function printToNiimbotUsb(
   },
   options: {
     copies?: number;
+    size?: NiimbotSize;
     onProgress?: (status: string) => void;
   } = {}
 ): Promise<void> {
-  const canvas = renderLabelToCanvas(item);
+  const size = options.size || NIIMBOT_T50X30_B1;
+  const canvas = renderLabelToCanvas(item, size);
   const url = canvas.toDataURL('image/png');
 
   const client = new NiimbotSerialClient(options.onProgress);
   await client.connect();
   try {
-    await client.printImage(url, { copies: options.copies || 1, onProgress: options.onProgress });
+    await client.printImage(url, { copies: options.copies || 1, size, onProgress: options.onProgress });
   } finally {
     await client.disconnect();
   }

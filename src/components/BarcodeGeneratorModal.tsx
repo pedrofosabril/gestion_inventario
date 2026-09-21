@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import { InventoryItem } from '../types';
 import { useInventory } from '../context/InventoryContext';
-import { isNiimbotSupported, printToNiimbot } from '../lib/niimbotPrinter';
+import { isNiimbotSupported, printToNiimbot, NIIMBOT_B1_SIZES } from '../lib/niimbotPrinter';
 import { isUsbNiimbotSupported, printToNiimbotUsb } from '../lib/niimbotSerial';
 
 interface BarcodeGeneratorModalProps {
@@ -41,6 +41,7 @@ export const BarcodeGeneratorModal: React.FC<BarcodeGeneratorModalProps> = ({
   const [niimbotPrinting, setNiimbotPrinting] = useState(false);
   const [niimbotProgress, setNiimbotProgress] = useState<string | null>(null);
   const [copiesCount, setCopiesCount] = useState(1);
+  const [niimbotSize, setNiimbotSize] = useState(NIIMBOT_B1_SIZES[0]);
   const niimbotUsbAvailable = isUsbNiimbotSupported();
   const niimbotBtAvailable = isNiimbotSupported();
   const [niimbotViaUsb, setNiimbotViaUsb] = useState<boolean>(() => isUsbNiimbotSupported());
@@ -284,9 +285,9 @@ export const BarcodeGeneratorModal: React.FC<BarcodeGeneratorModalProps> = ({
 
     try {
       if (niimbotViaUsb) {
-        await printToNiimbotUsb(itemPayload, { copies, onProgress });
+        await printToNiimbotUsb(itemPayload, { copies, size: niimbotSize, onProgress });
       } else {
-        await printToNiimbot(itemPayload, { copies, onProgress });
+        await printToNiimbot(itemPayload, { copies, size: niimbotSize, onProgress });
       }
       playSuccessSound();
       setSaveSuccessMessage(
@@ -612,6 +613,28 @@ export const BarcodeGeneratorModal: React.FC<BarcodeGeneratorModalProps> = ({
                   >
                     +
                   </button>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+                    Etiqueta:
+                  </span>
+                  <select
+                    value={niimbotSize.label}
+                    onChange={(e) => {
+                      const s = NIIMBOT_B1_SIZES.find((x) => x.label === e.target.value);
+                      if (s) setNiimbotSize(s);
+                    }}
+                    disabled={niimbotPrinting}
+                    className="px-2 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-bold text-slate-700 cursor-pointer focus:outline-none focus:ring-2 focus:ring-slate-400 disabled:opacity-40 disabled:cursor-not-allowed"
+                    title="Tamaño del rollo de etiquetas cargado en la impresora"
+                  >
+                    {NIIMBOT_B1_SIZES.map((s) => (
+                      <option key={s.label} value={s.label}>
+                        {s.label}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 {niimbotPrinting ? (

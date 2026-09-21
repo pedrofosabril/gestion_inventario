@@ -25,6 +25,36 @@ export const NIIMBOT_T50X30_B1: NiimbotSize = {
   dpi: 203,
 };
 
+export const NIIMBOT_T50X50_B1: NiimbotSize = {
+  label: '50 × 50 mm (B1)',
+  code: 'T50*50',
+  w_mm: 50,
+  h_mm: 50,
+  w_px: 384,
+  h_px: 400,
+  margin: 8,
+  offset_y_px: 4,
+  dpi: 203,
+};
+
+export const NIIMBOT_T50X20_B1: NiimbotSize = {
+  label: '50 × 20 mm (B1)',
+  code: 'T50*20',
+  w_mm: 50,
+  h_mm: 20,
+  w_px: 384,
+  h_px: 160,
+  margin: 8,
+  offset_y_px: 4,
+  dpi: 203,
+};
+
+export const NIIMBOT_B1_SIZES: NiimbotSize[] = [
+  NIIMBOT_T50X50_B1,
+  NIIMBOT_T50X30_B1,
+  NIIMBOT_T50X20_B1,
+];
+
 export const isNiimbotSupported = (): boolean => !!window.Niimbot?.isSupported();
 
 function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number, maxLines: number): string[] {
@@ -144,6 +174,7 @@ export async function printToNiimbot(
   },
   options: {
     copies?: number;
+    size?: NiimbotSize;
     onProgress?: (status: string) => void;
   } = {}
 ): Promise<void> {
@@ -155,12 +186,13 @@ export async function printToNiimbot(
     throw new Error('Tu navegador no tiene Web Bluetooth. Usá Chrome o Edge desde HTTPS (o localhost).');
   }
 
-  const canvas = renderLabelToCanvas(item);
+  const size = options.size || NIIMBOT_T50X30_B1;
+  const canvas = renderLabelToCanvas(item, size);
   const url = canvas.toDataURL('image/png');
 
   await niimbot.printImage(url, {
     model: NIIMBOT_B1_MODEL,
-    size: NIIMBOT_T50X30_B1,
+    size,
     copies: options.copies || 1,
     onProgress: options.onProgress,
   });
