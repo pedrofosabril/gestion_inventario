@@ -115,8 +115,8 @@ export function renderLabelToCanvas(
   );
   const barcodeW = barcodeCanvas.width * scale;
   const barcodeH = barcodeCanvas.height * scale;
-  // Borde derecho fijo al margen: el ancho crece hacia la izquierda.
-  const barcodeX = W - margin - barcodeW;
+  // Borde izquierdo fijo al margen: el ancho crece hacia la derecha.
+  const barcodeX = margin;
   const barcodeY = topY + Math.max(0, (availH - barcodeH) / 2);
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
