@@ -82,14 +82,19 @@ export function renderLabelToCanvas(
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, W, H);
 
-  // Numeral debajo del código: apenas más arriba y levemente a la izquierda
-  const numFont = Math.max(26, Math.round(H * 0.1));
+  // Numeral debajo del código: apenas a la izquierda del centro
+  const numFontBase = Math.max(24, Math.round(H * 0.093));
   ctx.fillStyle = '#000000';
-  ctx.font = `bold ${numFont}px monospace`;
+  ctx.font = `bold ${numFontBase}px monospace`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'alphabetic';
   const numBaseline = Math.round(H * 0.848);
-  ctx.fillText(code, Math.round(W * 0.47), numBaseline);
+  // Si el código es largo y no entra, encoger la fuente para que no se corte.
+  const numMax = W - Math.round(W * 0.1);
+  const mw = ctx.measureText(code).width;
+  const numFont = mw > numMax ? Math.max(18, Math.round((numFontBase * numMax) / mw)) : numFontBase;
+  ctx.font = `bold ${numFont}px monospace`;
+  ctx.fillText(code, Math.round(W * 0.46), numBaseline);
 
   // Código de barras horizontal: el ANCHO manda, el alto queda limitado
   const barcodeCanvas = document.createElement('canvas');
@@ -103,9 +108,9 @@ export function renderLabelToCanvas(
     background: '#ffffff',
   });
 
-  const availW = Math.round(W * 0.98); // casi todo el ancho
+  const availW = Math.round(W * 0.96); // casi todo el ancho
   const topY = Math.round(H * 0.04);
-  const capH = Math.round(H * 0.46); // tope del alto: nunca domina el ancho
+  const capH = Math.round(H * 0.42); // tope del alto: nunca domina el ancho
   const availH = numBaseline - topY;
 
   // Escala uniforme: se limita por ancho (preferido) o por el tope de alto.
@@ -115,13 +120,13 @@ export function renderLabelToCanvas(
   );
   const barcodeW = barcodeCanvas.width * scale;
   const barcodeH = barcodeCanvas.height * scale;
-  // Borde izquierdo fijo en la posición actual (30% hacia el centro):
-  // el ancho crece hacia la derecha sin desplazar el código.
+  // Borde izquierdo fijo en la posición actual: crece hacia la derecha sin
+  // desplazar el código ni pasarse del borde para códigos largos.
   const refW = Math.min(
     availW,
     barcodeCanvas.width * (Math.round(H * 0.42) / barcodeCanvas.height)
   );
-  const barcodeX = margin + (W - refW - margin * 2) * 0.3;
+  const barcodeX = margin + (W - refW - margin * 2) * 0.26;
   const barcodeY = topY + Math.max(0, (availH - barcodeH) / 2);
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
