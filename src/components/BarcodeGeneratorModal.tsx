@@ -19,6 +19,7 @@ import {
 import { InventoryItem } from '../types';
 import { useInventory } from '../context/InventoryContext';
 import { isNiimbotSupported, printToNiimbot } from '../lib/niimbotPrinter';
+import { isUsbNiimbotSupported, printToNiimbotUsb } from '../lib/niimbotSerial';
 
 interface BarcodeGeneratorModalProps {
   isOpen: boolean;
@@ -40,6 +41,9 @@ export const BarcodeGeneratorModal: React.FC<BarcodeGeneratorModalProps> = ({
   const [niimbotPrinting, setNiimbotPrinting] = useState(false);
   const [niimbotProgress, setNiimbotProgress] = useState<string | null>(null);
   const [copiesCount, setCopiesCount] = useState(1);
+  const niimbotUsbAvailable = isUsbNiimbotSupported();
+  const niimbotBtAvailable = isNiimbotSupported();
+  const [niimbotViaUsb, setNiimbotViaUsb] = useState<boolean>(() => isUsbNiimbotSupported());
 
   const inputRef = useRef<HTMLInputElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -254,40 +258,51 @@ export const BarcodeGeneratorModal: React.FC<BarcodeGeneratorModalProps> = ({
     if (!currentItem || !currentItem.codigoBarras?.trim()) return;
     if (niimbotPrinting) return;
 
+    if (niimbotViaUsb && !niimbotUsbAvailable) {
+      setErrorMessage('Web Serial no está disponible en este navegador. Usá Chrome o Edge.');
+      return;
+    }
+    if (!niimbotViaUsb && !niimbotBtAvailable) {
+      setErrorMessage('Web Bluetooth no está disponible en este navegador. Usá Chrome o Edge.');
+      return;
+    }
+
     setNiimbotPrinting(true);
     setNiimbotProgress(null);
     setErrorMessage(null);
     setSaveSuccessMessage(null);
 
+    const itemPayload = {
+      codigo: currentItem.codigo,
+      proveedor: currentItem.proveedor,
+      descripcion: currentItem.descripcion,
+      ubicacion: currentItem.ubicacion,
+      codigoBarras: currentItem.codigoBarras,
+    };
+    const copies = Math.max(1, Math.min(50, copiesCount));
+    const onProgress = (status: string) => setNiimbotProgress(status);
+
     try {
-      await printToNiimbot(
-        {
-          codigo: currentItem.codigo,
-          proveedor: currentItem.proveedor,
-          descripcion: currentItem.descripcion,
-          ubicacion: currentItem.ubicacion,
-          codigoBarras: currentItem.codigoBarras,
-        },
-        {
-          copies: Math.max(1, Math.min(50, copiesCount)),
-          onProgress: (status) => setNiimbotProgress(status),
-        }
-      );
+      if (niimbotViaUsb) {
+        await printToNiimbotUsb(itemPayload, { copies, onProgress });
+      } else {
+        await printToNiimbot(itemPayload, { copies, onProgress });
+      }
       playSuccessSound();
       setSaveSuccessMessage(
-        `Etiqueta impresa en la NIIMBOT (${copiesCount} copia${copiesCount > 1 ? 's' : ''}).`
+        `Etiqueta impresa en la NIIMBOT por ${niimbotViaUsb ? 'USB' : 'Bluetooth'} (${copies} copia${copies > 1 ? 's' : ''}).`
       );
       setTimeout(() => setSaveSuccessMessage(null), 4000);
-    } catch (err) {
-      let msg = 'Ocurrió un error al imprimir en la NIIMBOT.';
-      if (err instanceof Error) {
-        if (msg.includes('canceled') || err.name === 'NotFoundError') {
-          msg = 'Conexión cancelada o impresora no encontrada.';
-        } else {
-          msg = err.message;
-        }
-      }
-      console.error('Niimbot print failed:', msg);
+    } catch (err: any) {
+      const msgMap: Record<string, string> = {
+        NotFoundError: 'Selección cancelada o impresora no encontrada. Volvé a intentar.',
+        NetworkError: 'No se pudo conectar con la impresora. Revisá el cable/puerto y intentá de nuevo.',
+        'NotAllowedError': 'Permiso denegado para el puerto USB.',
+      };
+      let msg = msgMap[err?.name] || (err as Error)?.message || 'Ocurrió un error al imprimir en la NIIMBOT.';
+      // The reference driver rejects with a descriptive message on its own.
+      if (msg.includes('Web Bluetooth') && niimbotViaUsb) msg = 'No se pudo conectar por USB. Revisá el cable y probá de nuevo.';
+      console.error('Niimbot print failed:', err);
       setErrorMessage(msg);
     } finally {
       setNiimbotPrinting(false);
@@ -605,23 +620,54 @@ export const BarcodeGeneratorModal: React.FC<BarcodeGeneratorModalProps> = ({
                     <span>{niimbotProgress || 'Imprimiendo…'}</span>
                   </div>
                 ) : (
-                  <button
-                    type="button"
-                    onClick={handlePrintToNiimbot}
-                    disabled={!isNiimbotSupported()}
-                    className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs transition-colors flex items-center gap-2 cursor-pointer shadow-xs disabled:bg-slate-400 disabled:cursor-not-allowed"
-                    title={
-                      isNiimbotSupported()
-                        ? 'Imprimir directo en la NIIMBOT B1 por Bluetooth'
-                        : 'Web Bluetooth no disponible: usá Chrome o Edge desde HTTPS o localhost'
-                    }
-                  >
-                    <Printer className="w-4 h-4" />
-                    <span>Imprimir en NIIMBOT</span>
-                  </button>
+                  <>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setNiimbotViaUsb(true)}
+                        disabled={!niimbotUsbAvailable}
+                        className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                          niimbotViaUsb
+                            ? 'bg-slate-800 text-white border border-slate-700'
+                            : 'bg-white text-slate-600 border border-slate-300 hover:bg-slate-100'
+                        }`}
+                        title={niimbotUsbAvailable ? 'Imprimir por cable USB' : 'Web Serial no disponible'}
+                      >
+                        USB
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setNiimbotViaUsb(false)}
+                        disabled={!niimbotBtAvailable}
+                        className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                          niimbotViaUsb
+                            ? 'bg-white text-slate-600 border border-slate-300 hover:bg-slate-100'
+                            : 'bg-slate-800 text-white border border-slate-700'
+                        }`}
+                        title={niimbotBtAvailable ? 'Imprimir por Bluetooth' : 'Web Bluetooth no disponible'}
+                      >
+                        <Printer className="w-3 h-3" />
+                        Bluetooth
+                      </button>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handlePrintToNiimbot}
+                      disabled={niimbotViaUsb ? !niimbotUsbAvailable : !niimbotBtAvailable}
+                      className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs transition-colors flex items-center gap-2 cursor-pointer shadow-xs disabled:bg-slate-400 disabled:cursor-not-allowed"
+                      title={
+                        niimbotViaUsb
+                          ? 'Imprimir directo en la NIIMBOT B1 por cable USB'
+                          : 'Imprimir directo en la NIIMBOT B1 por Bluetooth'
+                      }
+                    >
+                      <Printer className="w-4 h-4" />
+                      <span>{niimbotViaUsb ? 'Imprimir en NIIMBOT (USB)' : 'Imprimir en NIIMBOT'}</span>
+                    </button>
+                  </>
                 )}
 
-                {!isNiimbotSupported() && (
+                {!niimbotUsbAvailable && !niimbotBtAvailable && (
                   <span className="text-[10px] text-slate-400 font-semibold">
                     Requiere Chrome o Edge con HTTPS / localhost.
                   </span>
