@@ -82,38 +82,39 @@ export function renderLabelToCanvas(
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, W, H);
 
-  // Numeral debajo del código
+  // Numeral debajo del código, ubicado más arriba
   const numFont = Math.max(26, Math.round(H * 0.1));
   ctx.fillStyle = '#000000';
   ctx.font = `bold ${numFont}px monospace`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'alphabetic';
-  const numBaseline = H - Math.round(H * 0.08);
+  const numBaseline = Math.round(H * 0.86);
   ctx.fillText(code, W / 2, numBaseline);
 
-  // Código de barras horizontal, ancho, centrado y con aire por los bordes
+  // Código de barras horizontal: el ANCHO manda, el alto queda limitado
   const barcodeCanvas = document.createElement('canvas');
   JsBarcode(barcodeCanvas, code, {
     format: 'CODE128',
     width: 2,
-    height: Math.max(40, Math.round(H * 0.3)),
+    height: Math.max(40, Math.round(H * 0.25)),
     displayValue: false,
     margin: 8,
     lineColor: '#000000',
     background: '#ffffff',
   });
 
-  const availW = Math.round(W * 0.94); // casi todo el ancho, aire mínimo
-  const topY = Math.round(H * 0.06);
-  const botY = numBaseline - Math.round(numFont * 0.45);
-  const availH = botY - topY;
+  const availW = Math.round(W * 0.94); // casi todo el ancho
+  const topY = Math.round(H * 0.04);
+  const capH = Math.round(H * 0.38); // tope del alto: nunca domina el ancho
+  const availH = numBaseline - topY;
 
-  const barcodeW = Math.min(barcodeCanvas.width, availW);
-  let barcodeH = (barcodeCanvas.height * barcodeW) / barcodeCanvas.width;
-  // Nunca más alto que ancho: para códigos cortos el origen puede quedar
-  // cuadrado/alto, y eso imprimiría un código en vertical.
-  barcodeH = Math.min(barcodeH, barcodeW);
-  barcodeH = Math.min(barcodeH, availH);
+  // Escala uniforme: se limita por ancho (preferido) o por el tope de alto.
+  const scale = Math.min(
+    availW / barcodeCanvas.width,
+    Math.min(capH, availH) / barcodeCanvas.height
+  );
+  const barcodeW = barcodeCanvas.width * scale;
+  const barcodeH = barcodeCanvas.height * scale;
   const barcodeX = (W - barcodeW) / 2;
   const barcodeY = topY + Math.max(0, (availH - barcodeH) / 2);
   ctx.imageSmoothingEnabled = true;
