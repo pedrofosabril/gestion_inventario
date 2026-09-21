@@ -57,31 +57,6 @@ export const NIIMBOT_B1_SIZES: NiimbotSize[] = [
 
 export const isNiimbotSupported = (): boolean => !!window.Niimbot?.isSupported();
 
-function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number, maxLines: number): string[] {
-  const words = text.split(/\s+/).filter(Boolean);
-  const lines: string[] = [];
-  let line = '';
-  for (const word of words) {
-    const candidate = line ? `${line} ${word}` : word;
-    if (ctx.measureText(candidate).width <= maxWidth) {
-      line = candidate;
-    } else {
-      if (line) lines.push(line);
-      line = word;
-    }
-    if (lines.length === maxLines) break;
-  }
-  if (lines.length < maxLines && line && lines.length + 1 <= maxLines) lines.push(line);
-  if (lines.length === maxLines) {
-    const last = lines[maxLines - 1];
-    while (ctx.measureText(last + '…').width > maxWidth && last.length > 0) {
-      lines[maxLines - 1] = last.slice(0, -1);
-    }
-    lines[maxLines - 1] += '…';
-  }
-  return lines.slice(0, maxLines).filter(Boolean);
-}
-
 export function renderLabelToCanvas(
   item: {
     codigo?: string;
@@ -101,65 +76,41 @@ export function renderLabelToCanvas(
   const W = size.w_px;
   const H = size.h_px;
   const margin = size.margin ?? 8;
+  const code = String(item.codigoBarras || item.codigo || '').trim() || '-';
 
   // Fondo blanco
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, W, H);
 
-  // Header ribbon
-  const headerH = Math.round(H * 0.17);
-  ctx.fillStyle = '#006bb0';
-  ctx.fillRect(0, 0, W, headerH);
-  ctx.fillStyle = '#ffffff';
-  ctx.font = `bold ${Math.round(H * 0.06)}px sans-serif`;
+  // Numeral debajo, en grande
+  const codeFontPx = Math.max(28, Math.round(H * 0.13));
+  ctx.fillStyle = '#000000';
+  ctx.font = `bold ${codeFontPx}px monospace`;
   ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText('VERDU Y CÍA. S.A. - CONTROL DE PAÑOL', W / 2, headerH / 2 + 1);
+  ctx.textBaseline = 'alphabetic';
+  const codeY = H - margin;
+  ctx.fillText(code, W / 2, codeY);
 
-  // Descripción
-  ctx.fillStyle = '#0f172a';
-  ctx.font = `bold ${Math.round(H * 0.068)}px sans-serif`;
-  ctx.textAlign = 'center';
-  const descLines = wrapText(ctx, item.descripcion || '', W - margin * 3, 3);
-  let y = headerH + (H - headerH) * 0.1;
-  for (const line of descLines) {
-    ctx.fillText(line, W / 2, y);
-    y += Math.round(H * 0.078);
-  }
-
-  // Barcode
+  // Código de barras ocupando el resto de la altura
   const barcodeCanvas = document.createElement('canvas');
-  JsBarcode(barcodeCanvas, item.codigoBarras || item.codigo || '', {
+  JsBarcode(barcodeCanvas, code, {
     format: 'CODE128',
     width: 2,
-    height: 60,
-    displayValue: true,
-    fontSize: 18,
-    font: 'monospace',
-    textMargin: 6,
+    height: Math.round(H * 0.8),
+    displayValue: false,
     lineColor: '#000000',
     background: '#ffffff',
   });
 
-  const barcodeW = Math.min(barcodeCanvas.width, W - margin * 2);
-  const barcodeH = (barcodeCanvas.height * barcodeW) / barcodeCanvas.width;
+  const availW = W - margin * 2;
+  const availH = codeY - margin - Math.round(codeFontPx * 0.4) - (H - codeY);
+  const barcodeW = Math.min(barcodeCanvas.width, availW);
+  const barcodeH = Math.min((barcodeCanvas.height * barcodeW) / barcodeCanvas.width, availH);
   const barcodeX = (W - barcodeW) / 2;
-  const barcodeY = y + Math.round(H * 0.09);
+  const barcodeY = margin + (availH - barcodeH) / 2;
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(barcodeCanvas, barcodeX, barcodeY, barcodeW, barcodeH);
-
-  // Footer info
-  ctx.fillStyle = '#475569';
-  ctx.font = `bold ${Math.round(H * 0.062)}px monospace`;
-  ctx.textBaseline = 'alphabetic';
-  const footerY = H - Math.round(H * 0.06);
-  ctx.textAlign = 'left';
-  ctx.fillText(`CÓD: ${item.codigo || '-'}`, margin, footerY);
-  ctx.textAlign = 'center';
-  ctx.fillText(`UBIC: ${item.ubicacion || 'PAÑOL'}`, W / 2, footerY);
-  ctx.textAlign = 'right';
-  ctx.fillText(`PROV: ${item.proveedor || '-'}`, W - margin, footerY);
 
   return canvas;
 }
