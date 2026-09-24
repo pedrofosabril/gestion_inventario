@@ -14,7 +14,6 @@ import {
   Cog, 
   Building, 
   Warehouse, 
-  Globe2, 
   Sliders, 
   Box, 
   Search, 
@@ -114,7 +113,6 @@ const MainApp: React.FC = () => {
         'submicronicos',
         'rodamientos',
         'entrepiso',
-        'importado',
         'repuestos_mv',
         'cajas',
         'salidas',
@@ -303,7 +301,6 @@ const MainApp: React.FC = () => {
     { id: 'submicronicos', label: 'Submicrónicos', icon: CircleDot, count: items.filter(i => i.categoria === 'submicronicos').length },
     { id: 'rodamientos', label: 'Rodamientos', icon: Cog, count: items.filter(i => i.categoria === 'rodamientos').length },
     { id: 'entrepiso', label: 'Entrepiso', icon: Building, count: items.filter(i => i.categoria === 'entrepiso').length },
-    ...(items.some(i => i.categoria === 'importado') ? [{ id: 'importado' as ActiveView, label: 'Importado', icon: Globe2, count: items.filter(i => i.categoria === 'importado').length }] : []),
     { id: 'repuestos_mv', label: 'Repuestos MV', icon: Sliders, count: items.filter(i => i.categoria === 'repuestos_mv').length },
     { id: 'cajas', label: 'Cajas Estantes', icon: Box, count: items.filter(i => i.categoria === 'cajas').length },
     { id: 'salidas', label: 'Historial Salidas', icon: History, count: salidas.length },
@@ -402,7 +399,7 @@ const MainApp: React.FC = () => {
                             </div>
                             <div className="text-right shrink-0">
                               <span className="font-mono font-bold text-xs text-emerald-700">{item.stock} u.</span>
-                              <div className="text-[10px] text-slate-400 capitalize">{item.categoria.replace('_', ' ')}</div>
+                              <div className="text-[10px] text-slate-400 capitalize">{item.categoria === 'panol' ? 'Pañol' : item.categoria.replace('_', ' ')}</div>
                             </div>
                           </div>
                         ))

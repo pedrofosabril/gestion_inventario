@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { useInventory } from '../context/InventoryContext';
 import { ItemCategory, InventoryItem, PARAMETRIZED_SUPPLIERS } from '../types';
-import { isSullairProveedor } from '../utils/barcodeUtils';
+import { isSullairProveedor, isPServicioProveedor } from '../utils/barcodeUtils';
 
 interface AddProductModalProps {
   isOpen: boolean;
@@ -31,7 +31,6 @@ const CATEGORY_OPTIONS: { id: ItemCategory; label: string; subcats: string[] }[]
   { id: 'submicronicos', label: 'Filtros Submicrónicos', subcats: ['FXF', 'FXH', 'SCF', 'SCH', 'MPH/MPF'] },
   { id: 'rodamientos', label: 'Rodamientos', subcats: ['SKF', 'TIMKEN', 'FAG', 'NSK', 'NTN', 'ZKL', 'KOYO', 'ROLLWAY'] },
   { id: 'entrepiso', label: 'Entrepiso Pañol', subcats: ['FLEETGUARD', 'LANSS', 'CATERPILLAR', 'DONALDSON', 'MAHLE', 'VARIOS'] },
-  { id: 'importado', label: 'Stock Importado', subcats: ['Separadores', 'Kits', 'Válvulas'] },
   { id: 'repuestos_mv', label: 'Repuestos MV', subcats: ['MV', 'MV-5V', 'MV-7', 'MV-10', 'MV-15/20', 'MV-40', 'MV-50'] },
   { id: 'cajas', label: 'Cajas Estantes', subcats: ['Caja Estante A', 'Caja Estante B'] },
 ];
@@ -44,7 +43,7 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
   defaultCategory = 'panol',
   onProductCreated
 }) => {
-  const { addItem, items } = useInventory();
+  const { addItem, updateItem, items } = useInventory();
 
   const [categoria, setCategoria] = useState<ItemCategory>(defaultCategory === ('stock_antiguo' as ItemCategory) ? 'panol' : defaultCategory);
   const [subcategoria, setSubcategoria] = useState<string>('');
@@ -56,14 +55,35 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
   const [ubicacion, setUbicacion] = useState<string>('A');
   const [stock, setStock] = useState<number>(1);
   const [stockMinimo, setStockMinimo] = useState<number>(1);
+  const [paraServicio, setParaServicio] = useState<number>(0);
   const [precio, setPrecio] = useState<number>(0);
   const [porEncargo, setPorEncargo] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<boolean>(false);
+  const [confirming, setConfirming] = useState<boolean>(false);
+  const [pendingItem, setPendingItem] = useState<Omit<InventoryItem, 'id' | 'precioTotal'> | null>(null);
 
   if (!isOpen) return null;
 
   const currentCategoryMeta = CATEGORY_OPTIONS.find(c => c.id === categoria) || CATEGORY_OPTIONS[0];
+
+  const resetForm = () => {
+    setCodigo('');
+    setDescripcion('');
+    setEquivalencias('');
+    setProveedor('SULLAIR');
+    setSubcategoria('');
+    setCodigoBarrasInput('');
+    setUbicacion('A');
+    setStock(1);
+    setStockMinimo(1);
+    setParaServicio(0);
+    setPrecio(0);
+    setPorEncargo(false);
+    setError(null);
+    setConfirming(false);
+    setPendingItem(null);
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -86,11 +106,40 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
     // Check if code already exists
     const existing = items.find(i => i.codigo.toUpperCase() === cleanCode);
     if (existing) {
+      const existingIsPS = isPServicioProveedor(existing.proveedor);
+      const newIsPS = isPServicioProveedor(cleanProv);
+
+      if (existingIsPS !== newIsPS) {
+        // Mismo código con naturaleza opuesta (P/SERVICIO vs venta) → mismo producto:
+        // se suman las cantidades en el stock correspondiente.
+        const merged: Partial<InventoryItem> = {};
+        if (newIsPS) {
+          merged.paraServicio = (existing.paraServicio || 0) + Math.max(0, stock);
+        } else {
+          merged.stock = (existing.stock || 0) + Math.max(0, stock);
+          merged.ubicacion = cleanUbi || existing.ubicacion;
+          if (precio > 0) merged.precio = precio;
+          if (cleanDesc && cleanDesc !== existing.descripcion) merged.descripcion = cleanDesc;
+        }
+        updateItem(existing.id, merged);
+
+        setSuccess(true);
+        if (onProductCreated) {
+          onProductCreated({ ...existing, ...merged });
+        }
+        setTimeout(() => {
+          setSuccess(false);
+          resetForm();
+          onClose();
+        }, 1200);
+        return;
+      }
+
       setError(`Ya existe un producto con el código "${cleanCode}" en la categoría ${existing.categoria} (${existing.descripcion}). Usa otro código o actualiza el existente.`);
       return;
     }
 
-    const newItem = addItem({
+    const newItem: Omit<InventoryItem, 'id' | 'precioTotal'> = {
       codigo: cleanCode,
       descripcion: cleanDesc,
       proveedor: cleanProv,
@@ -101,28 +150,36 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
       stock: Math.max(0, stock),
       stockMinimo: Math.max(0, stockMinimo),
       precio: Math.max(0, precio),
+      paraServicio: isPServicioProveedor(cleanProv) ? Math.max(0, stock) : Math.max(0, paraServicio),
       porEncargo: porEncargo,
       codigoBarras: isSullairProveedor(cleanProv) ? cleanCode : (codigoBarrasInput.trim() || undefined),
       fechaRegistro: new Date().toISOString().split('T')[0],
       fechaUltimoMovimiento: new Date().toISOString().split('T')[0],
-    });
+    };
 
+    setPendingItem(newItem);
+    setConfirming(true);
+  };
+
+  const handleAcceptProduct = () => {
+    if (!pendingItem) return;
+    const newItem = addItem(pendingItem);
+    setConfirming(false);
     setSuccess(true);
     if (onProductCreated) {
       onProductCreated(newItem);
     }
-
     setTimeout(() => {
       setSuccess(false);
+      resetForm();
       onClose();
-      // Reset form
-      setCodigo('');
-      setDescripcion('');
-      setStock(1);
-      setPrecio(0);
-      setCodigoBarrasInput('');
-      setError(null);
     }, 1200);
+  };
+
+  const handleCancelProduct = () => {
+    setError(null);
+    resetForm();
+    onClose();
   };
 
   return (
@@ -300,8 +357,8 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
             )}
           </div>
 
-          {/* Ubicación, Stock Inicial, Stock Mínimo y Precio */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {/* Ubicación, Stock Inicial, Stock Mínimo, P/Servicio y Precio */}
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
             <div className="flex flex-col gap-1">
               <label className="font-bold text-sky-950 uppercase tracking-wider flex items-center gap-1 text-[11px]">
                 <MapPin className="w-3.5 h-3.5 text-[#006bb0]" />
@@ -331,6 +388,26 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
                 onChange={e => setStock(parseInt(e.target.value) || 0)}
                 className="w-full px-3 py-2 text-xs font-bold rounded-xl border border-[#b8ddf5] bg-white focus:ring-2 focus:ring-[#006bb0]"
               />
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <label className="font-bold text-sky-950 uppercase tracking-wider flex items-center gap-1 text-[11px]">
+                <Tag className="w-3.5 h-3.5 text-amber-600" />
+                Stock P/Servicio
+              </label>
+              <input
+                type="number"
+                min="0"
+                value={isPServicioProveedor(proveedor) ? stock : paraServicio}
+                onChange={e => setParaServicio(parseInt(e.target.value) || 0)}
+                disabled={isPServicioProveedor(proveedor)}
+                className="w-full px-3 py-2 text-xs font-bold rounded-xl border border-[#b8ddf5] bg-white focus:ring-2 focus:ring-[#006bb0] disabled:bg-slate-100 disabled:text-slate-400"
+              />
+              {isPServicioProveedor(proveedor) && (
+                <span className="text-[10px] text-amber-700 font-semibold">
+                  Proveedor P/Servicio: usa el stock.
+                </span>
+              )}
             </div>
 
             <div className="flex flex-col gap-1">
@@ -405,11 +482,96 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
             </label>
           </div>
 
+          {/* Confirmar Producto Panel */}
+          {confirming && pendingItem && (
+            <div className="rounded-2xl border-2 border-[#006bb0] bg-sky-50 p-4 sm:p-5 shadow-sm animate-in zoom-in-95">
+              <div className="flex items-center gap-2 mb-1">
+                <CheckCircle2 className="w-5 h-5 text-[#006bb0]" />
+                <h3 className="text-sm font-black text-sky-950 uppercase tracking-wider">
+                  Confirmar producto
+                </h3>
+              </div>
+              <p className="text-[11px] text-slate-600 mb-3">
+                Revisá los datos del producto y elegí cómo continuar:
+              </p>
+
+              <div className="rounded-xl bg-white border border-[#c4e1f7] divide-y divide-[#e2effa] text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 p-3">
+                  <div>
+                    <span className="block text-[10px] uppercase font-bold text-slate-400">Código / SKU</span>
+                    <span className="font-mono font-black text-sky-950">{pendingItem.codigo}</span>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <span className="block text-[10px] uppercase font-bold text-slate-400">Descripción</span>
+                    <span className="font-semibold text-slate-800">{pendingItem.descripcion}</span>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 p-3">
+                  <div>
+                    <span className="block text-[10px] uppercase font-bold text-slate-400">Proveedor</span>
+                    <span className="font-bold text-slate-800 uppercase">{pendingItem.proveedor}</span>
+                  </div>
+                  <div>
+                    <span className="block text-[10px] uppercase font-bold text-slate-400">Categoría</span>
+                    <span className="font-semibold text-slate-700">
+                      {(CATEGORY_OPTIONS.find(c => c.id === pendingItem.categoria)?.label) || pendingItem.categoria}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="block text-[10px] uppercase font-bold text-slate-400">Stock</span>
+                    <span className="font-mono font-black text-emerald-700">{pendingItem.stock} u.</span>
+                    {pendingItem.paraServicio && pendingItem.paraServicio > 0 && (
+                      <span className="block text-[10px] font-bold text-amber-700">P/Servicio: {pendingItem.paraServicio} u.</span>
+                    )}
+                  </div>
+                  <div>
+                    <span className="block text-[10px] uppercase font-bold text-slate-400">Precio</span>
+                    <span className="font-mono font-black text-slate-900">
+                      ${(pendingItem.precio || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-3.5 flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={handleCancelProduct}
+                  className="px-4 py-2.5 text-xs font-bold text-slate-600 hover:text-slate-900 rounded-xl border border-[#b8ddf5] hover:bg-[#e4f2fb] transition-all cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setConfirming(false);
+                    setPendingItem(null);
+                    setError(null);
+                  }}
+                  className="px-4 py-2.5 text-xs font-black text-[#006bb0] hover:bg-sky-100 rounded-xl border-2 border-[#006bb0] bg-white transition-all flex items-center gap-2 cursor-pointer"
+                >
+                  <Tag className="w-3.5 h-3.5" />
+                  Seguir editando
+                </button>
+                <button
+                  type="button"
+                  onClick={handleAcceptProduct}
+                  disabled={success}
+                  className="px-6 py-2.5 text-xs font-black text-white bg-[#006bb0] hover:bg-[#005590] rounded-xl shadow-xs transition-all active:scale-[0.99] flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  Aceptar
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Action Footer */}
-          <div className="pt-3 border-t border-[#c4e1f7] flex items-center justify-end gap-2.5">
+          {!confirming && (
+          <div className="pt-3 border-t border-[#c4e1f7] flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-2.5">
             <button
               type="button"
-              onClick={onClose}
+              onClick={handleCancelProduct}
               className="px-4 py-2.5 text-xs font-bold text-slate-600 hover:text-slate-900 rounded-xl border border-[#b8ddf5] hover:bg-[#e4f2fb] transition-all cursor-pointer"
             >
               Cancelar
@@ -423,6 +585,7 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
               <span>Guardar y Habilitar Producto</span>
             </button>
           </div>
+          )}
 
         </form>
       </div>

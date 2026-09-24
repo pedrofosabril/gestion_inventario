@@ -65,7 +65,6 @@ export const GerenciaDashboard: React.FC<GerenciaDashboardProps> = ({ onOpenScan
     submicronicos: { count: 0, units: 0, valuation: 0, name: 'Filtros Submicrónicos' },
     rodamientos: { count: 0, units: 0, valuation: 0, name: 'Rodamientos' },
     entrepiso: { count: 0, units: 0, valuation: 0, name: 'Entrepiso Pañol' },
-    importado: { count: 0, units: 0, valuation: 0, name: 'Stock Importado' },
     repuestos_mv: { count: 0, units: 0, valuation: 0, name: 'Repuestos MV' },
     cajas: { count: 0, units: 0, valuation: 0, name: 'Cajas Estantes' },
   };

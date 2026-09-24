@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { InventoryItem, ItemCategory } from '../types';
 import { CATEGORY_MAP, type CategoryEntry } from '../data/categoryMap';
 import { isSullairProveedor } from '../utils/barcodeUtils';
+import { mergeSameProductPairs } from '../utils/productMerge';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -28,6 +29,7 @@ type StockRow = {
   id_stock: string;
   codigo: string;
   cantidad: number | string | null;
+  stock_servicio: number | string | null;
   ubicacion: string | null;
   precio: number | string | null;
   fecha_control: string | null;
@@ -84,8 +86,8 @@ const determineCategory = (
   if (u.includes('MV') || p.includes('REPUESTOS MV') || d.includes('MV-') || c.includes('MV-') || d.includes('M.V'))
     return 'repuestos_mv';
 
-  // 5. Stock Importado
-  if (p === 'IMP' || p.includes('IMPORTADO')) return 'importado';
+  // 5. Importados los dejo en el Pañol General
+  if (p === 'IMP' || p.includes('IMPORTADO')) return 'panol';
 
   // 6. Cajas Estantes
   if (u.includes('CAJA') && !u.includes('CAJON')) return 'cajas';
@@ -102,7 +104,7 @@ const determineCategory = (
 export async function getInventory(): Promise<InventoryItem[]> {
   const [repuestos, stock] = await Promise.all([
     fetchAllRows<RepuestoRow>('repuestos', 'codigo, proveedor, descripcion, equivalencias, uso_destino, precio, barra'),
-    fetchAllRows<StockRow>('stock', 'id_stock, codigo, cantidad, ubicacion, precio, fecha_control')
+    fetchAllRows<StockRow>('stock', '*')
   ]);
 
   const stockByCode = new Map<string, StockRow[]>();
@@ -117,6 +119,7 @@ export async function getInventory(): Promise<InventoryItem[]> {
   for (const repuesto of (repuestos ?? []) as RepuestoRow[]) {
     const rows = stockByCode.get(repuesto.codigo) ?? [];
     const quantity = rows.reduce((sum, row) => sum + numberOf(row.cantidad), 0);
+    const paraServicio = rows.reduce((sum, row) => sum + numberOf(row.stock_servicio), 0);
     const price = rows.find(row => numberOf(row.precio) > 0)?.precio ?? repuesto.precio;
     const latestControl = rows.map(row => row.fecha_control).filter(Boolean).sort().at(-1);
     const ubicaciones = rows.map(row => row.ubicacion).filter(Boolean) as string[];
@@ -134,6 +137,7 @@ export async function getInventory(): Promise<InventoryItem[]> {
           subcategoria: entry.subcategoria ?? repuesto.uso_destino ?? undefined,
           categoria: entry.categoria as ItemCategory,
           stock: quantity, stockMinimo: 0,
+          paraServicio: paraServicio || undefined,
           ubicacion: ubicaciones.join(' / '),
           fechaRegistro: latestControl ?? new Date().toISOString().slice(0, 10),
           fechaUltimoMovimiento: latestControl ?? undefined,
@@ -153,6 +157,7 @@ export async function getInventory(): Promise<InventoryItem[]> {
         subcategoria: repuesto.uso_destino ?? undefined,
         categoria: determineCategory(repuesto.codigo, repuesto.descripcion ?? '', repuesto.proveedor ?? '', ubicaciones),
         stock: quantity, stockMinimo: 0,
+        paraServicio: paraServicio || undefined,
         ubicacion: ubicaciones.join(' / '),
         fechaRegistro: latestControl ?? new Date().toISOString().slice(0, 10),
         fechaUltimoMovimiento: latestControl ?? undefined,
@@ -164,7 +169,8 @@ precioTotal: quantity * numberOf(price),
     }
   }
 
-  return result;
+  // Las variantes P/SERVICIO y venta del mismo código se muestran como un solo producto.
+  return mergeSameProductPairs(result);
 }
 
 export async function saveInventoryItem(item: InventoryItem): Promise<void> {
@@ -183,15 +189,23 @@ export async function saveInventoryItem(item: InventoryItem): Promise<void> {
     .from('stock').select('id_stock').eq('codigo', item.codigo).limit(1).maybeSingle();
   if (existingError) throw existingError;
 
-  const { error: stockError } = await supabase.from('stock').upsert({
+  const stockPayload = {
     id_stock: existing?.id_stock ?? crypto.randomUUID(),
     codigo: item.codigo,
     cantidad: item.stock,
+    stock_servicio: item.paraServicio ?? 0,
     ubicacion: item.ubicacion,
     precio: item.precio,
     precio_total: item.stock * item.precio,
     fecha_control: new Date().toISOString().slice(0, 10)
-  }, { onConflict: 'id_stock' });
+  };
+  let { error: stockError } = await supabase.from('stock').upsert(stockPayload, { onConflict: 'id_stock' });
+  // La columna `stock_servicio` puede no existir todavía (migración pendiente):
+  // en ese caso se guarda sin ella para no romper el alta/edición.
+  if (stockError && /stock_servicio/i.test(stockError.message)) {
+    const { stock_servicio: _omit, ...legacyPayload } = stockPayload;
+    ({ error: stockError } = await supabase.from('stock').upsert(legacyPayload, { onConflict: 'id_stock' }));
+  }
   if (stockError) throw stockError;
 }
 
