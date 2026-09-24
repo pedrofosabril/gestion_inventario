@@ -153,6 +153,7 @@ interface InventoryContextType {
   totalSkus: number;
   resetToDefaults: () => void;
   clearAllData: () => void;
+  restoreDatabase: (jsonContent: string) => Promise<{ success: boolean; message: string }>;
 }
 
 const InventoryContext = createContext<InventoryContextType | undefined>(undefined);
@@ -1760,14 +1761,78 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setItems([]);
     setSalidas([]);
     setSalidaGroups([]);
+    setDevolucionGroups([]);
     setIngresos([]);
+    setUsers([]);
+    setCurrentUser(null);
+    setSavedSignatures([]);
     try {
       localStorage.removeItem(STORAGE_KEYS.ITEMS);
       localStorage.removeItem(STORAGE_KEYS.SALIDAS);
       localStorage.removeItem(STORAGE_KEYS.SALIDA_GROUPS);
+      localStorage.removeItem(STORAGE_KEYS.DEVOLUCION_GROUPS);
       localStorage.removeItem(STORAGE_KEYS.INGRESOS);
+      localStorage.removeItem(STORAGE_KEYS.USER);
+      localStorage.removeItem(STORAGE_KEYS.USERS);
+      localStorage.removeItem(STORAGE_KEYS.SAVED_SIGNATURES);
     } catch (e) {
       console.error('Error clearing data:', e);
+    }
+  };
+
+  const restoreDatabase = async (jsonContent: string): Promise<{ success: boolean; message: string }> => {
+    try {
+      const parsed = JSON.parse(jsonContent);
+      if (!parsed || typeof parsed !== 'object' || !parsed.colecciones || typeof parsed.colecciones !== 'object') {
+        return { success: false, message: 'El archivo no parece un respaldo válido de la base de datos.' };
+      }
+
+      const backupItems = Array.isArray(parsed.colecciones.items) ? sanitizeYazObject(parsed.colecciones.items) as InventoryItem[] : [];
+      const backupSalidas = Array.isArray(parsed.colecciones.salidas) ? deduplicateSalidasList(sanitizeYazObject(parsed.colecciones.salidas) as SalidaRecord[]) : [];
+      const backupSalidaGroups = Array.isArray(parsed.colecciones.salidaGroups) ? deduplicateSalidaGroupsList(sanitizeYazObject(parsed.colecciones.salidaGroups) as SalidaGroupRecord[]) : [];
+      const backupDevolucionGroups = Array.isArray(parsed.colecciones.devolucionGroups) ? sanitizeYazObject(parsed.colecciones.devolucionGroups) as DevolucionGroupRecord[] : [];
+      const backupIngresos = Array.isArray(parsed.colecciones.ingresos) ? sanitizeYazObject(parsed.colecciones.ingresos) as IngresoRecord[] : [];
+      const backupUsers = Array.isArray(parsed.colecciones.users) ? sanitizeYazObject(parsed.colecciones.users) as UserAccount[] : [];
+      const backupCurrentUser = parsed.colecciones.currentUser && typeof parsed.colecciones.currentUser === 'object'
+        ? sanitizeYazObject(parsed.colecciones.currentUser) as UserAccount
+        : null;
+
+      // Restore all collections in local state (effects persist to localStorage)
+      setItems(backupItems);
+      setSalidas(backupSalidas);
+      setSalidaGroups(backupSalidaGroups);
+      setDevolucionGroups(backupDevolucionGroups);
+      setIngresos(backupIngresos);
+      setUsers(backupUsers);
+      setCurrentUser(backupCurrentUser);
+
+      // Sync the restored inventory back to Supabase (source of truth for items)
+      let saved = 0;
+      let errors = 0;
+      const savedCodes = new Set(backupItems.map(i => i.codigo));
+
+      const results = await Promise.allSettled(backupItems.map(item => saveInventoryItem(item)));
+      for (const res of results) {
+        if (res.status === 'fulfilled') saved++;
+        else { errors++; console.error('Error al restaurar item en Supabase:', res.reason); }
+      }
+
+      // Remove orphan rows from Supabase that are no longer part of the restored DB
+      const currentCodes = new Set(items.map(i => i.codigo));
+      const orphanCodes = Array.from(currentCodes).filter((code: string) => !savedCodes.has(code));
+      const orphanResults = await Promise.allSettled(orphanCodes.map((code: string) => deleteInventoryItem(code)));
+      for (const res of orphanResults) {
+        if (res.status === 'rejected') { errors++; console.error('Error al eliminar item huérfano de Supabase:', res.reason); }
+      }
+
+      const message = errors === 0
+        ? `Base de datos restaurada correctamente: ${backupItems.length} productos y ${backupSalidaGroups.length} salidas.`
+        : `Base restaurada en la app (${backupItems.length} productos), pero ${errors} operación(es) con Supabase fallaron. Recargá para revalidar.`;
+
+      return { success: true, message };
+    } catch (e) {
+      console.error('Error al restaurar la base de datos:', e);
+      return { success: false, message: 'No se pudo restaurar la base de datos. El archivo puede estar corrupto.' };
     }
   };
 
@@ -1835,7 +1900,8 @@ backupHistory,
         totalUnits,
         totalSkus,
         resetToDefaults,
-        clearAllData
+        clearAllData,
+        restoreDatabase
       }}
     >
       {children}

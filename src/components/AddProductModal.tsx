@@ -25,7 +25,7 @@ interface AddProductModalProps {
   onProductCreated?: (item: InventoryItem) => void;
 }
 
-const CATEGORY_OPTIONS: { id: ItemCategory; label: string; subcats: string[] }[] = [
+export const CATEGORY_OPTIONS: { id: ItemCategory; label: string; subcats: string[] }[] = [
   { id: 'panol', label: 'Pañol General', subcats: ['Filtros', 'Repuestos', 'Consumibles', 'Herramientas'] },
   { id: 'cajones_fluidos', label: 'Cajones y Fluidos', subcats: ['Fluidos', 'Cajones', 'Estante'] },
   { id: 'submicronicos', label: 'Filtros Submicrónicos', subcats: ['FXF', 'FXH', 'SCF', 'SCH', 'MPH/MPF'] },
@@ -35,7 +35,7 @@ const CATEGORY_OPTIONS: { id: ItemCategory; label: string; subcats: string[] }[]
   { id: 'cajas', label: 'Cajas Estantes', subcats: ['Caja Estante A', 'Caja Estante B'] },
 ];
 
-const COMMON_UBICACIONES = ['A', 'B', 'C', 'C GRIS', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'CAJONES', 'ESTANTE'];
+export const COMMON_UBICACIONES = ['A', 'B', 'C', 'C GRIS', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'CAJONES', 'ESTANTE'];
 
 export const AddProductModal: React.FC<AddProductModalProps> = ({
   isOpen,
