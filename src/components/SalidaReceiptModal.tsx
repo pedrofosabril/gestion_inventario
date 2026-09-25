@@ -24,6 +24,7 @@ import {
 import { SalidaGroupRecord, SalidaItemEntry } from '../types';
 import { useInventory } from '../context/InventoryContext';
 import { generateSalidaPDF } from '../utils/pdfGenerator';
+import { formatDisplayDate } from '../utils/dateUtils';
 
 interface SalidaReceiptModalProps {
   salidaGroup: SalidaGroupRecord | null;
@@ -236,7 +237,7 @@ export const SalidaReceiptModal: React.FC<SalidaReceiptModalProps> = ({
               </div>
               <div className="text-xs font-bold text-slate-600 mt-0.5 flex items-center sm:justify-end gap-1">
                 <Calendar className="w-3.5 h-3.5 text-sky-600" />
-                <span>{salidaGroup.fechaSalida}</span>
+                <span>{formatDisplayDate(salidaGroup.fechaSalida)}</span>
                 <span className="text-slate-300">•</span>
                 <Clock className="w-3.5 h-3.5 text-sky-600" />
                 <span>{salidaGroup.horaSalida} hs</span>
