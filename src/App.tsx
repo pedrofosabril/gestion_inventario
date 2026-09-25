@@ -46,6 +46,7 @@ import { GerenciaDashboard } from './components/GerenciaDashboard';
 import { PanoleroSimpleView } from './components/PanoleroSimpleView';
 import { SalidasLogView } from './components/SalidasLogView';
 import { IngresosLogView } from './components/IngresosLogView';
+import { DevolucionesLogView } from './components/DevolucionesLogView';
 import { ItemCategory, InventoryItem } from './types';
 import { OfflineStatusBadge } from './components/OfflineStatusBanner';
 import { startTour, hasSeenTour } from './utils/tour';
@@ -58,12 +59,13 @@ export const VENTAS_ALLOWED_CATEGORIES: ItemCategory[] = [
   'entrepiso'
 ];
 
-type ActiveView = ItemCategory | 'salidas' | 'ingresos' | 'gerencia';
+type ActiveView = ItemCategory | 'salidas' | 'ingresos' | 'devoluciones' | 'gerencia';
 
 const MainApp: React.FC = () => {
   const { 
     items, 
     salidas, 
+    devolucionGroups,
     currentUser, 
     logout,
     getLowStockItems, 
@@ -117,6 +119,7 @@ const MainApp: React.FC = () => {
         'cajas',
         'salidas',
         'ingresos',
+        'devoluciones',
         'gerencia',
       ];
       if (view && validViews.includes(view as ActiveView)) {
@@ -304,7 +307,8 @@ const MainApp: React.FC = () => {
     { id: 'repuestos_mv', label: 'Repuestos MV', icon: Sliders, count: items.filter(i => i.categoria === 'repuestos_mv').length },
     { id: 'cajas', label: 'Cajas Estantes', icon: Box, count: items.filter(i => i.categoria === 'cajas').length },
     { id: 'salidas', label: 'Historial Salidas', icon: History, count: salidas.length },
-    { id: 'ingresos', label: 'Historial Ingresos', icon: ArrowDownLeft }
+    { id: 'ingresos', label: 'Historial Ingresos', icon: ArrowDownLeft },
+    { id: 'devoluciones', label: 'Historial Devoluciones', icon: RotateCcw, count: devolucionGroups.length }
   ];
 
   // In Sales profile: only allowed product categories (NO salidas); Pañolero & Administración: all sections
@@ -772,6 +776,8 @@ const MainApp: React.FC = () => {
           <SalidasLogView onOpenScanner={handleOpenScanner} />
         ) : activeView === 'ingresos' ? (
           <IngresosLogView onOpenScanner={handleOpenScanner} />
+        ) : activeView === 'devoluciones' ? (
+          <DevolucionesLogView />
         ) : (
           <InventoryTable
             category={activeView as ItemCategory | 'all'}

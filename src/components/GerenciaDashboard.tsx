@@ -25,6 +25,8 @@ import { useInventory } from '../context/InventoryContext';
 import { ItemCategory } from '../types';
 import { AddProductModal } from './AddProductModal';
 import { SalidasLogView } from './SalidasLogView';
+import { IngresosLogView } from './IngresosLogView';
+import { DevolucionesLogView } from './DevolucionesLogView';
 import { ExcelImportDropzone } from './ExcelImportDropzone';
 
 interface GerenciaDashboardProps {
@@ -35,6 +37,8 @@ export const GerenciaDashboard: React.FC<GerenciaDashboardProps> = ({ onOpenScan
   const { 
     items, 
     salidas,
+    ingresos,
+    devolucionGroups,
     totalValuation, 
     totalUnits, 
     totalSkus, 
@@ -49,6 +53,7 @@ export const GerenciaDashboard: React.FC<GerenciaDashboardProps> = ({ onOpenScan
 
   const [isAddingProduct, setIsAddingProduct] = useState<boolean>(false);
   const [showHistorial, setShowHistorial] = useState<boolean>(false);
+  const [movementHistoryTab, setMovementHistoryTab] = useState<'salidas' | 'devoluciones' | 'ingresos'>('salidas');
   const [showBackupPanel, setShowBackupPanel] = useState<boolean>(false);
   const [backupAt, setBackupAt] = useState<string | null>(null);
   const [restoreMessage, setRestoreMessage] = useState<{ ok: boolean; text: string } | null>(null);
@@ -445,10 +450,10 @@ export const GerenciaDashboard: React.FC<GerenciaDashboardProps> = ({ onOpenScan
             </div>
             <div>
               <h3 className="text-base font-black text-sky-950 tracking-tight">
-                Historial de Salidas y Despachos
+                Historial de Movimientos
               </h3>
               <p className="text-xs text-slate-500 font-medium">
-                {salidas.length} {salidas.length === 1 ? 'despacho registrado' : 'despachos registrados'} en el sistema
+                {salidas.length} salidas · {devolucionGroups.length} devoluciones · {ingresos.length} ingresos
               </p>
             </div>
           </div>
@@ -469,7 +474,29 @@ export const GerenciaDashboard: React.FC<GerenciaDashboardProps> = ({ onOpenScan
 
         {showHistorial && (
           <div className="pt-3 border-t border-[#c4e1f7] animate-in fade-in">
-            <SalidasLogView onOpenScanner={onOpenScanner || (() => {})} />
+            <div className="flex flex-wrap gap-2 mb-4">
+              {[
+                ['salidas', 'Salidas'],
+                ['devoluciones', 'Devoluciones'],
+                ['ingresos', 'Ingresos']
+              ].map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setMovementHistoryTab(id as 'salidas' | 'devoluciones' | 'ingresos')}
+                  className={`px-3 py-2 rounded-xl text-xs font-black cursor-pointer transition-all ${movementHistoryTab === id ? 'bg-[#006bb0] text-white' : 'bg-white border border-[#b8ddf5] text-slate-700 hover:bg-[#eaf4fb]'}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {movementHistoryTab === 'salidas' ? (
+              <SalidasLogView onOpenScanner={onOpenScanner || (() => {})} />
+            ) : movementHistoryTab === 'devoluciones' ? (
+              <DevolucionesLogView />
+            ) : (
+              <IngresosLogView onOpenScanner={onOpenScanner} />
+            )}
           </div>
         )}
       </div>

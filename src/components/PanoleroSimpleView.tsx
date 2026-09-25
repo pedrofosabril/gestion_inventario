@@ -10,11 +10,13 @@ import {
   X,
   History,
   Barcode,
-  Camera
+  Camera,
+  ArrowDownUp
 } from 'lucide-react';
 import { useInventory } from '../context/InventoryContext';
 import { InventoryItem, SalidaRecord } from '../types';
 import { CameraBarcodeScanner } from './CameraBarcodeScanner';
+import { formatDisplayDate } from '../utils/dateUtils';
 
 interface PanoleroSimpleViewProps {
   onOpenScanner: (initialCode?: string, mode?: 'salida' | 'ingreso' | 'devolucion') => void;
@@ -29,6 +31,7 @@ export const PanoleroSimpleView: React.FC<PanoleroSimpleViewProps> = ({
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [showRecentSalidas, setShowRecentSalidas] = useState<boolean>(false);
   const [showCameraScanner, setShowCameraScanner] = useState<boolean>(false);
+  const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Listen to hardware barcode scanner on main view to fill the search box instead of auto-opening Salida
@@ -97,7 +100,10 @@ export const PanoleroSimpleView: React.FC<PanoleroSimpleViewProps> = ({
         res.push(s);
       }
     }
-    return res.slice(0, 8);
+    const recentSalidas = res
+      .sort((a, b) => `${b.fechaSalida} ${b.horaSalida || ''}`.localeCompare(`${a.fechaSalida} ${a.horaSalida || ''}`))
+      .slice(0, 8);
+    return sortOrder === 'desc' ? recentSalidas : recentSalidas.reverse();
   })();
 
   return (
@@ -366,18 +372,30 @@ export const PanoleroSimpleView: React.FC<PanoleroSimpleViewProps> = ({
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={() => setShowRecentSalidas(!showRecentSalidas)}
-            className={`px-4 py-2.5 rounded-xl font-bold text-xs transition-all shadow-xs flex items-center gap-2 cursor-pointer ${
-              showRecentSalidas
-                ? 'bg-slate-200 hover:bg-slate-300 text-slate-800 border border-slate-300'
-                : 'bg-[#006bb0] hover:bg-[#005590] text-white'
-            }`}
-          >
-            <History className="w-4 h-4" />
-            <span>{showRecentSalidas ? 'Ocultar Historial' : 'Ver Historial'}</span>
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setSortOrder(order => order === 'desc' ? 'asc' : 'desc')}
+              className="px-3 py-2.5 rounded-xl font-bold text-xs transition-all shadow-xs flex items-center gap-1.5 cursor-pointer bg-white hover:bg-[#eaf4fb] text-slate-700 border border-[#b8ddf5]"
+              title="Alternar el orden del historial por fecha"
+            >
+              <ArrowDownUp className="w-4 h-4 text-[#006bb0]" />
+              <span>{sortOrder === 'desc' ? 'Más reciente' : 'Más antiguo'}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setShowRecentSalidas(!showRecentSalidas)}
+              className={`px-4 py-2.5 rounded-xl font-bold text-xs transition-all shadow-xs flex items-center gap-2 cursor-pointer ${
+                showRecentSalidas
+                  ? 'bg-slate-200 hover:bg-slate-300 text-slate-800 border border-slate-300'
+                  : 'bg-[#006bb0] hover:bg-[#005590] text-white'
+              }`}
+            >
+              <History className="w-4 h-4" />
+              <span>{showRecentSalidas ? 'Ocultar Historial' : 'Ver Historial'}</span>
+            </button>
+          </div>
         </div>
 
         {showRecentSalidas && (
@@ -390,7 +408,7 @@ export const PanoleroSimpleView: React.FC<PanoleroSimpleViewProps> = ({
                   <div>
                     <span className="font-bold text-slate-900">{sal.descripcion}</span>
                     <div className="text-slate-500 text-xs mt-0.5">
-                      Código: <span className="font-mono font-bold text-slate-700">{sal.codigo}</span> · Retirado por: <strong className="text-slate-800">{sal.retira || 'Personal'}</strong> {sal.cliente ? `· Cliente: ${sal.cliente}` : ''}
+                      Fecha: <span className="font-mono font-bold text-slate-700">{formatDisplayDate(sal.fechaSalida)}</span> · Código: <span className="font-mono font-bold text-slate-700">{sal.codigo}</span> · Retirado por: <strong className="text-slate-800">{sal.retira || 'Personal'}</strong> {sal.cliente ? `· Cliente: ${sal.cliente}` : ''}
                     </div>
                   </div>
                   <span className="font-black text-rose-700 bg-rose-50 px-2.5 py-1 rounded-xl border border-rose-200 text-xs sm:text-sm shrink-0 ml-2">
