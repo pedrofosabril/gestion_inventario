@@ -374,7 +374,7 @@ export const BarcodeGeneratorModal: React.FC<BarcodeGeneratorModalProps> = ({
               </span>
               <span className="text-slate-300">•</span>
               <span className="capitalize">
-                Categoría: <strong>{currentItem.categoria.replace('_', ' ')}</strong>
+                Categoría: <strong>{currentItem.categoria === 'panol' ? 'Pañol' : currentItem.categoria.replace('_', ' ')}</strong>
               </span>
             </div>
           </div>

@@ -355,7 +355,7 @@ export const IngresosLogView: React.FC<IngresosLogViewProps> = ({ onOpenScanner 
                     <option value="submicronicos">Filtros Submicrónicos</option>
                     <option value="rodamientos">Rodamientos</option>
                     <option value="entrepiso">Entrepiso Pañol</option>
-                    <option value="importado">Stock Importado</option>
+                    <option value="importado" disabled>Importado</option>
                     <option value="repuestos_mv">Repuestos MV</option>
                     <option value="cajas">Cajas Estantes</option>
                   </select>

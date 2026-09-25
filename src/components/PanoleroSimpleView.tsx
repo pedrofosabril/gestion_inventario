@@ -9,10 +9,12 @@ import {
   ScanLine,
   X,
   History,
-  Barcode
+  Barcode,
+  Camera
 } from 'lucide-react';
 import { useInventory } from '../context/InventoryContext';
 import { InventoryItem, SalidaRecord } from '../types';
+import { CameraBarcodeScanner } from './CameraBarcodeScanner';
 
 interface PanoleroSimpleViewProps {
   onOpenScanner: (initialCode?: string, mode?: 'salida' | 'ingreso' | 'devolucion') => void;
@@ -26,6 +28,7 @@ export const PanoleroSimpleView: React.FC<PanoleroSimpleViewProps> = ({
   const { items, currentUser, salidas } = useInventory();
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [showRecentSalidas, setShowRecentSalidas] = useState<boolean>(false);
+  const [showCameraScanner, setShowCameraScanner] = useState<boolean>(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Listen to hardware barcode scanner on main view to fill the search box instead of auto-opening Salida
@@ -207,6 +210,7 @@ export const PanoleroSimpleView: React.FC<PanoleroSimpleViewProps> = ({
             )}
           </div>
 
+          <div className="flex gap-2">
           <button
             type="button"
             onClick={() => searchInputRef.current?.focus()}
@@ -215,7 +219,34 @@ export const PanoleroSimpleView: React.FC<PanoleroSimpleViewProps> = ({
             <Search className="w-4 h-4" />
             <span>BUSCAR</span>
           </button>
+
+          <button
+            type="button"
+            onClick={() => setShowCameraScanner(prev => !prev)}
+            className={`px-4 py-3 rounded-xl font-black text-sm flex items-center justify-center gap-2 shadow-xs cursor-pointer transition-all active:scale-95 shrink-0 ${
+              showCameraScanner
+                ? 'bg-sky-600 text-white border border-sky-700'
+                : 'bg-white text-[#006bb0] border border-[#9eccf0] hover:bg-sky-50'
+            }`}
+            title="Buscar escaneando con la cámara"
+          >
+            <Camera className="w-4 h-4" />
+            <span>{showCameraScanner ? 'CERRAR CÁMARA' : 'CÁMARA'}</span>
+          </button>
+          </div>
         </div>
+
+        {/* Camera Barcode Scanner (móvil / sin pistola) */}
+        {showCameraScanner && (
+          <div className="mt-3">
+            <CameraBarcodeScanner
+              onDetected={(code) => {
+                setSearchTerm(code);
+                searchInputRef.current?.focus();
+              }}
+            />
+          </div>
+        )}
 
         {/* Search Results Display */}
         {searchTerm.trim() !== '' && (

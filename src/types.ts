@@ -4,7 +4,6 @@ export type ItemCategory =
   | 'submicronicos'
   | 'rodamientos'
   | 'entrepiso'
-  | 'importado'
   | 'repuestos_mv'
   | 'cajas';
 

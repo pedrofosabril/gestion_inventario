@@ -24,6 +24,7 @@ import {
 } from '../data/initialData';
 import { replaceYazWithYas, sanitizeYazObject } from '../utils/sanitizeUtils';
 import { createMovement, deleteInventoryItem, getInventory, saveInventoryItem } from '../lib/supabase';
+import { mergeSameProductPairs } from '../utils/productMerge';
 
 export type MainNavSection = ItemCategory | 'salidas_log' | 'ingresos_log' | 'gerencia_dashboard';
 
@@ -1354,7 +1355,6 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         else if (hName.includes('submic') || hName.includes('fxf') || hName.includes('scf')) itemCategory = 'submicronicos';
         else if (hName.includes('rodamiento') || hName.includes('skf') || hName.includes('timken')) itemCategory = 'rodamientos';
         else if (hName.includes('entrepiso') || hName.includes('fleetguard') || hName.includes('lanss')) itemCategory = 'entrepiso';
-        else if (hName.includes('import')) itemCategory = 'importado';
         else if (hName.includes('mv') || hName.includes('repuesto mv')) itemCategory = 'repuestos_mv';
         else if (hName.includes('caja')) itemCategory = 'cajas';
       }
@@ -1380,24 +1380,29 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     });
 
     if (mode === 'replace') {
+      // Variantes P/SERVICIO + venta del mismo código → un solo producto.
+      const mergedParsed = mergeSameProductPairs(parsedItems);
       setItems(prev => {
         const remaining = prev.filter(i => i.categoria !== targetCategory);
-        return [...remaining, ...parsedItems];
+        return [...remaining, ...mergedParsed];
       });
-      added = parsedItems.length;
+      added = mergedParsed.length;
     } else {
       // Merge: Update existing if found in items, or add new
+      // Variantes P/SERVICIO + venta del mismo código → un solo producto.
+      const mergedParsed = mergeSameProductPairs(parsedItems);
       setItems(prev => {
         const itemMap = new Map<string, InventoryItem>();
         prev.forEach(item => itemMap.set(item.codigo.toLowerCase().trim(), item));
 
-        parsedItems.forEach(newItem => {
+        mergedParsed.forEach(newItem => {
           const key = newItem.codigo.toLowerCase().trim();
           if (itemMap.has(key)) {
             const existing = itemMap.get(key)!;
             itemMap.set(key, {
               ...existing,
               stock: newItem.stock,
+              paraServicio: newItem.paraServicio ?? existing.paraServicio,
               precio: newItem.precio > 0 ? newItem.precio : existing.precio,
               precioTotal: newItem.stock * (newItem.precio > 0 ? newItem.precio : existing.precio),
               descripcion: newItem.descripcion && newItem.descripcion !== newItem.codigo ? newItem.descripcion : existing.descripcion,
@@ -1413,7 +1418,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           }
         });
 
-        return Array.from(itemMap.values());
+        return mergeSameProductPairs(Array.from(itemMap.values()));
       });
     }
 
@@ -1467,7 +1472,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
 
     const categoriesToExport: ItemCategory[] = category === 'all' 
-      ? ['panol', 'cajones_fluidos', 'submicronicos', 'rodamientos', 'entrepiso', 'importado', 'repuestos_mv', 'cajas']
+      ? ['panol', 'cajones_fluidos', 'submicronicos', 'rodamientos', 'entrepiso', 'repuestos_mv', 'cajas']
       : [category as ItemCategory];
 
     const categoryNames: Record<ItemCategory, string> = {
@@ -1476,7 +1481,6 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       submicronicos: 'Filtros Submicrónicos',
       rodamientos: 'Rodamientos',
       entrepiso: 'Entrepiso Pañol',
-      importado: 'Stock Importado',
       repuestos_mv: 'Repuestos MV',
       cajas: 'Cajas Estante'
     };
