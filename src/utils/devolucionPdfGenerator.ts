@@ -2,6 +2,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { DevolucionGroupRecord } from '../types';
 import { replaceYazWithYas } from './sanitizeUtils';
+import { triggerPdfDownload } from './pdfDownload';
 
 export const generateDevolucionPDF = (rawDevolucionGroup: DevolucionGroupRecord) => {
   const devolucionGroup: DevolucionGroupRecord = {
@@ -226,5 +227,5 @@ export const generateDevolucionPDF = (rawDevolucionGroup: DevolucionGroupRecord)
 
   // Save the PDF
   const filename = `Remito_Devolucion_${devolucionGroup.numeroDevolucionFormatted.replace(/\s+/g, '_')}_${devolucionGroup.fechaDevolucion}.pdf`;
-  doc.save(filename);
+  triggerPdfDownload(doc, filename);
 };
