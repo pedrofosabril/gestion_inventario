@@ -20,12 +20,14 @@ import {
   Trash2,
   AlertTriangle,
   Sparkles,
-  X
+  X,
+  ArrowDownUp
 } from 'lucide-react';
 import { useInventory } from '../context/InventoryContext';
 import { SalidaRecord, SalidaGroupRecord, SalidaItemEntry } from '../types';
 import { SalidaReceiptModal } from './SalidaReceiptModal';
 import { generateSalidaPDF } from '../utils/pdfGenerator';
+import { formatDisplayDate } from '../utils/dateUtils';
 
 interface SalidasLogViewProps {
   onOpenScanner: (code?: string) => void;
@@ -51,6 +53,7 @@ export const SalidasLogView: React.FC<SalidasLogViewProps> = ({ onOpenScanner })
   const [selectedClient, setSelectedClient] = useState<string>('all');
   const [selectedRetira, setSelectedRetira] = useState<string>('all');
   const [selectedRemitoType, setSelectedRemitoType] = useState<'all' | 'interno' | 'cliente'>('all');
+  const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
   
   // Selected group for receipt view
   const [activeReceiptGroup, setActiveReceiptGroup] = useState<SalidaGroupRecord | null>(null);
@@ -146,6 +149,10 @@ export const SalidasLogView: React.FC<SalidasLogViewProps> = ({ onOpenScanner })
       return matchNum || matchClient || matchRetira || matchRemito || matchItem;
     }
     return true;
+  }).sort((a, b) => {
+    const comparison = `${a.fechaSalida} ${a.horaSalida || ''}`.localeCompare(`${b.fechaSalida} ${b.horaSalida || ''}`);
+    if (comparison !== 0) return sortOrder === 'desc' ? -comparison : comparison;
+    return sortOrder === 'desc' ? b.numeroSalida - a.numeroSalida : a.numeroSalida - b.numeroSalida;
   });
 
   // Filter individual items
@@ -176,6 +183,10 @@ export const SalidasLogView: React.FC<SalidasLogViewProps> = ({ onOpenScanner })
       );
     }
     return true;
+  }).sort((a, b) => {
+    const comparison = `${a.fechaSalida} ${a.horaSalida || ''}`.localeCompare(`${b.fechaSalida} ${b.horaSalida || ''}`);
+    if (comparison !== 0) return sortOrder === 'desc' ? -comparison : comparison;
+    return sortOrder === 'desc' ? (b.numeroSalida || 0) - (a.numeroSalida || 0) : (a.numeroSalida || 0) - (b.numeroSalida || 0);
   });
 
   const totalUnidadesRetiradas = viewMode === 'groups'
@@ -245,26 +256,6 @@ export const SalidasLogView: React.FC<SalidasLogViewProps> = ({ onOpenScanner })
               <span>Por Ítem Individual</span>
             </button>
           </div>
-
-          {!isVentas && (
-            <button
-              type="button"
-              onClick={handleCleanDuplicates}
-              className="px-3.5 py-2 border border-[#badbf5] bg-white hover:bg-[#eaf4fb] text-slate-800 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer"
-              title="Detectar y eliminar automáticamente salidas o registros duplicados"
-            >
-              <Sparkles className="w-3.5 h-3.5 text-[#006bb0]" />
-              <span>Borrar Duplicados</span>
-            </button>
-          )}
-
-          <button
-            onClick={() => onOpenScanner()}
-            className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
-          >
-            <ArrowUpRight className="w-4 h-4" />
-            {isVentas ? 'Consultar Stock' : 'Nueva Salida'}
-          </button>
           
           <button
             onClick={() => exportCategoryToExcel('salidas')}
@@ -272,6 +263,16 @@ export const SalidasLogView: React.FC<SalidasLogViewProps> = ({ onOpenScanner })
           >
             <Download className="w-3.5 h-3.5 text-[#006bb0]" />
             Exportar (.xlsx)
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setSortOrder(order => order === 'desc' ? 'asc' : 'desc')}
+            className="px-3.5 py-2 border border-[#b8ddf5] bg-white hover:bg-[#eaf4fb] text-slate-700 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
+            title="Alternar el orden del historial por fecha"
+          >
+            <ArrowDownUp className="w-3.5 h-3.5 text-[#006bb0]" />
+            {sortOrder === 'desc' ? 'Más reciente primero' : 'Más antiguo primero'}
           </button>
         </div>
       </div>
@@ -396,7 +397,7 @@ export const SalidasLogView: React.FC<SalidasLogViewProps> = ({ onOpenScanner })
 
                     <div className="flex items-center gap-1.5 text-xs text-slate-600 font-medium">
                       <Calendar className="w-3.5 h-3.5 text-sky-600" />
-                      <span>{group.fechaSalida}</span>
+                      <span>{formatDisplayDate(group.fechaSalida)}</span>
                       <Clock className="w-3.5 h-3.5 text-sky-600 ml-1" />
                       <span>{group.horaSalida} hs</span>
                     </div>
@@ -603,7 +604,7 @@ export const SalidasLogView: React.FC<SalidasLogViewProps> = ({ onOpenScanner })
 
                       {/* Fecha */}
                       <td className="px-4 py-3 font-mono text-slate-600 whitespace-nowrap">
-                        {salida.fechaSalida}
+                        {formatDisplayDate(salida.fechaSalida)}
                       </td>
 
                       {/* Cliente */}

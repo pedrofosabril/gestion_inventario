@@ -26,7 +26,8 @@ import {
   Tag, 
   PlusCircle,
   Keyboard,
-  RotateCcw
+  RotateCcw,
+  Camera
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { useInventory } from '../context/InventoryContext';
@@ -34,6 +35,7 @@ import { InventoryItem, ItemCategory, SalidaGroupRecord, DevolucionGroupRecord, 
 import { SalidaReceiptModal } from './SalidaReceiptModal';
 import { DevolucionReceiptModal } from './DevolucionReceiptModal';
 import { ManualEntryModal } from './ManualEntryModal';
+import { CameraBarcodeScanner } from './CameraBarcodeScanner';
 
 interface ScannerModalProps {
   isOpen: boolean;
@@ -141,7 +143,6 @@ const CATEGORY_NAMES: Record<ItemCategory, string> = {
   submicronicos: 'Filtros Submicrónicos',
   rodamientos: 'Rodamientos',
   entrepiso: 'Entrepiso',
-  importado: 'Importado',
   repuestos_mv: 'Repuestos MV',
   cajas: 'Cajas Estantes'
 };
@@ -316,6 +317,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successToast, setSuccessToast] = useState<string | null>(null);
   const [showManualModal, setShowManualModal] = useState<boolean>(false);
+  const [showCameraScanner, setShowCameraScanner] = useState<boolean>(false);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const nextSalidaNum = getNextSalidaNumber();
@@ -327,6 +329,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
       setErrorMessage(null);
       setSuccessToast(null);
       setShowNewItemForm(false);
+      setShowCameraScanner(false);
       if (defaultMode) {
         setScannerMode(defaultMode);
       }
@@ -1357,15 +1360,39 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
                   </button>
                 </div>
 
+                <div className="grid grid-cols-2 gap-2 mt-1">
                 <button
                   type="button"
                   onClick={() => setShowManualModal(true)}
-                  className="w-full mt-1 py-2 px-3 rounded-xl border border-[#badbf5] bg-white hover:bg-sky-50 text-sky-950 font-bold text-xs transition-colors flex items-center justify-center gap-2 shadow-2xs cursor-pointer"
+                  className="py-2 px-3 rounded-xl border border-[#badbf5] bg-white hover:bg-sky-50 text-sky-950 font-bold text-xs transition-colors flex items-center justify-center gap-2 shadow-2xs cursor-pointer"
                 >
                   <Keyboard className="w-4 h-4 text-[#006bb0]" />
                   <span>Carga manual</span>
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setShowCameraScanner(prev => !prev)}
+                  className={`py-2 px-3 rounded-xl border font-bold text-xs transition-colors flex items-center justify-center gap-2 shadow-2xs cursor-pointer ${
+                    showCameraScanner
+                      ? 'border-sky-600 bg-sky-600 text-white'
+                      : 'border-[#badbf5] bg-white hover:bg-sky-50 text-sky-950'
+                  }`}
+                  title="Escanear con la cámara del celular"
+                >
+                  <Camera className="w-4 h-4" />
+                  <span>Cámara</span>
+                </button>
+                </div>
               </div>
+
+              {/* Camera Barcode Scanner */}
+              {showCameraScanner && (
+                <CameraBarcodeScanner
+                  onDetected={(code) => {
+                    handleProcessScannedCode(code);
+                  }}
+                />
+              )}
 
               {/* Unrecognized New Item Inline Form (In Ingreso Mode) */}
               {showNewItemForm && scannerMode === 'ingreso' && (
@@ -1426,7 +1453,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
                         <option value="submicronicos">Filtros Submicrónicos</option>
                         <option value="rodamientos">Rodamientos</option>
                         <option value="entrepiso">Entrepiso</option>
-                        <option value="importado">Importado</option>
+                        <option value="importado" disabled>Importado</option>
                         <option value="repuestos_mv">Repuestos MV</option>
                         <option value="cajas">Cajas</option>
                       </select>

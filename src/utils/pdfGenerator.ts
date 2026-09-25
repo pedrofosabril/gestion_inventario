@@ -3,6 +3,7 @@ import autoTable from 'jspdf-autotable';
 import { SalidaGroupRecord, SalidaItemEntry } from '../types';
 import { replaceYazWithYas } from './sanitizeUtils';
 import { triggerPdfDownload } from './pdfDownload';
+import { formatDisplayDate } from './dateUtils';
 
 export const generateSalidaPDF = (rawSalidaGroup: SalidaGroupRecord) => {
   const salidaGroup: SalidaGroupRecord = {
@@ -66,7 +67,7 @@ export const generateSalidaPDF = (rawSalidaGroup: SalidaGroupRecord) => {
   doc.text('FECHA Y HORA:', 18, startY + 6);
   doc.setFontSize(9);
   doc.setTextColor(...darkColor);
-  doc.text(`${salidaGroup.fechaSalida} - ${salidaGroup.horaSalida} hs`, 18, startY + 11);
+  doc.text(`${formatDisplayDate(salidaGroup.fechaSalida)} - ${salidaGroup.horaSalida} hs`, 18, startY + 11);
 
   doc.setFontSize(8);
   doc.setTextColor(...slateColor);

@@ -14,7 +14,6 @@ import {
   Cog, 
   Building, 
   Warehouse, 
-  Globe2, 
   Sliders, 
   Box, 
   Search, 
@@ -47,6 +46,7 @@ import { GerenciaDashboard } from './components/GerenciaDashboard';
 import { PanoleroSimpleView } from './components/PanoleroSimpleView';
 import { SalidasLogView } from './components/SalidasLogView';
 import { IngresosLogView } from './components/IngresosLogView';
+import { DevolucionesLogView } from './components/DevolucionesLogView';
 import { ItemCategory, InventoryItem } from './types';
 import { OfflineStatusBadge } from './components/OfflineStatusBanner';
 import { startTour, hasSeenTour } from './utils/tour';
@@ -59,12 +59,13 @@ export const VENTAS_ALLOWED_CATEGORIES: ItemCategory[] = [
   'entrepiso'
 ];
 
-type ActiveView = ItemCategory | 'salidas' | 'ingresos' | 'gerencia';
+type ActiveView = ItemCategory | 'salidas' | 'ingresos' | 'devoluciones' | 'gerencia';
 
 const MainApp: React.FC = () => {
   const { 
     items, 
     salidas, 
+    devolucionGroups,
     currentUser, 
     logout,
     getLowStockItems, 
@@ -114,11 +115,11 @@ const MainApp: React.FC = () => {
         'submicronicos',
         'rodamientos',
         'entrepiso',
-        'importado',
         'repuestos_mv',
         'cajas',
         'salidas',
         'ingresos',
+        'devoluciones',
         'gerencia',
       ];
       if (view && validViews.includes(view as ActiveView)) {
@@ -303,11 +304,11 @@ const MainApp: React.FC = () => {
     { id: 'submicronicos', label: 'Submicrónicos', icon: CircleDot, count: items.filter(i => i.categoria === 'submicronicos').length },
     { id: 'rodamientos', label: 'Rodamientos', icon: Cog, count: items.filter(i => i.categoria === 'rodamientos').length },
     { id: 'entrepiso', label: 'Entrepiso', icon: Building, count: items.filter(i => i.categoria === 'entrepiso').length },
-    ...(items.some(i => i.categoria === 'importado') ? [{ id: 'importado' as ActiveView, label: 'Importado', icon: Globe2, count: items.filter(i => i.categoria === 'importado').length }] : []),
     { id: 'repuestos_mv', label: 'Repuestos MV', icon: Sliders, count: items.filter(i => i.categoria === 'repuestos_mv').length },
     { id: 'cajas', label: 'Cajas Estantes', icon: Box, count: items.filter(i => i.categoria === 'cajas').length },
     { id: 'salidas', label: 'Historial Salidas', icon: History, count: salidas.length },
-    { id: 'ingresos', label: 'Historial Ingresos', icon: ArrowDownLeft }
+    { id: 'ingresos', label: 'Historial Ingresos', icon: ArrowDownLeft },
+    { id: 'devoluciones', label: 'Historial Devoluciones', icon: RotateCcw, count: devolucionGroups.length }
   ];
 
   // In Sales profile: only allowed product categories (NO salidas); Pañolero & Administración: all sections
@@ -402,7 +403,7 @@ const MainApp: React.FC = () => {
                             </div>
                             <div className="text-right shrink-0">
                               <span className="font-mono font-bold text-xs text-emerald-700">{item.stock} u.</span>
-                              <div className="text-[10px] text-slate-400 capitalize">{item.categoria.replace('_', ' ')}</div>
+                              <div className="text-[10px] text-slate-400 capitalize">{item.categoria === 'panol' ? 'Pañol' : item.categoria.replace('_', ' ')}</div>
                             </div>
                           </div>
                         ))
@@ -574,16 +575,17 @@ const MainApp: React.FC = () => {
         {!isPanolero && (
           <div id="ubicaciones" className="bg-[#e9f4fc] border-t border-[#c6e1f7] relative">
             <div className="max-w-[1720px] mx-auto px-2 sm:px-4 lg:px-6 flex items-center gap-1 sm:gap-2">
-              
-              {/* Left scroll navigation arrow button */}
+
+              {/* Left scroll arrow */}
               <button
-                type="button"
                 onClick={() => scrollTabs('left')}
                 disabled={!canScrollLeft}
-                className={`p-1.5 sm:p-2 rounded-xl border border-[#badbf5] bg-white text-[#006bb0] hover:bg-sky-50 shadow-2xs transition-all shrink-0 z-10 flex items-center justify-center ${
-                  !canScrollLeft ? 'opacity-30 cursor-not-allowed' : 'opacity-100 hover:scale-105 active:scale-95 cursor-pointer hover:border-[#006bb0]'
+                title="Anterior"
+                className={`shrink-0 p-1.5 rounded-lg transition-all cursor-pointer ${
+                  canScrollLeft
+                    ? 'text-[#006bb0] hover:bg-[#d8edfa] active:scale-90'
+                    : 'text-slate-300 cursor-not-allowed opacity-50'
                 }`}
-                title="Desplazar secciones a la izquierda ◄"
               >
                 <ChevronLeft className="w-4 h-4" />
               </button>
@@ -624,15 +626,16 @@ const MainApp: React.FC = () => {
                 </nav>
               </div>
 
-              {/* Right scroll navigation arrow button */}
+              {/* Right scroll arrow */}
               <button
-                type="button"
                 onClick={() => scrollTabs('right')}
                 disabled={!canScrollRight}
-                className={`p-1.5 sm:p-2 rounded-xl border border-[#badbf5] bg-white text-[#006bb0] hover:bg-sky-50 shadow-2xs transition-all shrink-0 z-10 flex items-center justify-center ${
-                  !canScrollRight ? 'opacity-30 cursor-not-allowed' : 'opacity-100 hover:scale-105 active:scale-95 cursor-pointer hover:border-[#006bb0]'
+                title="Siguiente"
+                className={`shrink-0 p-1.5 rounded-lg transition-all cursor-pointer ${
+                  canScrollRight
+                    ? 'text-[#006bb0] hover:bg-[#d8edfa] active:scale-90'
+                    : 'text-slate-300 cursor-not-allowed opacity-50'
                 }`}
-                title="Desplazar secciones a la derecha ►"
               >
                 <ChevronRight className="w-4 h-4" />
               </button>
@@ -773,6 +776,8 @@ const MainApp: React.FC = () => {
           <SalidasLogView onOpenScanner={handleOpenScanner} />
         ) : activeView === 'ingresos' ? (
           <IngresosLogView onOpenScanner={handleOpenScanner} />
+        ) : activeView === 'devoluciones' ? (
+          <DevolucionesLogView />
         ) : (
           <InventoryTable
             category={activeView as ItemCategory | 'all'}

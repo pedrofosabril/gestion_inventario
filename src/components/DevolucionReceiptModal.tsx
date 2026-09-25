@@ -18,6 +18,7 @@ import {
 import { DevolucionGroupRecord } from '../types';
 import { useInventory } from '../context/InventoryContext';
 import { generateDevolucionPDF } from '../utils/devolucionPdfGenerator';
+import { formatDisplayDate } from '../utils/dateUtils';
 import { SignaturePad } from './SignaturePad';
 import { SavedSignaturePicker } from './SavedSignaturePicker';
 
@@ -125,7 +126,7 @@ export const DevolucionReceiptModal: React.FC<DevolucionReceiptModalProps> = ({
                   Devolución a Pañol
                 </span>
                 <span className="text-xs text-amber-100 font-medium">
-                  {currentDevolucionGroup.fechaDevolucion} • {currentDevolucionGroup.horaDevolucion} hs
+                  {formatDisplayDate(currentDevolucionGroup.fechaDevolucion)} • {currentDevolucionGroup.horaDevolucion} hs
                 </span>
               </div>
               <h2 className="text-xl sm:text-2xl font-black tracking-tight mt-0.5">

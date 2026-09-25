@@ -5,14 +5,15 @@ import {
   RotateCcw,
   Search, 
   MapPin, 
-  Boxes, 
-  ScanLine,
   X,
   History,
-  Barcode
+  Barcode,
+  Camera
 } from 'lucide-react';
 import { useInventory } from '../context/InventoryContext';
 import { InventoryItem } from '../types';
+import { CameraBarcodeScanner } from './CameraBarcodeScanner';
+import { formatDisplayDate } from '../utils/dateUtils';
 
 interface PanoleroSimpleViewProps {
   onOpenScanner: (initialCode?: string, mode?: 'salida' | 'ingreso' | 'devolucion') => void;
@@ -27,6 +28,7 @@ export const PanoleroSimpleView: React.FC<PanoleroSimpleViewProps> = ({
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [showRecentMovimientos, setShowRecentMovimientos] = useState<boolean>(false);
   const [movTab, setMovTab] = useState<'salida' | 'entrada' | 'devolucion'>('salida');
+  const [showCameraScanner, setShowCameraScanner] = useState<boolean>(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Listen to hardware barcode scanner on main view to fill the search box instead of auto-opening Salida
@@ -249,15 +251,43 @@ export const PanoleroSimpleView: React.FC<PanoleroSimpleViewProps> = ({
             )}
           </div>
 
-          <button
-            type="button"
-            onClick={() => searchInputRef.current?.focus()}
-            className="px-5 py-3 bg-[#006bb0] hover:bg-[#005a94] text-white rounded-xl font-black text-sm flex items-center justify-center gap-2 shadow-xs cursor-pointer transition-all active:scale-95 shrink-0"
-          >
-            <Search className="w-4 h-4" />
-            <span>BUSCAR</span>
-          </button>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => searchInputRef.current?.focus()}
+              className="px-5 py-3 bg-[#006bb0] hover:bg-[#005a94] text-white rounded-xl font-black text-sm flex items-center justify-center gap-2 shadow-xs cursor-pointer transition-all active:scale-95 shrink-0"
+            >
+              <Search className="w-4 h-4" />
+              <span>BUSCAR</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setShowCameraScanner(prev => !prev)}
+              className={`px-4 py-3 rounded-xl font-black text-sm flex items-center justify-center gap-2 shadow-xs cursor-pointer transition-all active:scale-95 shrink-0 ${
+                showCameraScanner
+                  ? 'bg-sky-600 text-white border border-sky-700'
+                  : 'bg-white text-[#006bb0] border border-[#9eccf0] hover:bg-sky-50'
+              }`}
+              title="Buscar escaneando con la cámara"
+            >
+              <Camera className="w-4 h-4" />
+              <span>{showCameraScanner ? 'CERRAR CÁMARA' : 'CÁMARA'}</span>
+            </button>
+          </div>
         </div>
+
+        {/* Camera Barcode Scanner (móvil / sin pistola) */}
+        {showCameraScanner && (
+          <div className="mt-3">
+            <CameraBarcodeScanner
+              onDetected={(code) => {
+                setSearchTerm(code);
+                searchInputRef.current?.focus();
+              }}
+            />
+          </div>
+        )}
 
         {/* Search Results Display */}
         {searchTerm.trim() !== '' && (
@@ -447,7 +477,7 @@ export const PanoleroSimpleView: React.FC<PanoleroSimpleViewProps> = ({
                       <div className="min-w-0">
                         <span className="font-bold text-slate-900">{mov.descripcion}</span>
                         <div className="text-slate-500 text-xs mt-1">
-                          Código: <span className="font-mono font-bold text-slate-700">{mov.codigo}</span> · {mov.fecha}{mov.hora ? ` ${mov.hora}` : ''} · {mov.detalle}
+                          Código: <span className="font-mono font-bold text-slate-700">{mov.codigo}</span> · {formatDisplayDate(mov.fecha)}{mov.hora ? ` ${mov.hora}` : ''} · {mov.detalle}
                         </div>
                       </div>
                       <span className={`font-black px-2.5 py-1 rounded-xl border text-xs sm:text-sm shrink-0 ml-2 ${qtyCls}`}>

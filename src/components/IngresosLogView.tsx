@@ -11,10 +11,12 @@ import {
   PackagePlus,
   Calendar,
   Scan,
-  Barcode
+  Barcode,
+  ArrowDownUp
 } from 'lucide-react';
 import { useInventory } from '../context/InventoryContext';
 import { ItemCategory } from '../types';
+import { formatDisplayDate } from '../utils/dateUtils';
 
 interface IngresosLogViewProps {
   onOpenScanner?: (code?: string, mode?: 'salida' | 'ingreso') => void;
@@ -26,6 +28,7 @@ export const IngresosLogView: React.FC<IngresosLogViewProps> = ({ onOpenScanner 
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [selectedSupplier, setSelectedSupplier] = useState<string>('all');
   const [isReceivingModalOpen, setIsReceivingModalOpen] = useState<boolean>(false);
+  const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
 
   // Reception form state
   const [codigo, setCodigo] = useState<string>('');
@@ -51,6 +54,9 @@ export const IngresosLogView: React.FC<IngresosLogViewProps> = ({ onOpenScanner 
       );
     }
     return true;
+  }).sort((a, b) => {
+    const comparison = a.fechaIngreso.localeCompare(b.fechaIngreso);
+    return sortOrder === 'desc' ? -comparison : comparison;
   });
 
   const totalUnidadesIngresadas = filteredIngresos.reduce((sum, i) => sum + i.cantidad, 0);
@@ -123,6 +129,16 @@ export const IngresosLogView: React.FC<IngresosLogViewProps> = ({ onOpenScanner 
           >
             <Download className="w-3.5 h-3.5 text-[#006bb0]" />
             Exportar Ingresos (.xlsx)
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setSortOrder(order => order === 'desc' ? 'asc' : 'desc')}
+            className="px-3.5 py-2 border border-[#b8ddf5] bg-white hover:bg-[#eaf4fb] text-slate-700 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
+            title="Alternar el orden del historial por fecha"
+          >
+            <ArrowDownUp className="w-3.5 h-3.5 text-[#006bb0]" />
+            {sortOrder === 'desc' ? 'Más reciente primero' : 'Más antiguo primero'}
           </button>
         </div>
       </div>
@@ -219,7 +235,7 @@ export const IngresosLogView: React.FC<IngresosLogViewProps> = ({ onOpenScanner 
 
                     {/* Fecha */}
                     <td className="px-4 py-3 font-mono text-slate-600 whitespace-nowrap">
-                      {ingreso.fechaIngreso}
+                      {formatDisplayDate(ingreso.fechaIngreso)}
                     </td>
 
                     {/* Ubicación */}
@@ -355,7 +371,7 @@ export const IngresosLogView: React.FC<IngresosLogViewProps> = ({ onOpenScanner 
                     <option value="submicronicos">Filtros Submicrónicos</option>
                     <option value="rodamientos">Rodamientos</option>
                     <option value="entrepiso">Entrepiso Pañol</option>
-                    <option value="importado">Stock Importado</option>
+                    <option value="importado" disabled>Importado</option>
                     <option value="repuestos_mv">Repuestos MV</option>
                     <option value="cajas">Cajas Estantes</option>
                   </select>

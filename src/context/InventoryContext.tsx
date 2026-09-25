@@ -23,6 +23,8 @@ import {
   INITIAL_USERS 
 } from '../data/initialData';
 import { replaceYazWithYas, sanitizeYazObject } from '../utils/sanitizeUtils';
+import { createMovement, deleteInventoryItem, getInventory, saveInventoryItem } from '../lib/supabase';
+import { mergeSameProductPairs } from '../utils/productMerge';
 
 export type MainNavSection = ItemCategory | 'salidas_log' | 'ingresos_log' | 'gerencia_dashboard';
 
@@ -151,6 +153,7 @@ interface InventoryContextType {
   totalSkus: number;
   resetToDefaults: () => void;
   clearAllData: () => void;
+  restoreDatabase: (jsonContent: string) => Promise<{ success: boolean; message: string }>;
 }
 
 const InventoryContext = createContext<InventoryContextType | undefined>(undefined);
@@ -270,17 +273,7 @@ const deduplicateSalidasList = (records: SalidaRecord[]): SalidaRecord[] => {
 };
 
 export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [items, setItems] = useState<InventoryItem[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEYS.ITEMS);
-      if (saved) {
-        return sanitizeYazObject(JSON.parse(saved));
-      }
-      return sanitizeYazObject(INITIAL_INVENTORY);
-    } catch {
-      return sanitizeYazObject(INITIAL_INVENTORY);
-    }
-  });
+  const [items, setItems] = useState<InventoryItem[]>([]);
 
   const [salidas, setSalidas] = useState<SalidaRecord[]>(() => {
     try {
@@ -399,15 +392,17 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [activeSubCategory, setActiveSubCategory] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
 
-  // Persist state
+  // Supabase is the source of truth for the inventory. Test data and browser
+  // storage are deliberately not used as a fallback.
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEYS.ITEMS, JSON.stringify(items));
-    } catch (e) {
-      console.error('Failed to save items to storage', e);
-    }
-  }, [items]);
+    let active = true;
+    getInventory()
+      .then(data => { if (active) setItems(data); })
+      .catch(error => console.error('No se pudo cargar el inventario de Supabase:', error));
+    return () => { active = false; };
+  }, []);
 
+  // Persist state
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEYS.SALIDAS, JSON.stringify(salidas));
@@ -598,7 +593,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   };
 
   const addItem = (newItemData: Omit<InventoryItem, 'id' | 'precioTotal'>): InventoryItem => {
-    const id = `item-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+    const id = newItemData.codigo.trim();
     const precioTotal = (newItemData.stock || 0) * (newItemData.precio || 0);
     const item: InventoryItem = sanitizeYazObject({
       ...newItemData,
@@ -608,11 +603,18 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     });
 
     setItems(prev => [item, ...prev]);
+    void saveInventoryItem(item).catch(error => console.error('No se pudo guardar el repuesto en Supabase:', error));
     return item;
   };
 
   const updateItem = (id: string, updates: Partial<InventoryItem>) => {
     const cleanUpdates = sanitizeYazObject(updates);
+    const current = items.find(item => item.id === id);
+    if (current) {
+      const updated = { ...current, ...cleanUpdates };
+      updated.precioTotal = (updated.stock || 0) * (updated.precio || 0);
+      void saveInventoryItem(updated).catch(error => console.error('No se pudo actualizar el repuesto en Supabase:', error));
+    }
     setItems(prev => prev.map(item => {
       if (item.id === id) {
         const updated = { ...item, ...cleanUpdates };
@@ -624,6 +626,10 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   };
 
   const deleteItem = (id: string) => {
+    const current = items.find(item => item.id === id);
+    if (current) {
+      void deleteInventoryItem(current.codigo).catch(error => console.error('No se pudo eliminar el repuesto en Supabase:', error));
+    }
     setItems(prev => prev.filter(item => item.id !== id));
   };
 
@@ -695,6 +701,10 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     };
 
     setSalidas(prev => [salidaRecord, ...prev]);
+    void createMovement({
+      tipo: esDevuelto ? 'Devolucion' : 'Salida', codigo: item.codigo, cantidad,
+      comprobante: salidaRecord.nroRemito, clienteProveedor: salidaRecord.cliente, responsable: salidaRecord.retira
+    }).catch(error => console.error('No se pudo registrar la salida en Supabase:', error));
     playBeep('success');
 
     // Confetti effect for exciting feedback on successful withdrawal
@@ -832,6 +842,16 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           categoria: item.categoria
         };
         dispatchedEntries.push(entry);
+
+        void saveInventoryItem({
+          ...item,
+          stock: newStock,
+          precioTotal: newStock * item.precio
+        }).catch(error => console.error('No se pudo actualizar el stock en Supabase:', error));
+        void createMovement({
+          tipo: 'Salida', codigo: item.codigo, cantidad: req.cantidad,
+          comprobante: remitoFinal, clienteProveedor: clientName, responsable: employeeName
+        }).catch(error => console.error('No se pudo registrar la salida en Supabase:', error));
 
         const salRecord: SalidaRecord = {
           id: `sal-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
@@ -1307,6 +1327,11 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     };
 
     setIngresos(prev => [ingresoRecord, ...prev]);
+    void createMovement({
+      tipo: 'Ingreso', codigo: ingresoRecord.codigo, cantidad,
+      comprobante: ingresoRecord.factura, clienteProveedor: ingresoRecord.proveedor,
+      responsable: ingresoRecord.usuarioRegistro
+    }).catch(error => console.error('No se pudo registrar el ingreso en Supabase:', error));
     playBeep('success');
 
     return {
@@ -1401,7 +1426,6 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         else if (hName.includes('submic') || hName.includes('fxf') || hName.includes('scf')) itemCategory = 'submicronicos';
         else if (hName.includes('rodamiento') || hName.includes('skf') || hName.includes('timken')) itemCategory = 'rodamientos';
         else if (hName.includes('entrepiso') || hName.includes('fleetguard') || hName.includes('lanss')) itemCategory = 'entrepiso';
-        else if (hName.includes('import')) itemCategory = 'importado';
         else if (hName.includes('mv') || hName.includes('repuesto mv')) itemCategory = 'repuestos_mv';
         else if (hName.includes('caja')) itemCategory = 'cajas';
       }
@@ -1427,24 +1451,29 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     });
 
     if (mode === 'replace') {
+      // Variantes P/SERVICIO + venta del mismo código → un solo producto.
+      const mergedParsed = mergeSameProductPairs(parsedItems);
       setItems(prev => {
         const remaining = prev.filter(i => i.categoria !== targetCategory);
-        return [...remaining, ...parsedItems];
+        return [...remaining, ...mergedParsed];
       });
-      added = parsedItems.length;
+      added = mergedParsed.length;
     } else {
       // Merge: Update existing if found in items, or add new
+      // Variantes P/SERVICIO + venta del mismo código → un solo producto.
+      const mergedParsed = mergeSameProductPairs(parsedItems);
       setItems(prev => {
         const itemMap = new Map<string, InventoryItem>();
         prev.forEach(item => itemMap.set(item.codigo.toLowerCase().trim(), item));
 
-        parsedItems.forEach(newItem => {
+        mergedParsed.forEach(newItem => {
           const key = newItem.codigo.toLowerCase().trim();
           if (itemMap.has(key)) {
             const existing = itemMap.get(key)!;
             itemMap.set(key, {
               ...existing,
               stock: newItem.stock,
+              paraServicio: newItem.paraServicio ?? existing.paraServicio,
               precio: newItem.precio > 0 ? newItem.precio : existing.precio,
               precioTotal: newItem.stock * (newItem.precio > 0 ? newItem.precio : existing.precio),
               descripcion: newItem.descripcion && newItem.descripcion !== newItem.codigo ? newItem.descripcion : existing.descripcion,
@@ -1460,7 +1489,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           }
         });
 
-        return Array.from(itemMap.values());
+        return mergeSameProductPairs(Array.from(itemMap.values()));
       });
     }
 
@@ -1514,7 +1543,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
 
     const categoriesToExport: ItemCategory[] = category === 'all' 
-      ? ['panol', 'cajones_fluidos', 'submicronicos', 'rodamientos', 'entrepiso', 'importado', 'repuestos_mv', 'cajas']
+      ? ['panol', 'cajones_fluidos', 'submicronicos', 'rodamientos', 'entrepiso', 'repuestos_mv', 'cajas']
       : [category as ItemCategory];
 
     const categoryNames: Record<ItemCategory, string> = {
@@ -1523,7 +1552,6 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       submicronicos: 'Filtros Submicrónicos',
       rodamientos: 'Rodamientos',
       entrepiso: 'Entrepiso Pañol',
-      importado: 'Stock Importado',
       repuestos_mv: 'Repuestos MV',
       cajas: 'Cajas Estante'
     };
@@ -1812,30 +1840,87 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setItems([]);
     setSalidas([]);
     setSalidaGroups([]);
+    setDevolucionGroups([]);
     setIngresos([]);
+    setUsers([]);
+    setCurrentUser(null);
+    setSavedSignatures([]);
     try {
       localStorage.removeItem(STORAGE_KEYS.ITEMS);
       localStorage.removeItem(STORAGE_KEYS.SALIDAS);
       localStorage.removeItem(STORAGE_KEYS.SALIDA_GROUPS);
+      localStorage.removeItem(STORAGE_KEYS.DEVOLUCION_GROUPS);
       localStorage.removeItem(STORAGE_KEYS.INGRESOS);
+      localStorage.removeItem(STORAGE_KEYS.USER);
+      localStorage.removeItem(STORAGE_KEYS.USERS);
+      localStorage.removeItem(STORAGE_KEYS.SAVED_SIGNATURES);
     } catch (e) {
       console.error('Error clearing data:', e);
     }
   };
 
-  const resetToDefaults = () => {
-    setItems(INITIAL_INVENTORY);
-    setSalidas(INITIAL_SALIDAS);
-    setSalidaGroups(INITIAL_SALIDA_GROUPS);
-    setIngresos(INITIAL_INGRESOS);
+  const restoreDatabase = async (jsonContent: string): Promise<{ success: boolean; message: string }> => {
     try {
-      localStorage.setItem(STORAGE_KEYS.ITEMS, JSON.stringify(INITIAL_INVENTORY));
-      localStorage.setItem(STORAGE_KEYS.SALIDAS, JSON.stringify(INITIAL_SALIDAS));
-      localStorage.setItem(STORAGE_KEYS.SALIDA_GROUPS, JSON.stringify(INITIAL_SALIDA_GROUPS));
-      localStorage.setItem(STORAGE_KEYS.INGRESOS, JSON.stringify(INITIAL_INGRESOS));
+      const parsed = JSON.parse(jsonContent);
+      if (!parsed || typeof parsed !== 'object' || !parsed.colecciones || typeof parsed.colecciones !== 'object') {
+        return { success: false, message: 'El archivo no parece un respaldo válido de la base de datos.' };
+      }
+
+      const backupItems = Array.isArray(parsed.colecciones.items) ? sanitizeYazObject(parsed.colecciones.items) as InventoryItem[] : [];
+      const backupSalidas = Array.isArray(parsed.colecciones.salidas) ? deduplicateSalidasList(sanitizeYazObject(parsed.colecciones.salidas) as SalidaRecord[]) : [];
+      const backupSalidaGroups = Array.isArray(parsed.colecciones.salidaGroups) ? deduplicateSalidaGroupsList(sanitizeYazObject(parsed.colecciones.salidaGroups) as SalidaGroupRecord[]) : [];
+      const backupDevolucionGroups = Array.isArray(parsed.colecciones.devolucionGroups) ? sanitizeYazObject(parsed.colecciones.devolucionGroups) as DevolucionGroupRecord[] : [];
+      const backupIngresos = Array.isArray(parsed.colecciones.ingresos) ? sanitizeYazObject(parsed.colecciones.ingresos) as IngresoRecord[] : [];
+      const backupUsers = Array.isArray(parsed.colecciones.users) ? sanitizeYazObject(parsed.colecciones.users) as UserAccount[] : [];
+      const backupCurrentUser = parsed.colecciones.currentUser && typeof parsed.colecciones.currentUser === 'object'
+        ? sanitizeYazObject(parsed.colecciones.currentUser) as UserAccount
+        : null;
+
+      // Restore all collections in local state (effects persist to localStorage)
+      setItems(backupItems);
+      setSalidas(backupSalidas);
+      setSalidaGroups(backupSalidaGroups);
+      setDevolucionGroups(backupDevolucionGroups);
+      setIngresos(backupIngresos);
+      setUsers(backupUsers);
+      setCurrentUser(backupCurrentUser);
+
+      // Sync the restored inventory back to Supabase (source of truth for items)
+      let saved = 0;
+      let errors = 0;
+      const savedCodes = new Set(backupItems.map(i => i.codigo));
+
+      const results = await Promise.allSettled(backupItems.map(item => saveInventoryItem(item)));
+      for (const res of results) {
+        if (res.status === 'fulfilled') saved++;
+        else { errors++; console.error('Error al restaurar item en Supabase:', res.reason); }
+      }
+
+      // Remove orphan rows from Supabase that are no longer part of the restored DB
+      const currentCodes = new Set(items.map(i => i.codigo));
+      const orphanCodes = Array.from(currentCodes).filter((code: string) => !savedCodes.has(code));
+      const orphanResults = await Promise.allSettled(orphanCodes.map((code: string) => deleteInventoryItem(code)));
+      for (const res of orphanResults) {
+        if (res.status === 'rejected') { errors++; console.error('Error al eliminar item huérfano de Supabase:', res.reason); }
+      }
+
+      const message = errors === 0
+        ? `Base de datos restaurada correctamente: ${backupItems.length} productos y ${backupSalidaGroups.length} salidas.`
+        : `Base restaurada en la app (${backupItems.length} productos), pero ${errors} operación(es) con Supabase fallaron. Recargá para revalidar.`;
+
+      return { success: true, message };
     } catch (e) {
-      console.error('Error resetting to defaults:', e);
+      console.error('Error al restaurar la base de datos:', e);
+      return { success: false, message: 'No se pudo restaurar la base de datos. El archivo puede estar corrupto.' };
     }
+  };
+
+  const resetToDefaults = () => {
+    // "Restaurar" must never seed the inventory with bundled demo data.
+    // It now refreshes the current state stored in Supabase instead.
+    getInventory()
+      .then(setItems)
+      .catch(error => console.error('No se pudo restaurar el inventario desde Supabase:', error));
   };
 
   return (
@@ -1894,7 +1979,8 @@ backupHistory,
         totalUnits,
         totalSkus,
         resetToDefaults,
-        clearAllData
+        clearAllData,
+        restoreDatabase
       }}
     >
       {children}
