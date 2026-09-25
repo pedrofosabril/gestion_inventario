@@ -2,6 +2,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { SalidaGroupRecord, SalidaItemEntry } from '../types';
 import { replaceYazWithYas } from './sanitizeUtils';
+import { triggerPdfDownload } from './pdfDownload';
 import { formatDisplayDate } from './dateUtils';
 
 export const generateSalidaPDF = (rawSalidaGroup: SalidaGroupRecord) => {
@@ -254,5 +255,5 @@ export const generateSalidaPDF = (rawSalidaGroup: SalidaGroupRecord) => {
 
   // Download PDF
   const filename = `Comprobante_${salidaGroup.numeroSalidaFormatted || `SAL-${salidaGroup.id}`}.pdf`;
-  doc.save(filename);
+  triggerPdfDownload(doc, filename);
 };

@@ -167,8 +167,12 @@ const STORAGE_KEYS = {
   USER: 'verdu_inventory_user_v2',
   USERS: 'verdu_inventory_users_list_v2',
   BACKUP_HISTORY: 'verdu_backup_history_v1',
-  SAVED_SIGNATURES: 'verdu_firmas_guardadas_v1'
+  SAVED_SIGNATURES: 'verdu_firmas_guardadas_v1',
+  LAST_ACTIVITY: 'verdu_inventory_last_activity_v1'
 };
+
+// Sesión de administración: si no hay actividad por más de 1 hora, se cierra la sesión.
+const ADMIN_INACTIVITY_MAX_MS = 60 * 60 * 1000;
 
 // Clean legacy cached demo data from previous versions & sanitize any Yaz occurrences
 try {
@@ -344,12 +348,26 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           parsed.nombre = 'Marcelo';
           localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(parsed));
         }
+        // Sesión de administración: si no hubo actividad en la última 1 hora, se cierra.
+        if (parsed.rol === 'gerencia') {
+          const lastActivity = Number(localStorage.getItem(STORAGE_KEYS.LAST_ACTIVITY) || '0');
+          if (!isFinite(lastActivity) || lastActivity <= 0 || Date.now() - lastActivity >= ADMIN_INACTIVITY_MAX_MS) {
+            localStorage.removeItem(STORAGE_KEYS.USER);
+            localStorage.removeItem(STORAGE_KEYS.LAST_ACTIVITY);
+            return null;
+          }
+        }
         return parsed;
       }
       return null;
     } catch {
       return null;
     }
+  });
+
+  const [lastActivityAt, setLastActivityAt] = useState<number>(() => {
+    const v = Number(localStorage.getItem(STORAGE_KEYS.LAST_ACTIVITY) || '0');
+    return isFinite(v) && v > 0 ? v : Date.now();
   });
 
   const [backupHistory, setBackupHistory] = useState<BackupHistoryEntry[]>(() => {
@@ -424,6 +442,59 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       console.error('Failed to save user', e);
     }
   }, [currentUser]);
+
+  // === Sesión de administración por inactividad (1 hora) ===
+  // Marca actividad ante cualquier interacción (clicks, teclado, táctil, scroll).
+  useEffect(() => {
+    const markActivity = () => {
+      const now = Date.now();
+      setLastActivityAt(prev => (now - prev >= 15000 ? now : prev));
+    };
+    const events = ['pointerdown', 'keydown', 'touchstart', 'scroll', 'wheel'];
+    events.forEach(ev => window.addEventListener(ev, markActivity, { passive: true }));
+    return () => events.forEach(ev => window.removeEventListener(ev, markActivity));
+  }, []);
+
+  // Persiste la última actividad con un throttling suave (cada 15s aprox).
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      try {
+        localStorage.setItem(STORAGE_KEYS.LAST_ACTIVITY, String(lastActivityAt));
+      } catch (e) {
+        console.error('Failed to save last activity', e);
+      }
+    }, 200);
+    return () => window.clearTimeout(t);
+  }, [lastActivityAt]);
+
+  // Verifica expiración periódicamente y al volver a la pestaña.
+  useEffect(() => {
+    const expireIfIdle = () => {
+      if (currentUser?.rol !== 'gerencia') return;
+      if (lastActivityAt > 0 && Date.now() - lastActivityAt >= ADMIN_INACTIVITY_MAX_MS) {
+        setCurrentUser(null);
+        setLastActivityAt(0);
+        try {
+          localStorage.removeItem(STORAGE_KEYS.USER);
+          localStorage.removeItem(STORAGE_KEYS.LAST_ACTIVITY);
+        } catch (e) {
+          console.error('Failed to clear expired session', e);
+        }
+      }
+    };
+    expireIfIdle();
+    const interval = window.setInterval(expireIfIdle, 30000);
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') expireIfIdle();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', expireIfIdle);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', expireIfIdle);
+    };
+  }, [currentUser, lastActivityAt]);
 
   useEffect(() => {
     try {
@@ -1631,8 +1702,11 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
 
     setCurrentUser(user);
+    const now = Date.now();
+    setLastActivityAt(now);
     try {
       localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(user));
+      localStorage.setItem(STORAGE_KEYS.LAST_ACTIVITY, String(now));
     } catch (e) {
       console.error('Error storing user in localStorage:', e);
     }
@@ -1697,8 +1771,11 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     // Automatically log in with the new account
     setCurrentUser(newUser);
+    const now = Date.now();
+    setLastActivityAt(now);
     try {
       localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(newUser));
+      localStorage.setItem(STORAGE_KEYS.LAST_ACTIVITY, String(now));
     } catch (e) {
       console.error('Error storing user in localStorage:', e);
     }
@@ -1710,8 +1787,10 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const logout = () => {
     setCurrentUser(null);
+    setLastActivityAt(0);
     try {
       localStorage.removeItem(STORAGE_KEYS.USER);
+      localStorage.removeItem(STORAGE_KEYS.LAST_ACTIVITY);
     } catch (e) {
       console.error('Error removing user from localStorage:', e);
     }
