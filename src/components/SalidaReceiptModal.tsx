@@ -22,6 +22,7 @@ import {
 import { SalidaGroupRecord, SalidaItemEntry } from '../types';
 import { useInventory } from '../context/InventoryContext';
 import { generateSalidaPDF } from '../utils/pdfGenerator';
+import { formatDisplayDate } from '../utils/dateUtils';
 import { SignaturePad } from './SignaturePad';
 import { SavedSignaturePicker } from './SavedSignaturePicker';
 
@@ -169,7 +170,7 @@ export const SalidaReceiptModal: React.FC<SalidaReceiptModalProps> = ({
               </div>
               <div className="text-xs font-bold text-slate-600 mt-0.5 flex items-center sm:justify-end gap-1">
                 <Calendar className="w-3.5 h-3.5 text-sky-600" />
-                <span>{salidaGroup.fechaSalida}</span>
+                <span>{formatDisplayDate(salidaGroup.fechaSalida)}</span>
                 <span className="text-slate-300">•</span>
                 <Clock className="w-3.5 h-3.5 text-sky-600" />
                 <span>{salidaGroup.horaSalida} hs</span>
@@ -502,7 +503,7 @@ export const SalidaReceiptModal: React.FC<SalidaReceiptModalProps> = ({
 
       {/* Interactive Digital Signature Overlay - Empleado que Retira */}
       {isSigning && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 bg-black/60 backdrop-blur-xs animate-in fade-in">
+        <div className="fixed inset-0 z-[60] flex items-stretch justify-center p-3 bg-black/60 backdrop-blur-xs animate-in fade-in">
           <SignaturePad
             title="Firma Digital de Recepción"
             subtitle={`Receptor: ${currentSalidaGroup.retira}`}
@@ -515,7 +516,7 @@ export const SalidaReceiptModal: React.FC<SalidaReceiptModalProps> = ({
 
       {/* Interactive Digital Signature Overlay - Pañolero / Emisor */}
       {isSigningPanolero && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 bg-black/60 backdrop-blur-xs animate-in fade-in">
+        <div className="fixed inset-0 z-[60] flex items-stretch justify-center p-3 bg-black/60 backdrop-blur-xs animate-in fade-in">
           <SignaturePad
             title="Firma Pañolero / Emisor"
             subtitle={panoleroName}

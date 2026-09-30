@@ -2,6 +2,8 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { DevolucionGroupRecord } from '../types';
 import { replaceYazWithYas } from './sanitizeUtils';
+import { triggerPdfDownload } from './pdfDownload';
+import { formatDisplayDate } from './dateUtils';
 
 export const generateDevolucionPDF = (rawDevolucionGroup: DevolucionGroupRecord) => {
   const devolucionGroup: DevolucionGroupRecord = {
@@ -66,7 +68,7 @@ export const generateDevolucionPDF = (rawDevolucionGroup: DevolucionGroupRecord)
   doc.text('FECHA Y HORA:', 18, startY + 6);
   doc.setFontSize(9);
   doc.setTextColor(...darkColor);
-  doc.text(`${devolucionGroup.fechaDevolucion} - ${devolucionGroup.horaDevolucion} hs`, 18, startY + 11);
+  doc.text(`${formatDisplayDate(devolucionGroup.fechaDevolucion)} - ${devolucionGroup.horaDevolucion} hs`, 18, startY + 11);
 
   doc.setFontSize(8);
   doc.setTextColor(...slateColor);
@@ -226,5 +228,5 @@ export const generateDevolucionPDF = (rawDevolucionGroup: DevolucionGroupRecord)
 
   // Save the PDF
   const filename = `Remito_Devolucion_${devolucionGroup.numeroDevolucionFormatted.replace(/\s+/g, '_')}_${devolucionGroup.fechaDevolucion}.pdf`;
-  doc.save(filename);
+  triggerPdfDownload(doc, filename);
 };

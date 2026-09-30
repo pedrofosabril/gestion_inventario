@@ -103,6 +103,7 @@ interface InventoryContextType {
     devolucionGroup?: DevolucionGroupRecord;
   };
   deleteDevolucionGroup: (groupId: string, subtractStock?: boolean) => { success: boolean; message: string };
+  deleteDevolucionItem: (groupId: string, codigo: string, subtractStock?: boolean) => { success: boolean; message: string };
   updateDevolucionGroupSignature: (groupId: string, firmaDigital: string, firmadoPor?: string) => void;
   updateDevolucionGroupPanoleroSignature: (groupId: string, firmaPanolero: string, firmadoPor?: string) => void;
   getNextDevolucionNumber: () => number;
@@ -117,6 +118,7 @@ interface InventoryContextType {
     categoria?: ItemCategory;
     precioUnitario?: number;
   }) => { success: boolean; message: string; ingreso?: IngresoRecord; newStock?: number };
+  deleteIngreso: (ingresoId: string, subtractStock?: boolean) => { success: boolean; message: string };
 
   // Excel Migration / Import & Export
   // Se importan por LOTES: cada lote es una hoja del archivo con su categoría de destino.
@@ -164,14 +166,22 @@ const STORAGE_KEYS = {
   SALIDA_GROUPS: 'verdu_inventory_salida_groups_v18_exact_mv_cajas',
   DEVOLUCION_GROUPS: 'verdu_inventory_devolucion_groups_v1',
   INGRESOS: 'verdu_inventory_ingresos_v18_exact_mv_cajas',
-  USER: 'verdu_inventory_user_v2',
-  USERS: 'verdu_inventory_users_list_v2',
+  USER: 'verdu_inventory_user_v3',
+  USERS: 'verdu_inventory_users_list_v3',
   BACKUP_HISTORY: 'verdu_backup_history_v1',
-  SAVED_SIGNATURES: 'verdu_firmas_guardadas_v1'
+  SAVED_SIGNATURES: 'verdu_firmas_guardadas_v1',
+  LAST_ACTIVITY: 'verdu_inventory_last_activity_v1'
 };
+
+// Sesión de administración: si no hay actividad por más de 1 hora, se cierra la sesión.
+const ADMIN_INACTIVITY_MAX_MS = 60 * 60 * 1000;
 
 // Clean legacy cached demo data from previous versions & sanitize any Yaz occurrences
 try {
+  // Remove all accounts and active sessions from the previous storage version.
+  localStorage.removeItem('verdu_inventory_user_v2');
+  localStorage.removeItem('verdu_inventory_users_list_v2');
+
   const legacyPrefixes = [
     'verdu_inventory_items_',
     'verdu_inventory_salidas_',
@@ -344,12 +354,26 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           parsed.nombre = 'Marcelo';
           localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(parsed));
         }
+        // Sesión de administración: si no hubo actividad en la última 1 hora, se cierra.
+        if (parsed.rol === 'gerencia') {
+          const lastActivity = Number(localStorage.getItem(STORAGE_KEYS.LAST_ACTIVITY) || '0');
+          if (!isFinite(lastActivity) || lastActivity <= 0 || Date.now() - lastActivity >= ADMIN_INACTIVITY_MAX_MS) {
+            localStorage.removeItem(STORAGE_KEYS.USER);
+            localStorage.removeItem(STORAGE_KEYS.LAST_ACTIVITY);
+            return null;
+          }
+        }
         return parsed;
       }
       return null;
     } catch {
       return null;
     }
+  });
+
+  const [lastActivityAt, setLastActivityAt] = useState<number>(() => {
+    const v = Number(localStorage.getItem(STORAGE_KEYS.LAST_ACTIVITY) || '0');
+    return isFinite(v) && v > 0 ? v : Date.now();
   });
 
   const [backupHistory, setBackupHistory] = useState<BackupHistoryEntry[]>(() => {
@@ -424,6 +448,59 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       console.error('Failed to save user', e);
     }
   }, [currentUser]);
+
+  // === Sesión de administración por inactividad (1 hora) ===
+  // Marca actividad ante cualquier interacción (clicks, teclado, táctil, scroll).
+  useEffect(() => {
+    const markActivity = () => {
+      const now = Date.now();
+      setLastActivityAt(prev => (now - prev >= 15000 ? now : prev));
+    };
+    const events = ['pointerdown', 'keydown', 'touchstart', 'scroll', 'wheel'];
+    events.forEach(ev => window.addEventListener(ev, markActivity, { passive: true }));
+    return () => events.forEach(ev => window.removeEventListener(ev, markActivity));
+  }, []);
+
+  // Persiste la última actividad con un throttling suave (cada 15s aprox).
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      try {
+        localStorage.setItem(STORAGE_KEYS.LAST_ACTIVITY, String(lastActivityAt));
+      } catch (e) {
+        console.error('Failed to save last activity', e);
+      }
+    }, 200);
+    return () => window.clearTimeout(t);
+  }, [lastActivityAt]);
+
+  // Verifica expiración periódicamente y al volver a la pestaña.
+  useEffect(() => {
+    const expireIfIdle = () => {
+      if (currentUser?.rol !== 'gerencia') return;
+      if (lastActivityAt > 0 && Date.now() - lastActivityAt >= ADMIN_INACTIVITY_MAX_MS) {
+        setCurrentUser(null);
+        setLastActivityAt(0);
+        try {
+          localStorage.removeItem(STORAGE_KEYS.USER);
+          localStorage.removeItem(STORAGE_KEYS.LAST_ACTIVITY);
+        } catch (e) {
+          console.error('Failed to clear expired session', e);
+        }
+      }
+    };
+    expireIfIdle();
+    const interval = window.setInterval(expireIfIdle, 30000);
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') expireIfIdle();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', expireIfIdle);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', expireIfIdle);
+    };
+  }, [currentUser, lastActivityAt]);
 
   useEffect(() => {
     try {
@@ -862,11 +939,13 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           if (idx !== -1) {
             const current = updated[idx];
             const restoredStock = current.stock + itemEntry.cantidad;
-            updated[idx] = {
+            const updatedItem = {
               ...current,
               stock: restoredStock,
               precioTotal: restoredStock * current.precio
             };
+            updated[idx] = updatedItem;
+            void saveInventoryItem(updatedItem).catch(error => console.error('No se pudo actualizar el stock en Supabase:', error));
           }
         }
         return updated;
@@ -982,13 +1061,15 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         );
         if (match) {
           const newStock = (item.stock || 0) + match.cantidad;
-          return {
+          const updatedItem = {
             ...item,
             stock: newStock,
             precioTotal: newStock * (item.precio || 0),
             fechaModificacion: formattedDate,
             usuarioModificacion: currentUser.nombre
           };
+          void saveInventoryItem(updatedItem).catch(error => console.error('No se pudo actualizar el stock en Supabase:', error));
+          return updatedItem;
         }
         return item;
       });
@@ -1058,11 +1139,13 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           if (idx !== -1) {
             const current = updated[idx];
             const newStock = Math.max(0, current.stock - itemEntry.cantidad);
-            updated[idx] = {
+            const updatedItem = {
               ...current,
               stock: newStock,
               precioTotal: newStock * current.precio
             };
+            updated[idx] = updatedItem;
+            void saveInventoryItem(updatedItem).catch(error => console.error('No se pudo actualizar el stock en Supabase:', error));
           }
         }
         return updated;
@@ -1071,6 +1154,56 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     setDevolucionGroups(prev => prev.filter(g => g.id !== groupId));
     return { success: true, message: `Devolución "${targetGroup.numeroDevolucionFormatted}" eliminada.` };
+  };
+
+  const deleteDevolucionItem = (groupId: string, codigo: string, subtractStock: boolean = true) => {
+    const targetGroup = devolucionGroups.find(g => g.id === groupId);
+    if (!targetGroup) return { success: false, message: 'Devolución no encontrada.' };
+
+    const codigoL = codigo.trim().toLowerCase();
+    const toRemove = targetGroup.items.filter(it => it.codigo.toLowerCase() === codigoL);
+    if (toRemove.length === 0) return { success: false, message: 'El producto no pertenece a esa devolución.' };
+
+    if (subtractStock) {
+      setItems(prevItems => {
+        const updated = [...prevItems];
+        let changed = false;
+        for (const itemEntry of toRemove) {
+          const idx = updated.findIndex(it =>
+            it.codigo.toLowerCase() === itemEntry.codigo.toLowerCase() ||
+            (it.codigoBarras && it.codigoBarras.toLowerCase() === itemEntry.codigo.toLowerCase())
+          );
+          if (idx !== -1) {
+            const current = updated[idx];
+            const newStock = Math.max(0, current.stock - itemEntry.cantidad);
+            const updatedItem = {
+              ...current,
+              stock: newStock,
+              precioTotal: newStock * current.precio
+            };
+            updated[idx] = updatedItem;
+            changed = true;
+            void saveInventoryItem(updatedItem).catch(error => console.error('No se pudo actualizar el stock en Supabase:', error));
+          }
+        }
+        return changed ? updated : prevItems;
+      });
+    }
+
+    const remainingItems = targetGroup.items.filter(it => !toRemove.includes(it));
+    if (remainingItems.length === 0) {
+      setDevolucionGroups(prev => prev.filter(g => g.id !== groupId));
+    } else {
+      const totalUnidades = remainingItems.reduce((sum, it) => sum + it.cantidad, 0);
+      const totalValor = remainingItems.reduce((sum, it) => sum + (it.precioUnitario || 0) * it.cantidad, 0);
+      setDevolucionGroups(prev => prev.map(g =>
+        g.id === groupId
+          ? { ...g, items: remainingItems, totalUnidades, totalValor }
+          : g
+      ));
+    }
+
+    return { success: true, message: `"${codigo}" eliminado del historial de devoluciones.` };
   };
 
   const updateDevolucionGroupSignature = (groupId: string, firmaDigital: string, firmadoPor?: string) => {
@@ -1134,11 +1267,13 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           const updated = [...prevItems];
           const current = updated[idx];
           const restoredStock = current.stock + target.cantidad;
-          updated[idx] = {
+          const updatedItem = {
             ...current,
             stock: restoredStock,
             precioTotal: restoredStock * current.precio
           };
+          updated[idx] = updatedItem;
+          void saveInventoryItem(updatedItem).catch(error => console.error('No se pudo actualizar el stock en Supabase:', error));
           return updated;
         }
         return prevItems;
@@ -1269,6 +1404,37 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       ingreso: ingresoRecord,
       newStock: updatedStock
     };
+  };
+
+  const deleteIngreso = (ingresoId: string, subtractStock: boolean = true) => {
+    const target = ingresos.find(i => i.id === ingresoId);
+    if (!target) return { success: false, message: 'Registro de ingreso no encontrado.' };
+
+    if (subtractStock) {
+      setItems(prevItems => {
+        const idx = prevItems.findIndex(it =>
+          it.codigo.toLowerCase() === target.codigo.toLowerCase() ||
+          (it.codigoBarras && it.codigoBarras.toLowerCase() === target.codigo.toLowerCase())
+        );
+        if (idx !== -1) {
+          const updated = [...prevItems];
+          const current = updated[idx];
+          const newStock = Math.max(0, current.stock - target.cantidad);
+          const updatedItem = {
+            ...current,
+            stock: newStock,
+            precioTotal: newStock * (current.precio || 0)
+          };
+          updated[idx] = updatedItem;
+          void saveInventoryItem(updatedItem).catch(error => console.error('No se pudo actualizar el stock en Supabase:', error));
+          return updated;
+        }
+        return prevItems;
+      });
+    }
+
+    setIngresos(prev => prev.filter(i => i.id !== ingresoId));
+    return { success: true, message: `Ingreso de "${target.codigo}" eliminado del historial.` };
   };
 
   // Excel Importer from Array of parsed rows
@@ -1657,8 +1823,11 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
 
     setCurrentUser(user);
+    const now = Date.now();
+    setLastActivityAt(now);
     try {
       localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(user));
+      localStorage.setItem(STORAGE_KEYS.LAST_ACTIVITY, String(now));
     } catch (e) {
       console.error('Error storing user in localStorage:', e);
     }
@@ -1723,8 +1892,11 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     // Automatically log in with the new account
     setCurrentUser(newUser);
+    const now = Date.now();
+    setLastActivityAt(now);
     try {
       localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(newUser));
+      localStorage.setItem(STORAGE_KEYS.LAST_ACTIVITY, String(now));
     } catch (e) {
       console.error('Error storing user in localStorage:', e);
     }
@@ -1736,8 +1908,10 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const logout = () => {
     setCurrentUser(null);
+    setLastActivityAt(0);
     try {
       localStorage.removeItem(STORAGE_KEYS.USER);
+      localStorage.removeItem(STORAGE_KEYS.LAST_ACTIVITY);
     } catch (e) {
       console.error('Error removing user from localStorage:', e);
     }
@@ -1821,7 +1995,9 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         return { success: false, message: 'El archivo no parece un respaldo válido de la base de datos.' };
       }
 
-      const backupItems = Array.isArray(parsed.colecciones.items) ? sanitizeYazObject(parsed.colecciones.items) as InventoryItem[] : [];
+      const backupItems = Array.isArray(parsed.colecciones.items)
+        ? mergeSameProductPairs(sanitizeYazObject(parsed.colecciones.items) as InventoryItem[])
+        : [];
       const backupSalidas = Array.isArray(parsed.colecciones.salidas) ? deduplicateSalidasList(sanitizeYazObject(parsed.colecciones.salidas) as SalidaRecord[]) : [];
       const backupSalidaGroups = Array.isArray(parsed.colecciones.salidaGroups) ? deduplicateSalidaGroupsList(sanitizeYazObject(parsed.colecciones.salidaGroups) as SalidaGroupRecord[]) : [];
       const backupDevolucionGroups = Array.isArray(parsed.colecciones.devolucionGroups) ? sanitizeYazObject(parsed.colecciones.devolucionGroups) as DevolucionGroupRecord[] : [];
@@ -1911,10 +2087,12 @@ backupHistory,
         cleanDuplicateSalidas,
         registerDevolucionGroup,
         deleteDevolucionGroup,
+        deleteDevolucionItem,
         updateDevolucionGroupSignature,
         updateDevolucionGroupPanoleroSignature,
         getNextDevolucionNumber,
         registerIngreso,
+        deleteIngreso,
         importExcelRows,
         exportCategoryToExcel,
         backupDatabase,
