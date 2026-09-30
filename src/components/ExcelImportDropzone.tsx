@@ -54,7 +54,6 @@ export const ExcelImportDropzone: React.FC<ExcelImportDropzoneProps> = ({
     { id: 'submicronicos', label: 'Filtros Submicrónicos' },
     { id: 'rodamientos', label: 'Rodamientos' },
     { id: 'entrepiso', label: 'Entrepiso Pañol' },
-    { id: 'importado', label: 'Stock Importado' },
     { id: 'repuestos_mv', label: 'Repuestos MV' },
     { id: 'cajas', label: 'Cajas Estantes' }
   ];

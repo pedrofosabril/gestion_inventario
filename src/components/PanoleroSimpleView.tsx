@@ -5,14 +5,17 @@ import {
   RotateCcw,
   Search, 
   MapPin, 
-  Boxes, 
-  ScanLine,
   X,
   History,
-  Barcode
+  Barcode,
+  Camera,
+  Check,
+  Trash2
 } from 'lucide-react';
 import { useInventory } from '../context/InventoryContext';
-import { InventoryItem, SalidaRecord } from '../types';
+import { InventoryItem, SalidaRecord, IngresoRecord } from '../types';
+import { CameraBarcodeScanner } from './CameraBarcodeScanner';
+import { formatDisplayDate } from '../utils/dateUtils';
 
 interface PanoleroSimpleViewProps {
   onOpenScanner: (initialCode?: string, mode?: 'salida' | 'ingreso' | 'devolucion') => void;
@@ -23,10 +26,21 @@ interface PanoleroSimpleViewProps {
 export const PanoleroSimpleView: React.FC<PanoleroSimpleViewProps> = ({
   onOpenScanner
 }) => {
-  const { items, currentUser, salidas } = useInventory();
+  const { items, currentUser, salidas, ingresos, devolucionGroups, deleteSalida, deleteIngreso, deleteDevolucionItem } = useInventory();
   const [searchTerm, setSearchTerm] = useState<string>('');
-  const [showRecentSalidas, setShowRecentSalidas] = useState<boolean>(false);
+  const [showRecentMovimientos, setShowRecentMovimientos] = useState<boolean>(false);
+  const [movTab, setMovTab] = useState<'salida' | 'entrada' | 'devolucion'>('salida');
+  const [showCameraScanner, setShowCameraScanner] = useState<boolean>(false);
+  const [pendingDelete, setPendingDelete] = useState<{ tab: 'salida' | 'entrada' | 'devolucion'; codigo: string } | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+
+  const isVentas = currentUser?.rol === 'ventas';
+
+  const showToast = (text: string) => {
+    setToastMessage(text);
+    setTimeout(() => setToastMessage(null), 4500);
+  };
 
   // Listen to hardware barcode scanner on main view to fill the search box instead of auto-opening Salida
   useEffect(() => {
@@ -83,23 +97,162 @@ export const PanoleroSimpleView: React.FC<PanoleroSimpleViewProps> = ({
     searchInputRef.current?.focus();
   };
 
-  // Group / deduplicate recent salidas so each product appears only once in the summary list
-  const uniqueRecentSalidas: SalidaRecord[] = (() => {
-    const seen = new Set<string>();
-    const res: SalidaRecord[] = [];
-    for (const s of salidas) {
-      const k = s.codigo.trim().toLowerCase();
-      if (!seen.has(k)) {
-        seen.add(k);
-        res.push(s);
+  // === Historial de Movimiento combinado: entradas + salidas + devoluciones ===
+  const fechaTimestamp = (date: string, hora?: string) => {
+    if (!date) return 0;
+    const t = new Date(`${date}T${hora || '00:00'}`).getTime();
+    return isFinite(t) ? t : 0;
+  };
+
+  type HistoricoRow = {
+    codigo: string;
+    descripcion: string;
+    cantidad: number;
+    count: number;
+    fecha: string;
+    hora?: string;
+    timestamp: number;
+    detalle: string;
+  };
+
+  // Agrupa por código: cada producto aparece UNA sola vez (nada de códigos duplicados),
+  // sumando las cantidades y contando cuántos movimientos se juntaron.
+  function agruparPorCodigo<T>(
+    registros: T[],
+    getCodigo: (r: T) => string,
+    getDesc: (r: T) => string,
+    getCant: (r: T) => number,
+    getFecha: (r: T) => string,
+    getHora: (r: T) => string | undefined,
+    getTs: (r: T) => number,
+    label: string
+  ): HistoricoRow[] {
+    const map = new Map<string, HistoricoRow>();
+    for (const r of registros) {
+      const codigo = getCodigo(r);
+      if (!codigo) continue;
+      const key = codigo.trim().toLowerCase();
+      let g = map.get(key);
+      if (!g) {
+        g = {
+          codigo,
+          descripcion: getDesc(r),
+          cantidad: 0,
+          count: 0,
+          fecha: getFecha(r),
+          hora: getHora(r),
+          timestamp: getTs(r),
+          detalle: ''
+        };
+        map.set(key, g);
       }
+      g.count += 1;
+      g.cantidad += getCant(r);
+      const ts = getTs(r);
+      if (ts >= g.timestamp) {
+        g.timestamp = ts;
+        g.fecha = getFecha(r);
+        g.hora = getHora(r);
+      }
+      const desc = getDesc(r);
+      if (desc && (!g.descripcion || g.descripcion === 'Artículo sin descripción')) g.descripcion = desc;
     }
-    return res.slice(0, 8);
-  })();
+    return Array.from(map.values())
+      .map(g => ({ ...g, detalle: g.count === 1 ? `1 ${label}` : `${g.count} ${label}s` }))
+      .sort((a, b) => b.timestamp - a.timestamp)
+      .slice(0, 10);
+  }
+
+  const resumenSalidas = agruparPorCodigo(
+    salidas,
+    s => s.codigo, s => s.descripcion, s => s.cantidad,
+    s => s.fechaSalida, s => s.horaSalida,
+    s => fechaTimestamp(s.fechaSalida, s.horaSalida),
+    'salida'
+  );
+
+  const resumenIngresos = agruparPorCodigo(
+    ingresos,
+    i => i.codigo, i => i.descripcion, i => i.cantidad,
+    i => i.fechaIngreso, () => undefined,
+    i => fechaTimestamp(i.fechaIngreso),
+    'entrada'
+  );
+
+  const resumenDevoluciones = agruparPorCodigo(
+    devolucionGroups.flatMap(g => (g.items || []).map(it => ({
+      codigo: it.codigo,
+      descripcion: it.descripcion,
+      cantidad: it.cantidad,
+      fecha: g.fechaDevolucion,
+      hora: g.horaDevolucion
+    }))),
+    r => r.codigo, r => r.descripcion, r => r.cantidad,
+    r => r.fecha, r => r.hora,
+    r => fechaTimestamp(r.fecha, r.hora),
+    'devolución'
+  );
+
+  // Índices por código para poder borrar todos los registros de un producto desde el historial.
+  const salidasPorCodigo = new Map<string, SalidaRecord[]>();
+  salidas.forEach(s => {
+    const k = s.codigo.trim().toLowerCase();
+    const arr = salidasPorCodigo.get(k) ?? [];
+    arr.push(s);
+    salidasPorCodigo.set(k, arr);
+  });
+
+  const ingresosPorCodigo = new Map<string, IngresoRecord[]>();
+  ingresos.forEach(i => {
+    const k = i.codigo.trim().toLowerCase();
+    const arr = ingresosPorCodigo.get(k) ?? [];
+    arr.push(i);
+    ingresosPorCodigo.set(k, arr);
+  });
+
+  const devolucionesPorCodigo = new Map<string, { groupId: string }[]>();
+  devolucionGroups.forEach(g => {
+    (g.items || []).forEach(it => {
+      const k = it.codigo.trim().toLowerCase();
+      const arr = devolucionesPorCodigo.get(k) ?? [];
+      arr.push({ groupId: g.id });
+      devolucionesPorCodigo.set(k, arr);
+    });
+  });
+
+  const handleDeleteMovimiento = (tab: 'salida' | 'entrada' | 'devolucion', codigo: string) => {
+    const key = codigo.trim().toLowerCase();
+
+    if (tab === 'salida') {
+      const recs = salidasPorCodigo.get(key) ?? [];
+      recs.forEach(r => deleteSalida(r.id, true));
+      showToast(`Se eliminar${recs.length === 1 ? 'ó' : 'on'} ${recs.length} salida${recs.length === 1 ? '' : 's'} de ${codigo} y se devolvió el stock al pañol.`);
+    } else if (tab === 'entrada') {
+      const recs = ingresosPorCodigo.get(key) ?? [];
+      recs.forEach(r => deleteIngreso(r.id, true));
+      showToast(`Se eliminar${recs.length === 1 ? 'ó' : 'on'} ${recs.length} entrada${recs.length === 1 ? '' : 's'} de ${codigo} y se descontó su stock.`);
+    } else {
+      const refs = devolucionesPorCodigo.get(key) ?? [];
+      refs.forEach(r => deleteDevolucionItem(r.groupId, codigo, true));
+      showToast(`Se quitar${refs.length === 1 ? 'ó' : 'on'} ${refs.length} devolución${refs.length === 1 ? '' : 'es'} de ${codigo} y se descontó su stock.`);
+    }
+
+    setPendingDelete(null);
+  };
 
   return (
     <div className="max-w-4xl mx-auto py-4 sm:py-8 px-3 sm:px-6 font-['Plus_Jakarta_Sans',sans-serif]">
       
+      {toastMessage && (
+        <div className="fixed top-20 right-5 z-50 bg-slate-900 text-white px-4 py-3 rounded-xl shadow-xl flex items-center gap-2 text-sm font-bold animate-in slide-in-from-top-4 duration-200 max-w-xs">
+          <Check className="w-5 h-5 text-emerald-400" />
+          <span className="flex-1">{toastMessage}</span>
+          <button onClick={() => setToastMessage(null)} className="text-slate-300 hover:text-white cursor-pointer">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* Welcome Card tailored for Operator */}
       <div className="bg-white rounded-3xl p-5 sm:p-6 border border-[#b5dbf7] shadow-xs mb-6 text-center sm:text-left">
         <h1 className="text-xl sm:text-2xl font-black text-sky-950 tracking-tight">
@@ -207,15 +360,43 @@ export const PanoleroSimpleView: React.FC<PanoleroSimpleViewProps> = ({
             )}
           </div>
 
-          <button
-            type="button"
-            onClick={() => searchInputRef.current?.focus()}
-            className="px-5 py-3 bg-[#006bb0] hover:bg-[#005a94] text-white rounded-xl font-black text-sm flex items-center justify-center gap-2 shadow-xs cursor-pointer transition-all active:scale-95 shrink-0"
-          >
-            <Search className="w-4 h-4" />
-            <span>BUSCAR</span>
-          </button>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => searchInputRef.current?.focus()}
+              className="px-5 py-3 bg-[#006bb0] hover:bg-[#005a94] text-white rounded-xl font-black text-sm flex items-center justify-center gap-2 shadow-xs cursor-pointer transition-all active:scale-95 shrink-0"
+            >
+              <Search className="w-4 h-4" />
+              <span>BUSCAR</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setShowCameraScanner(prev => !prev)}
+              className={`px-4 py-3 rounded-xl font-black text-sm flex items-center justify-center gap-2 shadow-xs cursor-pointer transition-all active:scale-95 shrink-0 ${
+                showCameraScanner
+                  ? 'bg-sky-600 text-white border border-sky-700'
+                  : 'bg-white text-[#006bb0] border border-[#9eccf0] hover:bg-sky-50'
+              }`}
+              title="Buscar escaneando con la cámara"
+            >
+              <Camera className="w-4 h-4" />
+              <span>{showCameraScanner ? 'CERRAR CÁMARA' : 'CÁMARA'}</span>
+            </button>
+          </div>
         </div>
+
+        {/* Camera Barcode Scanner (móvil / sin pistola) */}
+        {showCameraScanner && (
+          <div className="mt-3">
+            <CameraBarcodeScanner
+              onDetected={(code) => {
+                setSearchTerm(code);
+                searchInputRef.current?.focus();
+              }}
+            />
+          </div>
+        )}
 
         {/* Search Results Display */}
         {searchTerm.trim() !== '' && (
@@ -287,6 +468,17 @@ export const PanoleroSimpleView: React.FC<PanoleroSimpleViewProps> = ({
                         </span>
                       </div>
 
+                      {item.paraServicio != null && item.paraServicio > 0 && (
+                        <div className="bg-sky-50 border-2 border-sky-300 px-4 py-2 rounded-xl text-center min-w-[110px]">
+                          <span className="text-[10px] uppercase font-black text-sky-800 block">
+                            P/SERVICIO
+                          </span>
+                          <span className="text-lg sm:text-xl font-black text-sky-700">
+                            {item.paraServicio} u.
+                          </span>
+                        </div>
+                      )}
+
                       {/* Action buttons on the result item */}
                       <div className="flex items-center gap-2">
                         <button
@@ -327,47 +519,134 @@ export const PanoleroSimpleView: React.FC<PanoleroSimpleViewProps> = ({
             </div>
             <div>
               <span id="historial" className="text-base sm:text-lg font-black text-sky-950 block">
-                Historial de Salidas
+                Historial de Movimiento
               </span>
               <span className="text-xs text-slate-500 font-medium">
-                {uniqueRecentSalidas.length} {uniqueRecentSalidas.length === 1 ? 'registro reciente' : 'registros recientes'}
+                {salidas.length} salidas · {ingresos.length} entradas · {devolucionGroups.length} {devolucionGroups.length === 1 ? 'devolución' : 'devoluciones'}
               </span>
             </div>
           </div>
 
           <button
             type="button"
-            onClick={() => setShowRecentSalidas(!showRecentSalidas)}
+            onClick={() => setShowRecentMovimientos(!showRecentMovimientos)}
             className={`px-4 py-2.5 rounded-xl font-bold text-xs transition-all shadow-xs flex items-center gap-2 cursor-pointer ${
-              showRecentSalidas
+              showRecentMovimientos
                 ? 'bg-slate-200 hover:bg-slate-300 text-slate-800 border border-slate-300'
                 : 'bg-[#006bb0] hover:bg-[#005590] text-white'
             }`}
           >
             <History className="w-4 h-4" />
-            <span>{showRecentSalidas ? 'Ocultar Historial' : 'Ver Historial'}</span>
+            <span>{showRecentMovimientos ? 'Ocultar Historial' : 'Ver Historial'}</span>
           </button>
         </div>
 
-        {showRecentSalidas && (
-          <div className="mt-4 pt-4 border-t border-slate-100 space-y-2.5">
-            {uniqueRecentSalidas.length === 0 ? (
-              <p className="text-xs text-slate-500 text-center py-3">No hay salidas registradas aún.</p>
-            ) : (
-              uniqueRecentSalidas.map(sal => (
-                <div key={sal.id} className="p-3.5 rounded-2xl bg-[#f8fbfe] border border-slate-200 flex items-center justify-between text-xs sm:text-sm">
-                  <div>
-                    <span className="font-bold text-slate-900">{sal.descripcion}</span>
-                    <div className="text-slate-500 text-xs mt-0.5">
-                      Código: <span className="font-mono font-bold text-slate-700">{sal.codigo}</span> · Retirado por: <strong className="text-slate-800">{sal.retira || 'Personal'}</strong> {sal.cliente ? `· Cliente: ${sal.cliente}` : ''}
-                    </div>
-                  </div>
-                  <span className="font-black text-rose-700 bg-rose-50 px-2.5 py-1 rounded-xl border border-rose-200 text-xs sm:text-sm shrink-0 ml-2">
-                    -{sal.cantidad} u.
-                  </span>
+        {showRecentMovimientos && (
+          <div className="mt-4 pt-4 border-t border-slate-100 space-y-4">
+            {/* Horizontal tab buttons: Salida | Entrada | Devolución */}
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { key: 'salida' as const, titulo: 'Salida', color: 'rose', icono: <ArrowUpRight className="w-4 h-4" /> },
+                { key: 'entrada' as const, titulo: 'Entrada', color: 'emerald', icono: <PackagePlus className="w-4 h-4" /> },
+                { key: 'devolucion' as const, titulo: 'Devolución', color: 'amber', icono: <RotateCcw className="w-4 h-4" /> },
+              ].map(tab => {
+                const active = movTab === tab.key;
+                return (
+                  <button
+                    key={tab.key}
+                    type="button"
+                    onClick={() => setMovTab(tab.key)}
+                    className={`px-2 py-2.5 rounded-xl font-black text-xs sm:text-sm transition-all shadow-xs border cursor-pointer flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 ${
+                      active
+                        ? tab.color === 'rose'
+                          ? 'bg-rose-600 text-white border-rose-600'
+                          : tab.color === 'emerald'
+                          ? 'bg-emerald-600 text-white border-emerald-600'
+                          : 'bg-amber-600 text-white border-amber-600'
+                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                    }`}
+                  >
+                    {tab.icono}
+                    <span>{tab.titulo}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Active section list */}
+            {(() => {
+              const rows =
+                movTab === 'salida' ? resumenSalidas
+                : movTab === 'entrada' ? resumenIngresos
+                : resumenDevoluciones;
+              const signoCant = movTab === 'salida' ? '-' : '+';
+              const qtyCls =
+                movTab === 'salida'
+                  ? 'text-rose-700 bg-rose-50 border-rose-200'
+                  : movTab === 'entrada'
+                  ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
+                  : 'text-amber-800 bg-amber-50 border-amber-200';
+              const emptyTxt =
+                movTab === 'salida' ? 'salidas' : movTab === 'entrada' ? 'entradas' : 'devoluciones';
+
+              return rows.length === 0 ? (
+                <p className="text-xs text-slate-400 text-center py-3 bg-[#f8fbfe] border border-dashed border-slate-200 rounded-xl">
+                  Sin registros de {emptyTxt}.
+                </p>
+              ) : (
+                <div className="space-y-2.5">
+                  {rows.map((row, i) => {
+                    const confirmando = pendingDelete?.tab === movTab && pendingDelete.codigo.toLowerCase() === row.codigo.toLowerCase();
+                    return (
+                      <div key={`${movTab}-${i}`} className="p-3.5 rounded-2xl bg-[#f8fbfe] border border-slate-200 flex items-center justify-between text-xs sm:text-sm gap-3">
+                        <div className="min-w-0">
+                          <span className="font-bold text-slate-900">{row.descripcion}</span>
+                          <div className="text-slate-500 text-xs mt-1">
+                            Código: <span className="font-mono font-bold text-slate-700">{row.codigo}</span> · {formatDisplayDate(row.fecha)}{row.hora ? ` ${row.hora}` : ''} · {row.detalle}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0 ml-2">
+                          <span className={`font-black px-2.5 py-1 rounded-xl border ${qtyCls}`}>
+                            {signoCant}{row.cantidad} u.
+                          </span>
+                          {!isVentas && (
+                            confirmando ? (
+                              <span className="flex items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteMovimiento(movTab, row.codigo)}
+                                  className="px-2.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+                                  title={`Borrar todos los registros de ${row.codigo}`}
+                                >
+                                  <Check className="w-3.5 h-3.5" /> Borrar
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setPendingDelete(null)}
+                                  className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 cursor-pointer"
+                                  title="Cancelar"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => setPendingDelete({ tab: movTab, codigo: row.codigo })}
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer"
+                                title={`Eliminar los registros de ${row.codigo} del historial`}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
-              ))
-            )}
+              );
+            })()}
           </div>
         )}
       </div>

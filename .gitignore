@@ -6,3 +6,6 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Respaldo local de la base (no commitear datos reales)
+scripts/backups/

@@ -46,7 +46,6 @@ const CATEGORY_OPTIONS: { id: ItemCategory; label: string }[] = [
   { id: 'submicronicos', label: 'Filtros Submicrónicos' },
   { id: 'rodamientos', label: 'Rodamientos' },
   { id: 'entrepiso', label: 'Entrepiso Pañol' },
-  { id: 'importado', label: 'Stock Importado' },
   { id: 'repuestos_mv', label: 'Repuestos MV' },
   { id: 'cajas', label: 'Cajas Estantes' },
 ];
