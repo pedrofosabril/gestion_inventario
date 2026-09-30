@@ -117,6 +117,7 @@ interface InventoryContextType {
     categoria?: ItemCategory;
     precioUnitario?: number;
   }) => { success: boolean; message: string; ingreso?: IngresoRecord; newStock?: number };
+  deleteIngreso: (ingresoId: string, subtractStock?: boolean) => { success: boolean; message: string };
 
   // Excel Migration / Import & Export
   importExcelRows: (
@@ -933,11 +934,13 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           if (idx !== -1) {
             const current = updated[idx];
             const restoredStock = current.stock + itemEntry.cantidad;
-            updated[idx] = {
+            const updatedItem = {
               ...current,
               stock: restoredStock,
               precioTotal: restoredStock * current.precio
             };
+            updated[idx] = updatedItem;
+            void saveInventoryItem(updatedItem).catch(error => console.error('No se pudo actualizar el stock en Supabase:', error));
           }
         }
         return updated;
@@ -1053,13 +1056,15 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         );
         if (match) {
           const newStock = (item.stock || 0) + match.cantidad;
-          return {
+          const updatedItem = {
             ...item,
             stock: newStock,
             precioTotal: newStock * (item.precio || 0),
             fechaModificacion: formattedDate,
             usuarioModificacion: currentUser.nombre
           };
+          void saveInventoryItem(updatedItem).catch(error => console.error('No se pudo actualizar el stock en Supabase:', error));
+          return updatedItem;
         }
         return item;
       });
@@ -1129,11 +1134,13 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           if (idx !== -1) {
             const current = updated[idx];
             const newStock = Math.max(0, current.stock - itemEntry.cantidad);
-            updated[idx] = {
+            const updatedItem = {
               ...current,
               stock: newStock,
               precioTotal: newStock * current.precio
             };
+            updated[idx] = updatedItem;
+            void saveInventoryItem(updatedItem).catch(error => console.error('No se pudo actualizar el stock en Supabase:', error));
           }
         }
         return updated;
@@ -1205,11 +1212,13 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           const updated = [...prevItems];
           const current = updated[idx];
           const restoredStock = current.stock + target.cantidad;
-          updated[idx] = {
+          const updatedItem = {
             ...current,
             stock: restoredStock,
             precioTotal: restoredStock * current.precio
           };
+          updated[idx] = updatedItem;
+          void saveInventoryItem(updatedItem).catch(error => console.error('No se pudo actualizar el stock en Supabase:', error));
           return updated;
         }
         return prevItems;
@@ -1340,6 +1349,37 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       ingreso: ingresoRecord,
       newStock: updatedStock
     };
+  };
+
+  const deleteIngreso = (ingresoId: string, subtractStock: boolean = true) => {
+    const target = ingresos.find(i => i.id === ingresoId);
+    if (!target) return { success: false, message: 'Registro de ingreso no encontrado.' };
+
+    if (subtractStock) {
+      setItems(prevItems => {
+        const idx = prevItems.findIndex(it =>
+          it.codigo.toLowerCase() === target.codigo.toLowerCase() ||
+          (it.codigoBarras && it.codigoBarras.toLowerCase() === target.codigo.toLowerCase())
+        );
+        if (idx !== -1) {
+          const updated = [...prevItems];
+          const current = updated[idx];
+          const newStock = Math.max(0, current.stock - target.cantidad);
+          const updatedItem = {
+            ...current,
+            stock: newStock,
+            precioTotal: newStock * (current.precio || 0)
+          };
+          updated[idx] = updatedItem;
+          void saveInventoryItem(updatedItem).catch(error => console.error('No se pudo actualizar el stock en Supabase:', error));
+          return updated;
+        }
+        return prevItems;
+      });
+    }
+
+    setIngresos(prev => prev.filter(i => i.id !== ingresoId));
+    return { success: true, message: `Ingreso de "${target.codigo}" eliminado del historial.` };
   };
 
   // Excel Importer from Array of parsed rows
@@ -1866,7 +1906,9 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         return { success: false, message: 'El archivo no parece un respaldo válido de la base de datos.' };
       }
 
-      const backupItems = Array.isArray(parsed.colecciones.items) ? sanitizeYazObject(parsed.colecciones.items) as InventoryItem[] : [];
+      const backupItems = Array.isArray(parsed.colecciones.items)
+        ? mergeSameProductPairs(sanitizeYazObject(parsed.colecciones.items) as InventoryItem[])
+        : [];
       const backupSalidas = Array.isArray(parsed.colecciones.salidas) ? deduplicateSalidasList(sanitizeYazObject(parsed.colecciones.salidas) as SalidaRecord[]) : [];
       const backupSalidaGroups = Array.isArray(parsed.colecciones.salidaGroups) ? deduplicateSalidaGroupsList(sanitizeYazObject(parsed.colecciones.salidaGroups) as SalidaGroupRecord[]) : [];
       const backupDevolucionGroups = Array.isArray(parsed.colecciones.devolucionGroups) ? sanitizeYazObject(parsed.colecciones.devolucionGroups) as DevolucionGroupRecord[] : [];
@@ -1960,6 +2002,7 @@ backupHistory,
         updateDevolucionGroupPanoleroSignature,
         getNextDevolucionNumber,
         registerIngreso,
+        deleteIngreso,
         importExcelRows,
         exportCategoryToExcel,
         backupDatabase,

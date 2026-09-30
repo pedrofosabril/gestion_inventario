@@ -12,7 +12,9 @@ import {
   Calendar,
   Scan,
   Barcode,
-  ArrowDownUp
+  ArrowDownUp,
+  Trash2,
+  History
 } from 'lucide-react';
 import { useInventory } from '../context/InventoryContext';
 import { ItemCategory } from '../types';
@@ -23,12 +25,27 @@ interface IngresosLogViewProps {
 }
 
 export const IngresosLogView: React.FC<IngresosLogViewProps> = ({ onOpenScanner }) => {
-  const { ingresos, registerIngreso, exportCategoryToExcel } = useInventory();
+  const { ingresos, registerIngreso, exportCategoryToExcel, deleteIngreso, currentUser } = useInventory();
   
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [selectedSupplier, setSelectedSupplier] = useState<string>('all');
   const [isReceivingModalOpen, setIsReceivingModalOpen] = useState<boolean>(false);
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'info' } | null>(null);
+
+  const isVentas = currentUser?.rol === 'ventas';
+
+  const showToast = (text: string, type: 'success' | 'info' = 'success') => {
+    setToastMessage({ text, type });
+    setTimeout(() => setToastMessage(null), 4500);
+  };
+
+  const handleConfirmDelete = (ingresoId: string) => {
+    const res = deleteIngreso(ingresoId, true);
+    setPendingDeleteId(null);
+    if (res.success) showToast(`${res.message} (Stock descontado del pañol)`, 'success');
+  };
 
   // Reception form state
   const [codigo, setCodigo] = useState<string>('');
@@ -85,6 +102,21 @@ export const IngresosLogView: React.FC<IngresosLogViewProps> = ({ onOpenScanner 
 
   return (
     <div className="flex flex-col gap-4 animate-in fade-in duration-200">
+      
+      {/* Toast */}
+      {toastMessage && (
+        <div className="fixed top-20 right-5 z-50 bg-slate-900 text-white px-4 py-3 rounded-xl shadow-xl flex items-center gap-2 text-sm font-bold animate-in slide-in-from-top-4 duration-200 max-w-xs">
+          {toastMessage.type === 'success' ? (
+            <Check className="w-5 h-5 text-emerald-400" />
+          ) : (
+            <History className="w-5 h-5 text-sky-300" />
+          )}
+          <span className="flex-1">{toastMessage.text}</span>
+          <button onClick={() => setToastMessage(null)} className="text-slate-300 hover:text-white cursor-pointer">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
       
       {/* Header Banner */}
       <div className="bg-[#f4f9fd] rounded-2xl p-5 border border-[#c4e1f7] shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
@@ -201,6 +233,7 @@ export const IngresosLogView: React.FC<IngresosLogViewProps> = ({ onOpenScanner 
                 <th className="px-4 py-3 whitespace-nowrap">FECHA INGRESO</th>
                 <th className="px-4 py-3 whitespace-nowrap">UBICACIÓN</th>
                 <th className="px-4 py-3 text-right whitespace-nowrap">CANTIDAD</th>
+                {!isVentas && <th className="px-4 py-3 text-center whitespace-nowrap">ACCIONES</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-[#e2effa] bg-white">
@@ -250,11 +283,46 @@ export const IngresosLogView: React.FC<IngresosLogViewProps> = ({ onOpenScanner 
                       +{ingreso.cantidad} u.
                     </td>
 
+                    {/* Acciones */}
+                    {!isVentas && (
+                      <td className="px-4 py-3 text-center whitespace-nowrap">
+                        {pendingDeleteId === ingreso.id ? (
+                          <div className="flex items-center justify-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleConfirmDelete(ingreso.id)}
+                              className="px-2.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+                              title="Confirmar borrado"
+                            >
+                              <Check className="w-3.5 h-3.5" /> Borrar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setPendingDeleteId(null)}
+                              className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 cursor-pointer"
+                              title="Cancelar"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setPendingDeleteId(ingreso.id)}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer"
+                            title="Eliminar este ingreso del historial y descontar su stock"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </td>
+                    )}
+
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td colSpan={7} className="p-12 text-center text-slate-400">
+                  <td colSpan={!isVentas ? 8 : 7} className="p-12 text-center text-slate-400">
                     No se encontraron registros de ingresos.
                   </td>
                 </tr>
