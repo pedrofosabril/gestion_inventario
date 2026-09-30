@@ -8,7 +8,6 @@ import {
   Download, 
   Edit3, 
   Trash2, 
-  Check, 
   X, 
   ArrowUpDown, 
   Package
@@ -16,6 +15,7 @@ import {
 import { useInventory } from '../context/InventoryContext';
 import { ItemCategory, InventoryItem } from '../types';
 import { AddProductModal } from './AddProductModal';
+import { EditProductModal } from './EditProductModal';
 
 export type TableCategory = ItemCategory | 'all';
 
@@ -34,7 +34,6 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({
 }) => {
   const { 
     items, 
-    updateItem, 
     deleteItem, 
     exportCategoryToExcel, 
     currentUser 
@@ -60,12 +59,8 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({
   // Add item modal
   const [isAddingItem, setIsAddingItem] = useState<boolean>(false);
 
-  // Edit item inline
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editPrice, setEditPrice] = useState<number>(0);
-  const [editStock, setEditStock] = useState<number>(0);
-  const [editUbicacion, setEditUbicacion] = useState<string>('');
-  const [editPorEncargo, setEditPorEncargo] = useState<boolean>(false);
+// Edit item modal
+  const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
 
   const CATEGORY_NAMES: Record<string, string> = {
     all: 'Todo el Inventario',
@@ -74,7 +69,6 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({
     submicronicos: 'Submicrónicos',
     rodamientos: 'Rodamientos',
     entrepiso: 'Entrepiso',
-    importado: 'Stock Importado',
     repuestos_mv: 'Repuestos MV',
     cajas: 'Cajas Estantes'
   };
@@ -98,14 +92,14 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({
       title: 'Pañol (Inventario General)',
       subCategories: [],
       showProvider: true,
-      showPServicio: false,
+      showPServicio: true,
       showTotal: true,
     },
     cajones_fluidos: {
       title: 'Cajones y Fluidos',
       subCategories: ['Cajones', 'Fluidos'],
       showProvider: true,
-      showPServicio: false,
+      showPServicio: true,
       showTotal: true,
     },
     submicronicos: {
@@ -119,35 +113,28 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({
       title: 'Rodamientos',
       subCategories: [],
       showProvider: true,
-      showPServicio: false,
+      showPServicio: true,
       showTotal: false,
     },
     entrepiso: {
       title: 'Entrepiso Pañol',
       subCategories: [],
       showProvider: true,
-      showPServicio: false,
+      showPServicio: true,
       showTotal: false,
-    },
-    importado: {
-      title: 'Stock Importado',
-      subCategories: [],
-      showProvider: true,
-      showPServicio: false,
-      showTotal: true,
     },
     repuestos_mv: {
       title: 'Repuestos MV',
       subCategories: [],
       showProvider: true,
-      showPServicio: false,
+      showPServicio: true,
       showTotal: true,
     },
     cajas: {
       title: 'Cajas Estantes',
       subCategories: [],
       showProvider: true,
-      showPServicio: false,
+      showPServicio: true,
       showTotal: true,
     }
   };
@@ -255,23 +242,7 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({
 
   const handleStartInlineEdit = (item: InventoryItem) => {
     if (isVentas) return;
-    setEditingId(item.id);
-    setEditPrice(item.precio);
-    setEditStock(item.stock);
-    setEditUbicacion(item.ubicacion);
-    setEditPorEncargo(!!item.porEncargo);
-  };
-
-  const handleSaveInlineEdit = (id: string) => {
-    if (isVentas) return;
-    updateItem(id, {
-      precio: editPrice,
-      stock: editStock,
-      ubicacion: editUbicacion,
-      porEncargo: editPorEncargo,
-      precioTotal: editStock * editPrice
-    });
-    setEditingId(null);
+    setEditingItem(item);
   };
 
   const porEncargoCount = categoryItems.filter(i => i.porEncargo).length;
@@ -467,7 +438,10 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({
 
       {/* Main Responsive Expanded Table Container */}
       <div className="bg-[#f8fcfe] rounded-2xl border border-[#c4e1f7] shadow-xs overflow-hidden w-full">
-        <div ref={tableContainerRef} className="overflow-auto max-h-[calc(100vh-215px)] min-h-[380px] w-full scroll-smooth table-scrollbar">
+
+        {/* Desktop Table (lg+) */}
+        <div className="hidden lg:block">
+          <div ref={tableContainerRef} className="overflow-auto max-h-[calc(100vh-215px)] min-h-[380px] w-full scroll-smooth table-scrollbar">
           <table className="w-full text-left text-xs border-collapse divide-y divide-[#cce4f8]">
             <thead className="sticky top-0 z-10 bg-[#dbeefa] text-sky-950 font-bold tracking-wider shadow-2xs">
               <tr>
@@ -519,13 +493,13 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({
                 >
                   <div className="flex items-center justify-end gap-1">
                     <span className="font-black text-sky-950 group-hover:text-[#006bb0] transition-colors">
-                      STOCK ↕
+                      STOCK NORMAL ↕
                     </span>
                   </div>
                 </th>
 
                 {meta.showPServicio && (
-                  <th className="px-3 py-2.5 text-center whitespace-nowrap">P/SERVICIO</th>
+                  <th className="px-3 py-2.5 text-center whitespace-nowrap">STOCK P/SERVICIO</th>
                 )}
 
                 {/* Precio Unitario - Only for Administración */}
@@ -555,8 +529,7 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({
             <tbody className="divide-y divide-[#e2effa] bg-white">
               {sortedItems.length > 0 ? (
                 sortedItems.map((item, idx) => {
-                  const isEditing = editingId === item.id;
-                  const isPorEncargo = item.porEncargo === true;
+const isPorEncargo = !!item.porEncargo;
                   const isOutOfStock = !isPorEncargo && item.stock === 0;
                   const isLowStock = !isPorEncargo && item.stock > 0 && item.stock <= (item.stockMinimo || 1);
 
@@ -588,7 +561,7 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({
                           )}
                           {selectedCategory === 'all' && (
                             <span className="text-[9px] px-1.5 py-0.2 rounded bg-sky-100/80 text-[#005590] font-sans font-bold border border-sky-200 uppercase">
-                              {item.categoria.replace('_', ' ')}
+                              {item.categoria === 'panol' ? 'Pañol' : item.categoria.replace('_', ' ')}
                             </span>
                           )}
                           {item.subcategoria && (
@@ -639,86 +612,49 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({
 
                       {/* Ubicación */}
                       <td className="px-3 py-2 whitespace-nowrap">
-                        {isEditing ? (
-                          <input
-                            type="text"
-                            value={editUbicacion}
-                            onChange={e => setEditUbicacion(e.target.value)}
-                            className="w-16 px-1.5 py-0.5 text-xs rounded border border-[#006bb0] font-bold uppercase bg-white"
-                          />
-                        ) : (
-                          <span className="px-1.5 py-0.5 rounded-md font-mono font-bold text-xs bg-[#e8f4fc] text-sky-950 border border-[#c4e1f7]">
-                            {item.ubicacion || 'A'}
-                          </span>
-                        )}
+                        <span className="px-1.5 py-0.5 rounded-md font-mono font-bold text-xs bg-[#e8f4fc] text-sky-950 border border-[#c4e1f7]">
+                          {item.ubicacion || 'A'}
+                        </span>
                       </td>
 
                       {/* Stock & Disponibilidad */}
                       <td className="px-3 py-2 text-right whitespace-nowrap">
-                        {isEditing ? (
-                          <div className="flex flex-col items-end gap-1">
-                            <input
-                              type="number"
-                              value={editStock}
-                              onChange={e => setEditStock(parseInt(e.target.value) || 0)}
-                              className="w-16 px-1.5 py-0.5 text-right text-xs rounded border border-[#006bb0] font-bold bg-white"
-                            />
-                            <label className="flex items-center gap-1 text-[10px] font-bold text-purple-900 cursor-pointer">
-                              <input
-                                type="checkbox"
-                                checked={editPorEncargo}
-                                onChange={e => setEditPorEncargo(e.target.checked)}
-                                className="rounded text-purple-700"
-                              />
-                              Por encargo
-                            </label>
-                          </div>
-                        ) : (
-                          <div className="flex items-center justify-end gap-1">
-                            {isPorEncargo ? (
-                              <span className="px-2 py-0.5 rounded-full text-xs font-bold font-mono bg-purple-100 text-purple-900 border border-purple-200">
-                                {item.stock > 0 ? `${item.stock} u.` : 'A pedido'}
-                              </span>
-                            ) : isOutOfStock ? (
-                              <span className="px-2 py-0.5 rounded-full text-xs font-black font-mono bg-rose-100 text-rose-800 border border-rose-200">
-                                0 u.
-                              </span>
-                            ) : isLowStock ? (
-                              <span className="px-2 py-0.5 rounded-full text-xs font-black font-mono bg-amber-100 text-amber-800 border border-amber-200">
-                                {item.stock} u. Bajo
-                              </span>
-                            ) : (
-                              <span className="px-2 py-0.5 rounded-full text-xs font-black font-mono bg-emerald-100 text-emerald-800 border border-emerald-200">
-                                {item.stock} u.
-                              </span>
-                            )}
-                          </div>
-                        )}
+                        <div className="flex items-center justify-end gap-1">
+                          {isPorEncargo ? (
+                            <span className="px-2 py-0.5 rounded-full text-xs font-bold font-mono bg-purple-100 text-purple-900 border border-purple-200">
+                              {item.stock > 0 ? `${item.stock} u.` : 'A pedido'}
+                            </span>
+                          ) : isOutOfStock ? (
+                            <span className="px-2 py-0.5 rounded-full text-xs font-black font-mono bg-rose-100 text-rose-800 border border-rose-200">
+                              0 u.
+                            </span>
+                          ) : isLowStock ? (
+                            <span className="px-2 py-0.5 rounded-full text-xs font-black font-mono bg-amber-100 text-amber-800 border border-amber-200">
+                              {item.stock} u. Bajo
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded-full text-xs font-black font-mono bg-emerald-100 text-emerald-800 border border-emerald-200">
+                              {item.stock} u.
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       {/* P/Servicio */}
                       {meta.showPServicio && (
-                        <td className="px-3 py-2 text-center whitespace-nowrap font-mono text-slate-600">
-                          {item.paraServicio || '-'}
+                        <td className="px-3 py-2 text-center whitespace-nowrap font-mono">
+                          <span className={item.paraServicio ? 'font-bold text-amber-700' : 'text-slate-400'}>
+                            {item.paraServicio || 0}
+                          </span>
                         </td>
                       )}
 
                       {/* Precio Unitario - Only for Administración */}
                       {showPrices && (
                         <td className="px-3 py-2 text-right font-mono whitespace-nowrap text-slate-800 font-semibold">
-                          {isEditing ? (
-                            <input
-                              type="number"
-                              step="0.1"
-                              value={editPrice}
-                              onChange={e => setEditPrice(parseFloat(e.target.value) || 0)}
-                              className="w-20 px-1.5 py-0.5 text-right text-xs rounded border border-[#006bb0] font-bold bg-white"
-                            />
-                          ) : (
-                            item.precio > 0 
-                              ? `$${item.precio.toLocaleString('es-AR', { minimumFractionDigits: 2 })}` 
-                              : <span className="text-slate-400">$0,00</span>
-                          )}
+                          {item.precio > 0 
+                            ? `$${item.precio.toLocaleString('es-AR', { minimumFractionDigits: 2 })}` 
+                            : <span className="text-slate-400">$0,00</span>}
                         </td>
                       )}
 
@@ -731,85 +667,66 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({
 
                       {/* Actions */}
                       <td className="px-3 py-2 text-center whitespace-nowrap">
-                        {isEditing ? (
-                          <div className="flex items-center justify-center gap-1">
+                        <div className="flex items-center justify-center gap-1">
+                          {/* Fast Scanner / Salida trigger (Hidden in Ventas) */}
+                          {!isVentas && (
                             <button
-                              onClick={() => handleSaveInlineEdit(item.id)}
-                              className="p-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md transition-colors cursor-pointer"
-                              title="Guardar cambios"
-                            >
-                              <Check className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              onClick={() => setEditingId(null)}
-                              className="p-1 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-md transition-colors cursor-pointer"
-                              title="Cancelar"
-                            >
-                              <X className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="flex items-center justify-center gap-1">
-                            {/* Fast Scanner / Salida trigger (Hidden in Ventas) */}
-                            {!isVentas && (
-                              <button
-                                onClick={() => onOpenScanner(item.codigo)}
-                                className={`p-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer ${
-                                  item.stock > 0
-                                    ? 'bg-[#006bb0] hover:bg-[#005590] text-white shadow-xs'
-                                    : 'bg-white border border-[#c4e1f7] text-slate-500 hover:bg-[#e4f2fb]'
-                                }`}
-                                title="Despachar este producto"
-                              >
-                                <Scan className="w-3 h-3" />
-                                <span className="hidden sm:inline">Salida</span>
-                              </button>
-                            )}
-
-                            {/* Barcode scan and link button */}
-                            <button
-                              onClick={() => onOpenBarcode(item)}
-                              className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
-                                item.codigoBarras && item.codigoBarras.trim() !== ''
-                                  ? 'text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 shadow-2xs'
-                                  : 'text-slate-500 hover:text-[#006bb0] hover:bg-[#e2f1fc]'
+                              onClick={() => onOpenScanner(item.codigo)}
+                              className={`p-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer ${
+                                item.stock > 0
+                                  ? 'bg-[#006bb0] hover:bg-[#005590] text-white shadow-xs'
+                                  : 'bg-white border border-[#c4e1f7] text-slate-500 hover:bg-[#e4f2fb]'
                               }`}
-                              title={
-                                item.codigoBarras && item.codigoBarras.trim() !== ''
-                                  ? `Código de barras vinculado: ${item.codigoBarras} (clic para ver o cambiar)`
-                                  : 'Vincular código de barras (lector USB o manual)'
-                              }
+                              title="Despachar este producto"
                             >
-                              <Barcode className="w-3.5 h-3.5" />
+                              <Scan className="w-3 h-3" />
+                              <span className="hidden sm:inline">Salida</span>
                             </button>
+                          )}
 
-                            {/* Edit (Restricted: Pañol & Administración only) */}
-                            {!isVentas && (
-                              <button
-                                onClick={() => handleStartInlineEdit(item)}
-                                className="p-1.5 text-slate-500 hover:text-[#006bb0] hover:bg-[#e2f1fc] rounded-lg transition-colors cursor-pointer"
-                                title="Editar precio/stock/tipo"
-                              >
-                                <Edit3 className="w-3.5 h-3.5" />
-                              </button>
-                            )}
+                          {/* Barcode scan and link button */}
+                          <button
+                            onClick={() => onOpenBarcode(item)}
+                            className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                              item.codigoBarras && item.codigoBarras.trim() !== ''
+                                ? 'text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 shadow-2xs'
+                                : 'text-slate-500 hover:text-[#006bb0] hover:bg-[#e2f1fc]'
+                            }`}
+                            title={
+                              item.codigoBarras && item.codigoBarras.trim() !== ''
+                                ? `Código de barras vinculado: ${item.codigoBarras} (clic para ver o cambiar)`
+                                : 'Vincular código de barras (lector USB o manual)'
+                            }
+                          >
+                            <Barcode className="w-3.5 h-3.5" />
+                          </button>
 
-                            {/* Delete (Administración only) */}
-                            {currentUser?.rol === 'gerencia' && (
-                              <button
-                                onClick={() => {
-                                  if (window.confirm(`¿Eliminar ${item.codigo} del inventario?`)) {
-                                    deleteItem(item.id);
-                                  }
-                                }}
-                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                                title="Eliminar registro"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            )}
-                          </div>
-                        )}
+                          {/* Edit (Restricted: Pañol & Administración only) */}
+                          {!isVentas && (
+                            <button
+                              onClick={() => handleStartInlineEdit(item)}
+                              className="p-1.5 text-slate-500 hover:text-[#006bb0] hover:bg-[#e2f1fc] rounded-lg transition-colors cursor-pointer"
+                              title="Editar todo el registro del producto"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+
+                          {/* Delete (Administración only) */}
+                          {currentUser?.rol === 'gerencia' && (
+                            <button
+                              onClick={() => {
+                                if (window.confirm(`¿Eliminar ${item.codigo} del inventario?`)) {
+                                  deleteItem(item.id);
+                                }
+                              }}
+                              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                              title="Eliminar registro"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
                       </td>
 
                     </tr>
@@ -839,6 +756,196 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({
               )}
             </tbody>
           </table>
+          </div>
+        </div>
+
+        {/* Mobile Card View (< lg) */}
+        <div className="lg:hidden divide-y divide-[#e2effa]">
+          {sortedItems.length > 0 ? (
+            sortedItems.map(item => {
+              const isPorEncargo = item.porEncargo === true;
+              const isOutOfStock = !isPorEncargo && item.stock === 0;
+              const isLowStock = !isPorEncargo && item.stock > 0 && item.stock <= (item.stockMinimo || 1);
+              const showPrecio = showPrices && (item.precio || 0) > 0;
+
+              return (
+                <div
+                  key={item.id}
+                  className={`p-3.5 sm:p-4 flex flex-col gap-2.5 ${
+                    isOutOfStock ? 'bg-rose-50/40' : isPorEncargo ? 'bg-purple-50/30' : 'bg-white'
+                  }`}
+                >
+                  {/* Código & Descripción */}
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className={`font-mono font-bold text-xs sm:text-sm ${isOutOfStock ? 'text-rose-700' : 'text-[#006bb0]'}`}>
+                          {item.codigo}
+                        </span>
+                        {selectedCategory === 'all' && (
+                          <span className="text-[9px] px-1.5 py-0.2 rounded bg-sky-100/80 text-[#005590] font-sans font-bold border border-sky-200 uppercase">
+                            {item.categoria === 'panol' ? 'Pañol' : item.categoria.replace('_', ' ')}
+                          </span>
+                        )}
+                        {item.codigoBarras && (
+                          <span className="text-[9px] px-1.5 py-0.2 rounded bg-slate-100 text-slate-700 font-mono font-semibold border border-slate-200 flex items-center gap-1">
+                            <Barcode className="w-3 h-3 text-slate-500" />
+                            {item.codigoBarras}
+                          </span>
+                        )}
+                      </div>
+                      <p
+                        className={`text-sm font-semibold text-slate-800 leading-snug mt-1 ${onOpenDetail ? 'cursor-pointer hover:text-[#006bb0]' : ''}`}
+                        onClick={() => onOpenDetail?.(item)}
+                      >
+                        {item.descripcion}
+                      </p>
+                    </div>
+                    {isPorEncargo && (
+                      <span className="shrink-0 text-[10px] font-bold text-purple-700 bg-purple-50 border border-purple-200 px-2 py-0.5 rounded-full">
+                        📦 Por Encargo
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Chips: proveedor, subcategoría, ubicación */}
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {meta.showProvider && (
+                      <span className="text-[10px] font-bold text-sky-950 bg-[#e8f4fc] border border-[#d2e8f8] px-1.5 py-0.5 rounded uppercase">
+                        {item.proveedor}
+                      </span>
+                    )}
+                    {item.subcategoria && (
+                      <span className="text-[10px] font-normal text-slate-600 bg-[#e8f4fc] border border-[#d2e8f8] px-1.5 py-0.5 rounded">
+                        {item.subcategoria}
+                      </span>
+                    )}
+                    <span className="text-[10px] font-bold font-mono text-sky-950 bg-[#e8f4fc] border border-[#c4e1f7] px-1.5 py-0.5 rounded-md flex items-center gap-1">
+                      {item.ubicacion || 'A'}
+                    </span>
+                  </div>
+
+                  {/* Stocks: normal + p/servicio */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className={`rounded-xl border-2 px-3 py-2 text-center ${
+                      isOutOfStock
+                        ? 'border-rose-200 bg-rose-50'
+                        : isLowStock
+                          ? 'border-amber-200 bg-amber-100'
+                          : 'border-emerald-200 bg-emerald-50'
+                    }`}>
+                      <span className="text-[9px] uppercase font-black tracking-wider text-slate-500 flex items-center justify-center gap-1">
+                        <Package className="w-3 h-3" />
+                        Stock normal
+                      </span>
+                      {isPorEncargo ? (
+                        <span className={`text-base sm:text-lg font-black font-mono block mt-0.5 ${item.stock > 0 ? 'text-purple-800' : 'text-purple-500'}`}>
+                          {item.stock > 0 ? `${item.stock} u.` : 'A pedido'}
+                        </span>
+                      ) : (
+                        <span className={`text-base sm:text-lg font-black font-mono block mt-0.5 ${
+                          isOutOfStock ? 'text-rose-700' : isLowStock ? 'text-amber-800' : 'text-emerald-700'
+                        }`}>
+                          {item.stock} u.
+                        </span>
+                      )}
+                    </div>
+
+                    {meta.showPServicio && (
+                      <div className="rounded-xl border-2 border-amber-200 bg-amber-50 px-3 py-2 text-center">
+                        <span className="text-[9px] uppercase font-black tracking-wider text-slate-500 flex items-center justify-center gap-1">
+                          <Package className="w-3 h-3 text-amber-600" />
+                          Stock p/servicio
+                        </span>
+                        <span className={`text-base sm:text-lg font-black font-mono block mt-0.5 ${item.paraServicio ? 'text-amber-700' : 'text-slate-400'}`}>
+                          {item.paraServicio || 0} u.
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Precio (admin) */}
+                  {showPrecio && (
+                    <div className="flex items-center justify-between gap-2 text-xs">
+                      <span className="font-black text-slate-500 uppercase tracking-wider shrink-0">
+                        Precio
+                      </span>
+                      <span className="font-mono font-black text-slate-900">
+                        ${(item.precio || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Actions */}
+                  <div className="flex items-center gap-1.5 pt-1">
+                    {!isVentas && (
+                          <button
+                            onClick={() => onOpenScanner(item.codigo)}
+                            className={`flex-1 py-2 rounded-xl font-black text-xs flex items-center justify-center gap-1.5 cursor-pointer active:scale-[0.98] ${
+                              item.stock > 0
+                                ? 'bg-[#006bb0] hover:bg-[#005590] text-white'
+                                : 'bg-white border border-[#c4e1f7] text-slate-500'
+                            }`}
+                            title="Despachar este producto"
+                          >
+                            <Scan className="w-3.5 h-3.5" />
+                            Salida
+                          </button>
+                        )}
+                        <button
+                          onClick={() => onOpenBarcode(item)}
+                          className={`p-2 rounded-xl border cursor-pointer ${
+                            item.codigoBarras && item.codigoBarras.trim() !== ''
+                              ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
+                              : 'text-slate-500 hover:text-[#006bb0] border-[#c4e1f7]'
+                          }`}
+                          title="Código de barras"
+                        >
+                          <Barcode className="w-3.5 h-3.5" />
+                        </button>
+                        {!isVentas && (
+                          <button
+                            onClick={() => handleStartInlineEdit(item)}
+                            className="p-2 rounded-xl border border-[#c4e1f7] text-slate-500 hover:text-[#006bb0] hover:border-[#006bb0] cursor-pointer"
+                            title="Editar precio/stock/tipo"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        {currentUser?.rol === 'gerencia' && (
+                          <button
+                            onClick={() => {
+                              if (window.confirm(`¿Eliminar ${item.codigo} del inventario?`)) {
+                                deleteItem(item.id);
+                              }
+                            }}
+                            className="p-2 rounded-xl border border-rose-200 text-slate-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer"
+                            title="Eliminar registro"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                  </div>
+                </div>
+              );
+            })
+          ) : (
+            <div className="p-8 text-center text-slate-500">
+              {items.length === 0 ? (
+                <div className="flex flex-col items-center justify-center gap-2.5 max-w-md mx-auto py-6">
+                  <div className="w-12 h-12 rounded-2xl bg-sky-50 text-[#006bb0] flex items-center justify-center border border-sky-200 shadow-2xs">
+                    <Package className="w-6 h-6" />
+                  </div>
+                  <h4 className="font-black text-sky-950 text-base">Inventario Limpio y Listo</h4>
+                  <p className="text-xs text-slate-500 text-center leading-relaxed">
+                    La base de datos está vacía. Puedes cargar tus productos automáticamente desde un archivo Excel o agregar nuevos artículos individualmente.
+                  </p>
+                </div>
+              ) : (
+                <p className="font-semibold text-sm text-slate-600">No se encontraron productos con los filtros seleccionados.</p>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -847,6 +954,13 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({
         isOpen={isAddingItem}
         onClose={() => setIsAddingItem(false)}
         defaultCategory={category === 'all' ? undefined : category}
+      />
+
+      {/* Modal: Edit Product */}
+      <EditProductModal
+        isOpen={!!editingItem}
+        item={editingItem}
+        onClose={() => setEditingItem(null)}
       />
 
     </div>

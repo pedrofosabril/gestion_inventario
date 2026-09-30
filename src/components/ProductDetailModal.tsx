@@ -34,7 +34,6 @@ const CATEGORY_NAMES: Record<ItemCategory, { name: string; color: string; bg: st
   submicronicos: { name: 'Filtros Submicrónicos', color: 'text-emerald-700', bg: 'bg-emerald-50' },
   rodamientos: { name: 'Rodamientos', color: 'text-indigo-700', bg: 'bg-indigo-50' },
   entrepiso: { name: 'Entrepiso', color: 'text-purple-700', bg: 'bg-purple-50' },
-  importado: { name: 'Importado', color: 'text-cyan-700', bg: 'bg-cyan-50' },
   repuestos_mv: { name: 'Repuestos MV', color: 'text-blue-700', bg: 'bg-blue-50' },
   cajas: { name: 'Cajas Estantes', color: 'text-rose-700', bg: 'bg-rose-50' },
 };
@@ -196,7 +195,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
             <div className="p-3.5 rounded-2xl bg-white border border-[#c4e1f7] shadow-2xs flex flex-col justify-between">
               <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1">
                 <Boxes className="w-3.5 h-3.5 text-sky-600" />
-                Stock Disponible
+                Stock normal
               </span>
               <div className="mt-1.5 flex items-center justify-between">
                 <span className={`text-lg font-mono font-black ${
@@ -211,6 +210,28 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                 }`}>
                   {item.stock > 0 ? 'Disponible' : 'Sin Stock'}
                 </span>
+              </div>
+            </div>
+
+            {/* Cantidad para Servicio */}
+            <div className="p-3.5 rounded-2xl bg-white border border-[#c4e1f7] shadow-2xs flex flex-col justify-between">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1">
+                <Boxes className="w-3.5 h-3.5 text-amber-600" />
+                Stock p/servicio
+              </span>
+              <div className="mt-1.5 flex items-center justify-between">
+                <span className="text-lg font-mono font-black text-amber-700">
+                  {item.paraServicio && item.paraServicio > 0 ? item.paraServicio : 0} {item.paraServicio === 1 ? 'unidad' : 'unidades'}
+                </span>
+                {item.paraServicio && item.paraServicio > 0 ? (
+                  <span className="text-[11px] font-black px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200">
+                    P/Servicio
+                  </span>
+                ) : (
+                  <span className="text-[11px] font-black px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 border border-slate-200">
+                    Sin reserva
+                  </span>
+                )}
               </div>
             </div>
 

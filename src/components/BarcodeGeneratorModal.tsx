@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import JsBarcode from 'jsbarcode';
 import { jsPDF } from 'jspdf';
+import { triggerPdfDownload } from '../utils/pdfDownload';
 import { 
   Barcode, 
   Printer, 
@@ -242,7 +243,7 @@ export const BarcodeGeneratorModal: React.FC<BarcodeGeneratorModalProps> = ({
 
       const safeCode = (currentItem.codigo || 'item').replace(/[^a-zA-Z0-9_-]/g, '_');
       const filename = `Etiqueta_${safeCode}_${code}.pdf`;
-      doc.save(filename);
+      triggerPdfDownload(doc, filename);
       setSaveSuccessMessage(`Etiqueta PDF "${filename}" descargada correctamente.`);
       setTimeout(() => setSaveSuccessMessage(null), 3500);
     } catch (err) {
@@ -374,7 +375,7 @@ export const BarcodeGeneratorModal: React.FC<BarcodeGeneratorModalProps> = ({
               </span>
               <span className="text-slate-300">•</span>
               <span className="capitalize">
-                Categoría: <strong>{currentItem.categoria.replace('_', ' ')}</strong>
+                Categoría: <strong>{currentItem.categoria === 'panol' ? 'Pañol' : currentItem.categoria.replace('_', ' ')}</strong>
               </span>
             </div>
           </div>

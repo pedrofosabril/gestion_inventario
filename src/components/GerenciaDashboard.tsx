@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { 
   DollarSign, 
   Package, 
@@ -16,13 +16,17 @@ import {
   RotateCcw,
   DatabaseBackup,
   Download,
+  Upload,
   ChevronDown,
-  Clock
+  Clock,
+  Loader2
 } from 'lucide-react';
 import { useInventory } from '../context/InventoryContext';
 import { ItemCategory } from '../types';
 import { AddProductModal } from './AddProductModal';
 import { SalidasLogView } from './SalidasLogView';
+import { IngresosLogView } from './IngresosLogView';
+import { DevolucionesLogView } from './DevolucionesLogView';
 import { ExcelImportDropzone } from './ExcelImportDropzone';
 
 interface GerenciaDashboardProps {
@@ -33,6 +37,8 @@ export const GerenciaDashboard: React.FC<GerenciaDashboardProps> = ({ onOpenScan
   const { 
     items, 
     salidas,
+    ingresos,
+    devolucionGroups,
     totalValuation, 
     totalUnits, 
     totalSkus, 
@@ -41,18 +47,59 @@ export const GerenciaDashboard: React.FC<GerenciaDashboardProps> = ({ onOpenScan
     clearAllData,
     resetToDefaults,
     backupDatabase,
-    backupHistory
+    backupHistory,
+    restoreDatabase
   } = useInventory();
 
   const [isAddingProduct, setIsAddingProduct] = useState<boolean>(false);
   const [showHistorial, setShowHistorial] = useState<boolean>(false);
+  const [movementHistoryTab, setMovementHistoryTab] = useState<'salidas' | 'devoluciones' | 'ingresos'>('salidas');
   const [showBackupPanel, setShowBackupPanel] = useState<boolean>(false);
   const [backupAt, setBackupAt] = useState<string | null>(null);
+  const [restoreMessage, setRestoreMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const [isRestoring, setIsRestoring] = useState<boolean>(false);
+  const [restoreInputKey, setRestoreInputKey] = useState<number>(0);
+  const restoreFileRef = useRef<HTMLInputElement>(null);
 
   const handleBackup = () => {
     backupDatabase();
     setBackupAt(new Date().toLocaleTimeString('es-AR'));
     window.setTimeout(() => setBackupAt(null), 6000);
+  };
+
+  const handleRestoreFile = (file: File) => {
+    setRestoreMessage(null);
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const content = String(reader.result ?? '');
+      if (!window.confirm('⚠️ IMPORTANTE: Restaurar reemplazará TODO el contenido actual (productos, stock, salidas, ingresos, devoluciones, usuarios y sesión) por el contenido del respaldo seleccionado.\n\n¿Estás seguro de continuar?')) {
+        return;
+      }
+      setIsRestoring(true);
+      try {
+        const result = await restoreDatabase(content);
+        setRestoreMessage({ ok: result.success, text: result.message });
+      } catch (e) {
+        setRestoreMessage({ ok: false, text: 'Ocurrió un error inesperado al leer el archivo.' });
+      } finally {
+        setIsRestoring(false);
+        setRestoreInputKey(k => k + 1);
+        window.setTimeout(() => setRestoreMessage(null), 10000);
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleClearAll = () => {
+    if (!window.confirm('⚠️ ¿Seguro que querés VACIAR TODA la base de datos? Se eliminarán todos los productos, stock, movimientos y datos de la aplicación.\n\nEsta acción NO se puede deshacer.')) {
+      return;
+    }
+    if (!window.confirm('Esta es tu ÚLTIMA confirmación. Se borrará todo el contenido, incluyendo los movimientos y salidas registrados.\n\n¿Querés continuar?')) {
+      return;
+    }
+    clearAllData();
+    setRestoreMessage({ ok: true, text: 'La base de datos fue vaciada completamente. Podés subir tu respaldo .json para restaurarla.' });
+    window.setTimeout(() => setRestoreMessage(null), 8000);
   };
 
   const lowStock = getLowStockItems();
@@ -65,7 +112,6 @@ export const GerenciaDashboard: React.FC<GerenciaDashboardProps> = ({ onOpenScan
     submicronicos: { count: 0, units: 0, valuation: 0, name: 'Filtros Submicrónicos' },
     rodamientos: { count: 0, units: 0, valuation: 0, name: 'Rodamientos' },
     entrepiso: { count: 0, units: 0, valuation: 0, name: 'Entrepiso Pañol' },
-    importado: { count: 0, units: 0, valuation: 0, name: 'Stock Importado' },
     repuestos_mv: { count: 0, units: 0, valuation: 0, name: 'Repuestos MV' },
     cajas: { count: 0, units: 0, valuation: 0, name: 'Cajas Estantes' },
   };
@@ -165,7 +211,72 @@ export const GerenciaDashboard: React.FC<GerenciaDashboardProps> = ({ onOpenScan
                     </div>
                   </button>
 
-                  {/* Opción 2: Historial de respaldos */}
+                  {/* Opción 2: Restaurar desde respaldo */}
+                  <div className="mt-3">
+                    <input
+                      key={restoreInputKey}
+                      ref={restoreFileRef}
+                      type="file"
+                      accept=".json,application/json"
+                      className="hidden"
+                      onChange={e => {
+                        const f = e.target.files?.[0];
+                        if (f) handleRestoreFile(f);
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => restoreFileRef.current?.click()}
+                      disabled={isRestoring}
+                      className="w-full inline-flex items-center gap-3 px-3 py-3 bg-sky-50 hover:bg-sky-100 border border-sky-300 rounded-xl text-left transition-colors cursor-pointer disabled:opacity-50"
+                      title="Elegí el archivo .json de respaldo para reemplazar toda la base de datos"
+                    >
+                      <div className="w-9 h-9 rounded-xl bg-[#006bb0] text-white flex items-center justify-center shrink-0 shadow-xs">
+                        {isRestoring ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                      </div>
+                      <div className="flex flex-col min-w-0">
+                        <span className="text-xs font-black text-sky-950">
+                          {isRestoring ? 'Restaurando base de datos...' : 'Restaurar base desde respaldo (.json)'}
+                        </span>
+                        <span className="text-[10px] text-slate-500 font-medium leading-relaxed">
+                          Elimina el contenido actual y sube el respaldo: productos, stock, movimientos, usuarios y sesión
+                        </span>
+                      </div>
+                    </button>
+                  </div>
+
+                  {/* Opción 3: Vaciar base de datos */}
+                  <div className="mt-3">
+                    <button
+                      type="button"
+                      onClick={handleClearAll}
+                      className="w-full inline-flex items-center gap-3 px-3 py-3 bg-rose-50 hover:bg-rose-100 border border-rose-300 rounded-xl text-left transition-colors cursor-pointer"
+                      title="Elimina TODO el contenido de la base de datos"
+                    >
+                      <div className="w-9 h-9 rounded-xl bg-rose-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                        <Trash2 className="w-4 h-4" />
+                      </div>
+                      <div className="flex flex-col min-w-0">
+                        <span className="text-xs font-black text-rose-900">Vaciar la base de datos</span>
+                        <span className="text-[10px] text-slate-500 font-medium">
+                          Borra todos los productos, stock y movimientos (sin recuperación)
+                        </span>
+                      </div>
+                    </button>
+                  </div>
+
+                  {restoreMessage && (
+                    <div className={`mt-3 px-3 py-2.5 rounded-xl border text-xs font-bold animate-in fade-in ${
+                      restoreMessage.ok
+                        ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
+                        : 'bg-rose-50 border-rose-300 text-rose-800'
+                    }`}>
+                      {restoreMessage.ok ? <CheckCircle2 className="w-3.5 h-3.5 inline mr-1" /> : <AlertTriangle className="w-3.5 h-3.5 inline mr-1" />}
+                      {restoreMessage.text}
+                    </div>
+                  )}
+
+                  {/* Opción 4: Historial de respaldos */}
                   <div className="mt-3">
                     <div className="flex items-center justify-between px-1 mb-1.5">
                       <span className="text-[11px] font-black uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
@@ -339,10 +450,10 @@ export const GerenciaDashboard: React.FC<GerenciaDashboardProps> = ({ onOpenScan
             </div>
             <div>
               <h3 className="text-base font-black text-sky-950 tracking-tight">
-                Historial de Salidas y Despachos
+                Historial de Movimientos
               </h3>
               <p className="text-xs text-slate-500 font-medium">
-                {salidas.length} {salidas.length === 1 ? 'despacho registrado' : 'despachos registrados'} en el sistema
+                {salidas.length} salidas · {devolucionGroups.length} devoluciones · {ingresos.length} ingresos
               </p>
             </div>
           </div>
@@ -363,7 +474,29 @@ export const GerenciaDashboard: React.FC<GerenciaDashboardProps> = ({ onOpenScan
 
         {showHistorial && (
           <div className="pt-3 border-t border-[#c4e1f7] animate-in fade-in">
-            <SalidasLogView onOpenScanner={onOpenScanner || (() => {})} />
+            <div className="flex flex-wrap gap-2 mb-4">
+              {[
+                ['salidas', 'Salidas'],
+                ['devoluciones', 'Devoluciones'],
+                ['ingresos', 'Ingresos']
+              ].map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setMovementHistoryTab(id as 'salidas' | 'devoluciones' | 'ingresos')}
+                  className={`px-3 py-2 rounded-xl text-xs font-black cursor-pointer transition-all ${movementHistoryTab === id ? 'bg-[#006bb0] text-white' : 'bg-white border border-[#b8ddf5] text-slate-700 hover:bg-[#eaf4fb]'}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {movementHistoryTab === 'salidas' ? (
+              <SalidasLogView onOpenScanner={onOpenScanner || (() => {})} />
+            ) : movementHistoryTab === 'devoluciones' ? (
+              <DevolucionesLogView />
+            ) : (
+              <IngresosLogView onOpenScanner={onOpenScanner} />
+            )}
           </div>
         )}
       </div>

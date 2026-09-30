@@ -36,6 +36,7 @@ create table if not exists public.stock (
   id uuid primary key default gen_random_uuid(),
   codigo text not null references public.repuestos(codigo) on delete cascade,
   cantidad integer not null default 0 check (cantidad >= 0),
+  stock_servicio integer not null default 0 check (stock_servicio >= 0),
   ubicacion text not null default '',
   precio numeric(14,2) not null default 0 check (precio >= 0),
   fecha_control date not null default current_date,
