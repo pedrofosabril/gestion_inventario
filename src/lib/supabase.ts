@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { InventoryItem, ItemCategory } from '../types';
+import { InventoryItem, ItemCategory, UserAccount, UserRole } from '../types';
 import { CATEGORY_MAP, type CategoryEntry } from '../data/categoryMap';
 import { isSullairProveedor } from '../utils/barcodeUtils';
 import { mergeSameProductPairs } from '../utils/productMerge';
@@ -286,5 +286,41 @@ export async function createMovement(input: {
     comprobante: input.comprobante ?? '', cliente_proveedor: input.clienteProveedor ?? '',
     retira_responsable: input.responsable ?? ''
   });
+  if (error) throw error;
+}
+
+type GlobalUserRow = {
+  username: string;
+  nombre: string;
+  rol: string;
+  password: string | null;
+};
+
+/** Fetches all user accounts stored globally (shared across all computers). */
+export async function getGlobalUsers(): Promise<UserAccount[]> {
+  const rows = await fetchAllRows<GlobalUserRow>('usuarios', 'username, nombre, rol, password');
+  return (rows ?? []).map(row => ({
+    id: `usr-${row.username}`,
+    username: row.username,
+    nombre: row.nombre,
+    rol: (row.rol ?? 'observador') as UserRole,
+    password: row.password ?? undefined,
+  }));
+}
+
+/** Upserts a user account into the shared global users table. */
+export async function saveGlobalUser(user: UserAccount): Promise<void> {
+  const { error } = await supabase.from('usuarios').upsert({
+    username: user.username,
+    nombre: user.nombre,
+    rol: user.rol,
+    password: user.password ?? null,
+  }, { onConflict: 'username' });
+  if (error) throw error;
+}
+
+/** Deletes a user account from the shared global users table. */
+export async function deleteGlobalUser(username: string): Promise<void> {
+  const { error } = await supabase.from('usuarios').delete().eq('username', username);
   if (error) throw error;
 }

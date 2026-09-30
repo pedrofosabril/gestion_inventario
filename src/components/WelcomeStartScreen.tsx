@@ -39,19 +39,19 @@ export const WelcomeStartScreen: React.FC = () => {
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
   // Handle Login Submit with strict credential validation
-  const handleLoginSubmit = (e: React.FormEvent) => {
+  const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setSuccessMsg(null);
 
-    const result = validateLogin(loginUsername, loginPassword);
+    const result = await validateLogin(loginUsername, loginPassword);
     if (!result.success) {
       setError(result.message);
     }
   };
 
   // Handle Register Submit
-  const handleRegisterSubmit = (e: React.FormEvent) => {
+  const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setSuccessMsg(null);
@@ -76,7 +76,7 @@ export const WelcomeStartScreen: React.FC = () => {
       return;
     }
 
-    const result = registerUser({
+    const result = await registerUser({
       nombre: regNombre,
       username: regUsername,
       rol: regRol,
