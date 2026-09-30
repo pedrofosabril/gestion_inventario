@@ -90,16 +90,20 @@ export const GerenciaDashboard: React.FC<GerenciaDashboardProps> = ({ onOpenScan
     reader.readAsText(file);
   };
 
-  const handleClearAll = () => {
+  const handleClearAll = async () => {
     if (!window.confirm('⚠️ ¿Seguro que querés VACIAR TODA la base de datos? Se eliminarán todos los productos, stock, movimientos y datos de la aplicación.\n\nEsta acción NO se puede deshacer.')) {
       return;
     }
     if (!window.confirm('Esta es tu ÚLTIMA confirmación. Se borrará todo el contenido, incluyendo los movimientos y salidas registrados.\n\n¿Querés continuar?')) {
       return;
     }
-    clearAllData();
-    setRestoreMessage({ ok: true, text: 'La base de datos fue vaciada completamente. Podés subir tu respaldo .json para restaurarla.' });
-    window.setTimeout(() => setRestoreMessage(null), 8000);
+    const res = await clearAllData();
+    if (res.ok) {
+      setRestoreMessage({ ok: true, text: 'La base de datos fue vaciada completamente. Podés subir tu respaldo .json para restaurarla.' });
+    } else {
+      setRestoreMessage({ ok: false, text: `La app quedó vacía, pero no se pudieron borrar en la nube: ${res.failed.join(', ')}. Aplicá la migración de políticas RLS para completar el borrado.` });
+    }
+    window.setTimeout(() => setRestoreMessage(null), 10000);
   };
 
   const lowStock = getLowStockItems();
