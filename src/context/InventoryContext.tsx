@@ -23,7 +23,7 @@ import {
   INITIAL_USERS 
 } from '../data/initialData';
 import { replaceYazWithYas, sanitizeYazObject } from '../utils/sanitizeUtils';
-import { createMovement, deleteInventoryItem, getInventory, saveInventoryItem, getGlobalUsers, saveGlobalUser } from '../lib/supabase';
+import { createMovement, deleteInventoryItem, getInventory, saveInventoryItem, getGlobalUsers, saveGlobalUser, deleteGlobalUser } from '../lib/supabase';
 
 export type MainNavSection = ItemCategory | 'salidas_log' | 'ingresos_log' | 'gerencia_dashboard';
 
@@ -401,11 +401,21 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           console.error('Failed to save users to storage', e);
         }
 
-        // Push local-only accounts up to the shared table
+        // Push user-created accounts up to the shared table, but never
+        // re-upload the bundled demo accounts (panol/ventas, etc.).
+        const seedNames = new Set(INITIAL_USERS.map(u => u.username.toLowerCase()));
         const localNames = new Set(users.map(u => u.username.toLowerCase()));
         for (const u of all) {
-          if (localNames.has(u.username.toLowerCase())) {
+          if (localNames.has(u.username.toLowerCase()) && !seedNames.has(u.username.toLowerCase())) {
             void saveGlobalUser(u).catch(error => console.error('No se pudo sincronizar el usuario a Supabase:', error));
+          }
+        }
+
+        // Remove any previously auto-uploaded demo accounts from the shared table
+        const globalNames = new Set(globalUsers.map(u => u.username.toLowerCase()));
+        for (const seedName of seedNames) {
+          if (globalNames.has(seedName)) {
+            void deleteGlobalUser(seedName).catch(error => console.error('No se pudo limpiar el usuario de ejemplo de Supabase:', error));
           }
         }
       })
