@@ -53,6 +53,10 @@ create table if not exists public.usuarios (
 
 alter table public.usuarios enable row level security;
 
+-- Sin los GRANT el rol anon recibe "permission denied" aunque existan políticas.
+grant usage on schema public to anon, authenticated;
+grant select, insert, update, delete on public.usuarios to anon, authenticated;
+
 -- La app usa el anon key y gestiona sus propias cuentas (login propio con
 -- username + password). Los usuarios se comparten entre todas las computadoras.
 drop policy if exists usuarios_read on public.usuarios;
