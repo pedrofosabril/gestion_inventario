@@ -151,3 +151,8 @@ drop policy if exists inventory_read_movimientos on public.movimientos;
 create policy inventory_read_movimientos on public.movimientos for select to authenticated using (true);
 drop policy if exists inventory_write_movimientos on public.movimientos;
 create policy inventory_write_movimientos on public.movimientos for all to authenticated using (public.puede_operar_inventario()) with check (public.puede_operar_inventario());
+
+-- La app opera con la clave anon y su botón "Vaciar la base de datos" debe
+-- poder borrar toda la tabla `movimientos`. Política idempotente.
+drop policy if exists movimientos_delete_anon on public.movimientos;
+create policy movimientos_delete_anon on public.movimientos for delete to anon using (true);
