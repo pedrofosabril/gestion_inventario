@@ -103,6 +103,7 @@ interface InventoryContextType {
     devolucionGroup?: DevolucionGroupRecord;
   };
   deleteDevolucionGroup: (groupId: string, subtractStock?: boolean) => { success: boolean; message: string };
+  deleteDevolucionItem: (groupId: string, codigo: string, subtractStock?: boolean) => { success: boolean; message: string };
   updateDevolucionGroupSignature: (groupId: string, firmaDigital: string, firmadoPor?: string) => void;
   updateDevolucionGroupPanoleroSignature: (groupId: string, firmaPanolero: string, firmadoPor?: string) => void;
   getNextDevolucionNumber: () => number;
@@ -1151,6 +1152,56 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return { success: true, message: `Devolución "${targetGroup.numeroDevolucionFormatted}" eliminada.` };
   };
 
+  const deleteDevolucionItem = (groupId: string, codigo: string, subtractStock: boolean = true) => {
+    const targetGroup = devolucionGroups.find(g => g.id === groupId);
+    if (!targetGroup) return { success: false, message: 'Devolución no encontrada.' };
+
+    const codigoL = codigo.trim().toLowerCase();
+    const toRemove = targetGroup.items.filter(it => it.codigo.toLowerCase() === codigoL);
+    if (toRemove.length === 0) return { success: false, message: 'El producto no pertenece a esa devolución.' };
+
+    if (subtractStock) {
+      setItems(prevItems => {
+        const updated = [...prevItems];
+        let changed = false;
+        for (const itemEntry of toRemove) {
+          const idx = updated.findIndex(it =>
+            it.codigo.toLowerCase() === itemEntry.codigo.toLowerCase() ||
+            (it.codigoBarras && it.codigoBarras.toLowerCase() === itemEntry.codigo.toLowerCase())
+          );
+          if (idx !== -1) {
+            const current = updated[idx];
+            const newStock = Math.max(0, current.stock - itemEntry.cantidad);
+            const updatedItem = {
+              ...current,
+              stock: newStock,
+              precioTotal: newStock * current.precio
+            };
+            updated[idx] = updatedItem;
+            changed = true;
+            void saveInventoryItem(updatedItem).catch(error => console.error('No se pudo actualizar el stock en Supabase:', error));
+          }
+        }
+        return changed ? updated : prevItems;
+      });
+    }
+
+    const remainingItems = targetGroup.items.filter(it => !toRemove.includes(it));
+    if (remainingItems.length === 0) {
+      setDevolucionGroups(prev => prev.filter(g => g.id !== groupId));
+    } else {
+      const totalUnidades = remainingItems.reduce((sum, it) => sum + it.cantidad, 0);
+      const totalValor = remainingItems.reduce((sum, it) => sum + (it.precioUnitario || 0) * it.cantidad, 0);
+      setDevolucionGroups(prev => prev.map(g =>
+        g.id === groupId
+          ? { ...g, items: remainingItems, totalUnidades, totalValor }
+          : g
+      ));
+    }
+
+    return { success: true, message: `"${codigo}" eliminado del historial de devoluciones.` };
+  };
+
   const updateDevolucionGroupSignature = (groupId: string, firmaDigital: string, firmadoPor?: string) => {
     const firmaFecha = new Date().toLocaleString('es-AR');
     setDevolucionGroups(prev => prev.map(g => {
@@ -1998,6 +2049,7 @@ backupHistory,
         cleanDuplicateSalidas,
         registerDevolucionGroup,
         deleteDevolucionGroup,
+        deleteDevolucionItem,
         updateDevolucionGroupSignature,
         updateDevolucionGroupPanoleroSignature,
         getNextDevolucionNumber,
