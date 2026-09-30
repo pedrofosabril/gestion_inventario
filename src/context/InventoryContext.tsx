@@ -23,7 +23,7 @@ import {
   INITIAL_USERS 
 } from '../data/initialData';
 import { replaceYazWithYas, sanitizeYazObject } from '../utils/sanitizeUtils';
-import { createMovement, deleteInventoryItem, getInventory, saveInventoryItem } from '../lib/supabase';
+import { createMovement, deleteInventoryItem, getInventory, saveInventoryItem, getGlobalUsers, saveGlobalUser } from '../lib/supabase';
 
 export type MainNavSection = ItemCategory | 'salidas_log' | 'ingresos_log' | 'gerencia_dashboard';
 
@@ -128,8 +128,8 @@ interface InventoryContextType {
   backupDatabase: () => void;
   
   // Auth
-  login: (username: string, password?: string) => boolean;
-  validateLogin: (username: string, password?: string) => { success: boolean; message: string; user?: UserAccount };
+  login: (username: string, password?: string) => Promise<boolean>;
+  validateLogin: (username: string, password?: string) => Promise<{ success: boolean; message: string; user?: UserAccount }>;
   registerUser: (userData: {
     username: string;
     nombre: string;
@@ -379,6 +379,37 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     getInventory()
       .then(data => { if (active) setItems(data); })
       .catch(error => console.error('No se pudo cargar el inventario de Supabase:', error));
+    return () => { active = false; };
+  }, []);
+
+  // Global user accounts: the shared `usuarios` table is the source of truth.
+  // Local seeds/config are merged on top so existing per-browser accounts survive,
+  // and any account only present locally is pushed up to the shared table.
+  useEffect(() => {
+    let active = true;
+    getGlobalUsers()
+      .then(globalUsers => {
+        if (!active) return;
+        const mergedMap = new Map<string, UserAccount>();
+        for (const u of users) mergedMap.set(u.username.toLowerCase(), u);
+        for (const u of globalUsers) mergedMap.set(u.username.toLowerCase(), u);
+        const all = Array.from(mergedMap.values());
+        setUsers(all);
+        try {
+          localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(all));
+        } catch (e) {
+          console.error('Failed to save users to storage', e);
+        }
+
+        // Push local-only accounts up to the shared table
+        const localNames = new Set(users.map(u => u.username.toLowerCase()));
+        for (const u of all) {
+          if (localNames.has(u.username.toLowerCase())) {
+            void saveGlobalUser(u).catch(error => console.error('No se pudo sincronizar el usuario a Supabase:', error));
+          }
+        }
+      })
+      .catch(error => console.error('No se pudieron cargar los usuarios globales de Supabase:', error));
     return () => { active = false; };
   }, []);
 
@@ -1601,7 +1632,15 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     playBeep('success');
   };
 
-  const validateLogin = (username: string, password?: string): { success: boolean; message: string; user?: UserAccount } => {
+  const hasGlobalUsers = async (): Promise<UserAccount[]> => {
+    try {
+      return await getGlobalUsers();
+    } catch {
+      return [];
+    }
+  };
+
+  const validateLogin = async (username: string, password?: string): Promise<{ success: boolean; message: string; user?: UserAccount }> => {
     const cleanUsername = (username || '').trim().toLowerCase();
     if (!cleanUsername) {
       return { success: false, message: 'Por favor ingresa tu nombre de usuario.' };
@@ -1610,7 +1649,27 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       return { success: false, message: 'Por favor ingresa tu contraseña.' };
     }
 
-    const user = users.find(u => u.username.toLowerCase() === cleanUsername);
+    let user = users.find(u => u.username.toLowerCase() === cleanUsername);
+
+    // If not in the local cache, fetch the shared users table (other computers may have created it)
+    if (!user) {
+      const globalUsers = await hasGlobalUsers();
+      if (globalUsers.length > 0) {
+        const serverUser = globalUsers.find(u => u.username.toLowerCase() === cleanUsername);
+        if (serverUser) {
+          user = serverUser;
+          setUsers(prev => {
+            const merged = new Map<string, UserAccount>();
+            for (const u of prev) merged.set(u.username.toLowerCase(), u);
+            merged.set(serverUser.username.toLowerCase(), serverUser);
+            const all = Array.from(merged.values());
+            localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(all));
+            return all;
+          });
+        }
+      }
+    }
+
     if (!user) {
       return { 
         success: false, 
@@ -1634,17 +1693,17 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return { success: true, message: 'Inicio de sesión exitoso.', user };
   };
 
-  const login = (username: string, password?: string): boolean => {
-    const res = validateLogin(username, password);
+  const login = async (username: string, password?: string): Promise<boolean> => {
+    const res = await validateLogin(username, password);
     return res.success;
   };
 
-  const registerUser = (userData: {
+  const registerUser = async (userData: {
     username: string;
     nombre: string;
     rol: UserRole;
     password?: string;
-  }): { success: boolean; message: string; user?: UserAccount } => {
+  }): Promise<{ success: boolean; message: string; user?: UserAccount }> => {
     const cleanUsername = (userData.username || '').trim().toLowerCase().replace(/\s+/g, '');
     const cleanNombre = (userData.nombre || '').trim();
     const cleanPass = userData.password || '';
@@ -1668,9 +1727,11 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       return { success: false, message: 'La contraseña debe contener al menos un carácter especial (ej: ! @ # $ % * - _).' };
     }
 
-    // Check if username already taken
-    const existingUser = users.find(u => u.username.toLowerCase() === cleanUsername);
-    if (existingUser) {
+    // Check if username already taken (local cache + shared table)
+    const localTaken = users.some(u => u.username.toLowerCase() === cleanUsername);
+    const globalUsers = await hasGlobalUsers();
+    const globalTaken = globalUsers.some(u => u.username.toLowerCase() === cleanUsername);
+    if (localTaken || globalTaken) {
       return { success: false, message: `El nombre de usuario "${cleanUsername}" ya existe. Por favor elige otro.` };
     }
 
@@ -1681,6 +1742,14 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       rol: userData.rol,
       password: cleanPass,
     };
+
+    // Persist to the shared table first so the account works from any computer
+    try {
+      await saveGlobalUser(newUser);
+    } catch (e) {
+      console.error('No se pudo crear la cuenta en Supabase:', e);
+      return { success: false, message: 'No se pudo crear la cuenta en el servidor. Revisa tu conexión e inténtalo nuevamente.' };
+    }
 
     const updatedUsers = [...users, newUser];
     setUsers(updatedUsers);
