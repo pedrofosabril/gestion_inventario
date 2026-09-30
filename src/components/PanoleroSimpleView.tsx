@@ -8,10 +8,12 @@ import {
   X,
   History,
   Barcode,
-  Camera
+  Camera,
+  Check,
+  Trash2
 } from 'lucide-react';
 import { useInventory } from '../context/InventoryContext';
-import { InventoryItem } from '../types';
+import { InventoryItem, SalidaRecord, IngresoRecord } from '../types';
 import { CameraBarcodeScanner } from './CameraBarcodeScanner';
 import { formatDisplayDate } from '../utils/dateUtils';
 
@@ -24,12 +26,21 @@ interface PanoleroSimpleViewProps {
 export const PanoleroSimpleView: React.FC<PanoleroSimpleViewProps> = ({
   onOpenScanner
 }) => {
-  const { items, currentUser, salidas, ingresos, devolucionGroups } = useInventory();
+  const { items, currentUser, salidas, ingresos, devolucionGroups, deleteSalida, deleteIngreso, deleteDevolucionItem } = useInventory();
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [showRecentMovimientos, setShowRecentMovimientos] = useState<boolean>(false);
   const [movTab, setMovTab] = useState<'salida' | 'entrada' | 'devolucion'>('salida');
   const [showCameraScanner, setShowCameraScanner] = useState<boolean>(false);
+  const [pendingDelete, setPendingDelete] = useState<{ tab: 'salida' | 'entrada' | 'devolucion'; codigo: string } | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+
+  const isVentas = currentUser?.rol === 'ventas';
+
+  const showToast = (text: string) => {
+    setToastMessage(text);
+    setTimeout(() => setToastMessage(null), 4500);
+  };
 
   // Listen to hardware barcode scanner on main view to fill the search box instead of auto-opening Salida
   useEffect(() => {
@@ -93,57 +104,155 @@ export const PanoleroSimpleView: React.FC<PanoleroSimpleViewProps> = ({
     return isFinite(t) ? t : 0;
   };
 
-  type MovEntry = {
-    fecha: string;
-    hora?: string;
-    timestamp: number;
+  type HistoricoRow = {
     codigo: string;
     descripcion: string;
     cantidad: number;
+    count: number;
+    fecha: string;
+    hora?: string;
+    timestamp: number;
     detalle: string;
   };
 
-  const salidasMovs: MovEntry[] = salidas
-    .map(s => ({
-      fecha: s.fechaSalida,
-      hora: s.horaSalida,
-      timestamp: fechaTimestamp(s.fechaSalida, s.horaSalida),
-      codigo: s.codigo,
-      descripcion: s.descripcion,
-      cantidad: s.cantidad,
-      detalle: `Retirado por: ${s.retira || 'Personal'}${s.cliente ? ` · Cliente: ${s.cliente}` : ''}`,
-    }))
-    .sort((a, b) => b.timestamp - a.timestamp)
-    .slice(0, 10);
+  // Agrupa por código: cada producto aparece UNA sola vez (nada de códigos duplicados),
+  // sumando las cantidades y contando cuántos movimientos se juntaron.
+  function agruparPorCodigo<T>(
+    registros: T[],
+    getCodigo: (r: T) => string,
+    getDesc: (r: T) => string,
+    getCant: (r: T) => number,
+    getFecha: (r: T) => string,
+    getHora: (r: T) => string | undefined,
+    getTs: (r: T) => number,
+    label: string
+  ): HistoricoRow[] {
+    const map = new Map<string, HistoricoRow>();
+    for (const r of registros) {
+      const codigo = getCodigo(r);
+      if (!codigo) continue;
+      const key = codigo.trim().toLowerCase();
+      let g = map.get(key);
+      if (!g) {
+        g = {
+          codigo,
+          descripcion: getDesc(r),
+          cantidad: 0,
+          count: 0,
+          fecha: getFecha(r),
+          hora: getHora(r),
+          timestamp: getTs(r),
+          detalle: ''
+        };
+        map.set(key, g);
+      }
+      g.count += 1;
+      g.cantidad += getCant(r);
+      const ts = getTs(r);
+      if (ts >= g.timestamp) {
+        g.timestamp = ts;
+        g.fecha = getFecha(r);
+        g.hora = getHora(r);
+      }
+      const desc = getDesc(r);
+      if (desc && (!g.descripcion || g.descripcion === 'Artículo sin descripción')) g.descripcion = desc;
+    }
+    return Array.from(map.values())
+      .map(g => ({ ...g, detalle: g.count === 1 ? `1 ${label}` : `${g.count} ${label}s` }))
+      .sort((a, b) => b.timestamp - a.timestamp)
+      .slice(0, 10);
+  }
 
-  const ingresosMovs: MovEntry[] = ingresos
-    .map(i => ({
-      fecha: i.fechaIngreso,
-      timestamp: fechaTimestamp(i.fechaIngreso),
-      codigo: i.codigo,
-      descripcion: i.descripcion,
-      cantidad: i.cantidad,
-      detalle: `Proveedor: ${i.proveedor || '—'}${i.factura ? ` · Factura: ${i.factura}` : ''}`,
-    }))
-    .sort((a, b) => b.timestamp - a.timestamp)
-    .slice(0, 10);
+  const resumenSalidas = agruparPorCodigo(
+    salidas,
+    s => s.codigo, s => s.descripcion, s => s.cantidad,
+    s => s.fechaSalida, s => s.horaSalida,
+    s => fechaTimestamp(s.fechaSalida, s.horaSalida),
+    'salida'
+  );
 
-  const devolucionesMovs: MovEntry[] = devolucionGroups
-    .flatMap(g => (g.items || []).map(it => ({
-      fecha: g.fechaDevolucion,
-      hora: g.horaDevolucion,
-      timestamp: fechaTimestamp(g.fechaDevolucion, g.horaDevolucion),
+  const resumenIngresos = agruparPorCodigo(
+    ingresos,
+    i => i.codigo, i => i.descripcion, i => i.cantidad,
+    i => i.fechaIngreso, () => undefined,
+    i => fechaTimestamp(i.fechaIngreso),
+    'entrada'
+  );
+
+  const resumenDevoluciones = agruparPorCodigo(
+    devolucionGroups.flatMap(g => (g.items || []).map(it => ({
       codigo: it.codigo,
       descripcion: it.descripcion,
       cantidad: it.cantidad,
-      detalle: `Devuelve: ${g.empleadoDevuelve || '—'}${g.numeroDevolucionFormatted ? ` · ${g.numeroDevolucionFormatted}` : ''}`,
-    })))
-    .sort((a, b) => b.timestamp - a.timestamp)
-    .slice(0, 10);
+      fecha: g.fechaDevolucion,
+      hora: g.horaDevolucion
+    }))),
+    r => r.codigo, r => r.descripcion, r => r.cantidad,
+    r => r.fecha, r => r.hora,
+    r => fechaTimestamp(r.fecha, r.hora),
+    'devolución'
+  );
+
+  // Índices por código para poder borrar todos los registros de un producto desde el historial.
+  const salidasPorCodigo = new Map<string, SalidaRecord[]>();
+  salidas.forEach(s => {
+    const k = s.codigo.trim().toLowerCase();
+    const arr = salidasPorCodigo.get(k) ?? [];
+    arr.push(s);
+    salidasPorCodigo.set(k, arr);
+  });
+
+  const ingresosPorCodigo = new Map<string, IngresoRecord[]>();
+  ingresos.forEach(i => {
+    const k = i.codigo.trim().toLowerCase();
+    const arr = ingresosPorCodigo.get(k) ?? [];
+    arr.push(i);
+    ingresosPorCodigo.set(k, arr);
+  });
+
+  const devolucionesPorCodigo = new Map<string, { groupId: string }[]>();
+  devolucionGroups.forEach(g => {
+    (g.items || []).forEach(it => {
+      const k = it.codigo.trim().toLowerCase();
+      const arr = devolucionesPorCodigo.get(k) ?? [];
+      arr.push({ groupId: g.id });
+      devolucionesPorCodigo.set(k, arr);
+    });
+  });
+
+  const handleDeleteMovimiento = (tab: 'salida' | 'entrada' | 'devolucion', codigo: string) => {
+    const key = codigo.trim().toLowerCase();
+
+    if (tab === 'salida') {
+      const recs = salidasPorCodigo.get(key) ?? [];
+      recs.forEach(r => deleteSalida(r.id, true));
+      showToast(`Se eliminar${recs.length === 1 ? 'ó' : 'on'} ${recs.length} salida${recs.length === 1 ? '' : 's'} de ${codigo} y se devolvió el stock al pañol.`);
+    } else if (tab === 'entrada') {
+      const recs = ingresosPorCodigo.get(key) ?? [];
+      recs.forEach(r => deleteIngreso(r.id, true));
+      showToast(`Se eliminar${recs.length === 1 ? 'ó' : 'on'} ${recs.length} entrada${recs.length === 1 ? '' : 's'} de ${codigo} y se descontó su stock.`);
+    } else {
+      const refs = devolucionesPorCodigo.get(key) ?? [];
+      refs.forEach(r => deleteDevolucionItem(r.groupId, codigo, true));
+      showToast(`Se quitar${refs.length === 1 ? 'ó' : 'on'} ${refs.length} devolución${refs.length === 1 ? '' : 'es'} de ${codigo} y se descontó su stock.`);
+    }
+
+    setPendingDelete(null);
+  };
 
   return (
     <div className="max-w-4xl mx-auto py-4 sm:py-8 px-3 sm:px-6 font-['Plus_Jakarta_Sans',sans-serif]">
       
+      {toastMessage && (
+        <div className="fixed top-20 right-5 z-50 bg-slate-900 text-white px-4 py-3 rounded-xl shadow-xl flex items-center gap-2 text-sm font-bold animate-in slide-in-from-top-4 duration-200 max-w-xs">
+          <Check className="w-5 h-5 text-emerald-400" />
+          <span className="flex-1">{toastMessage}</span>
+          <button onClick={() => setToastMessage(null)} className="text-slate-300 hover:text-white cursor-pointer">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* Welcome Card tailored for Operator */}
       <div className="bg-white rounded-3xl p-5 sm:p-6 border border-[#b5dbf7] shadow-xs mb-6 text-center sm:text-left">
         <h1 className="text-xl sm:text-2xl font-black text-sky-950 tracking-tight">
@@ -466,7 +575,10 @@ export const PanoleroSimpleView: React.FC<PanoleroSimpleViewProps> = ({
 
             {/* Active section list */}
             {(() => {
-              const items = movTab === 'salida' ? salidasMovs : movTab === 'entrada' ? ingresosMovs : devolucionesMovs;
+              const rows =
+                movTab === 'salida' ? resumenSalidas
+                : movTab === 'entrada' ? resumenIngresos
+                : resumenDevoluciones;
               const signoCant = movTab === 'salida' ? '-' : '+';
               const qtyCls =
                 movTab === 'salida'
@@ -477,25 +589,61 @@ export const PanoleroSimpleView: React.FC<PanoleroSimpleViewProps> = ({
               const emptyTxt =
                 movTab === 'salida' ? 'salidas' : movTab === 'entrada' ? 'entradas' : 'devoluciones';
 
-              return items.length === 0 ? (
+              return rows.length === 0 ? (
                 <p className="text-xs text-slate-400 text-center py-3 bg-[#f8fbfe] border border-dashed border-slate-200 rounded-xl">
                   Sin registros de {emptyTxt}.
                 </p>
               ) : (
                 <div className="space-y-2.5">
-                  {items.map((mov, i) => (
-                    <div key={`${movTab}-${i}`} className="p-3.5 rounded-2xl bg-[#f8fbfe] border border-slate-200 flex items-center justify-between text-xs sm:text-sm gap-3">
-                      <div className="min-w-0">
-                        <span className="font-bold text-slate-900">{mov.descripcion}</span>
-                        <div className="text-slate-500 text-xs mt-1">
-                          Código: <span className="font-mono font-bold text-slate-700">{mov.codigo}</span> · {formatDisplayDate(mov.fecha)}{mov.hora ? ` ${mov.hora}` : ''} · {mov.detalle}
+                  {rows.map((row, i) => {
+                    const confirmando = pendingDelete?.tab === movTab && pendingDelete.codigo.toLowerCase() === row.codigo.toLowerCase();
+                    return (
+                      <div key={`${movTab}-${i}`} className="p-3.5 rounded-2xl bg-[#f8fbfe] border border-slate-200 flex items-center justify-between text-xs sm:text-sm gap-3">
+                        <div className="min-w-0">
+                          <span className="font-bold text-slate-900">{row.descripcion}</span>
+                          <div className="text-slate-500 text-xs mt-1">
+                            Código: <span className="font-mono font-bold text-slate-700">{row.codigo}</span> · {formatDisplayDate(row.fecha)}{row.hora ? ` ${row.hora}` : ''} · {row.detalle}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0 ml-2">
+                          <span className={`font-black px-2.5 py-1 rounded-xl border ${qtyCls}`}>
+                            {signoCant}{row.cantidad} u.
+                          </span>
+                          {!isVentas && (
+                            confirmando ? (
+                              <span className="flex items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteMovimiento(movTab, row.codigo)}
+                                  className="px-2.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+                                  title={`Borrar todos los registros de ${row.codigo}`}
+                                >
+                                  <Check className="w-3.5 h-3.5" /> Borrar
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setPendingDelete(null)}
+                                  className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 cursor-pointer"
+                                  title="Cancelar"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => setPendingDelete({ tab: movTab, codigo: row.codigo })}
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer"
+                                title={`Eliminar los registros de ${row.codigo} del historial`}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )
+                          )}
                         </div>
                       </div>
-                      <span className={`font-black px-2.5 py-1 rounded-xl border text-xs sm:text-sm shrink-0 ml-2 ${qtyCls}`}>
-                        {signoCant}{mov.cantidad} u.
-                      </span>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               );
             })()}
