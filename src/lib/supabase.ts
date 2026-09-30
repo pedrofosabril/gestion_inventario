@@ -23,6 +23,7 @@ type RepuestoRow = {
   uso_destino: string | null;
   precio: number | string | null;
   barra: string | null;
+  categoria: string | null;
 };
 
 type StockRow = {
@@ -100,10 +101,23 @@ const determineCategory = (
   return 'panol';
 };
 
+/** Lee `repuestos` con la columna `categoria` y cae a las columnas viejas si la
+ *  migración todavía no está aplicada (mismo criterio que `stock_servicio`). */
+async function fetchRepuestos(): Promise<RepuestoRow[]> {
+  try {
+    return await fetchAllRows<RepuestoRow>('repuestos', 'codigo, proveedor, descripcion, equivalencias, uso_destino, precio, barra, categoria');
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!/categoria/i.test(message)) throw error;
+    const legacy = await fetchAllRows<RepuestoRow>('repuestos', 'codigo, proveedor, descripcion, equivalencias, uso_destino, precio, barra');
+    return legacy.map(row => ({ ...row, categoria: null }));
+  }
+}
+
 /** Reads the existing Supabase tables and maps them to the application model. */
 export async function getInventory(): Promise<InventoryItem[]> {
   const [repuestos, stock] = await Promise.all([
-    fetchAllRows<RepuestoRow>('repuestos', 'codigo, proveedor, descripcion, equivalencias, uso_destino, precio, barra'),
+    fetchRepuestos(),
     fetchAllRows<StockRow>('stock', '*')
   ]);
 
@@ -124,6 +138,8 @@ export async function getInventory(): Promise<InventoryItem[]> {
     const latestControl = rows.map(row => row.fecha_control).filter(Boolean).sort().at(-1);
     const ubicaciones = rows.map(row => row.ubicacion).filter(Boolean) as string[];
     const isPorEncargo = rows.length === 0;
+    // La categoría elegida al importar por hoja queda guardada en la nube y manda sobre la derivación.
+    const savedCategory = (repuesto.categoria || null) as ItemCategory | null;
     const mapped: CategoryEntry[] | undefined = CATEGORY_MAP[repuesto.codigo];
 
     if (mapped && mapped.length > 0) {
@@ -135,7 +151,7 @@ export async function getInventory(): Promise<InventoryItem[]> {
           descripcion: repuesto.descripcion ?? '',
           equivalencias: repuesto.equivalencias ?? undefined,
           subcategoria: entry.subcategoria ?? repuesto.uso_destino ?? undefined,
-          categoria: entry.categoria as ItemCategory,
+          categoria: savedCategory ?? (entry.categoria as ItemCategory),
           stock: quantity, stockMinimo: 0,
           paraServicio: paraServicio || undefined,
           ubicacion: ubicaciones.join(' / '),
@@ -154,8 +170,8 @@ export async function getInventory(): Promise<InventoryItem[]> {
         proveedor: repuesto.proveedor ?? '',
         descripcion: repuesto.descripcion ?? '',
         equivalencias: repuesto.equivalencias ?? undefined,
-        subcategoria: repuesto.uso_destino ?? undefined,
-        categoria: determineCategory(repuesto.codigo, repuesto.descripcion ?? '', repuesto.proveedor ?? '', ubicaciones),
+subcategoria: repuesto.uso_destino ?? undefined,
+          categoria: savedCategory ?? determineCategory(repuesto.codigo, repuesto.descripcion ?? '', repuesto.proveedor ?? '', ubicaciones),
         stock: quantity, stockMinimo: 0,
         paraServicio: paraServicio || undefined,
         ubicacion: ubicaciones.join(' / '),
@@ -174,15 +190,23 @@ precioTotal: quantity * numberOf(price),
 }
 
 export async function saveInventoryItem(item: InventoryItem): Promise<void> {
-  const { error: repuestoError } = await supabase.from('repuestos').upsert({
+  const repuestoPayload = {
     codigo: item.codigo,
     proveedor: item.proveedor,
     descripcion: item.descripcion,
     equivalencias: item.equivalencias ?? null,
     uso_destino: item.subcategoria ?? null,
     precio: item.precio,
-    barra: item.codigoBarras || (isSullairProveedor(item.proveedor) && item.codigo ? item.codigo : null)
-  }, { onConflict: 'codigo' });
+    barra: item.codigoBarras || (isSullairProveedor(item.proveedor) && item.codigo ? item.codigo : null),
+    categoria: item.categoria
+  };
+  // La columna `categoria` puede no existir todavía (migración pendiente):
+  // en ese caso se guarda sin ella para no romper el alta/edición.
+  let { error: repuestoError } = await supabase.from('repuestos').upsert(repuestoPayload, { onConflict: 'codigo' });
+  if (repuestoError && /categoria/i.test(repuestoError.message)) {
+    const { categoria: _omit, ...legacyRepuestoPayload } = repuestoPayload;
+    ({ error: repuestoError } = await supabase.from('repuestos').upsert(legacyRepuestoPayload, { onConflict: 'codigo' }));
+  }
   if (repuestoError) throw repuestoError;
 
   const { data: existing, error: existingError } = await supabase
