@@ -378,7 +378,7 @@ export const DevolucionReceiptModal: React.FC<DevolucionReceiptModalProps> = ({
 
       {/* Signature Overlay - Empleado que Devuelve */}
       {isSigning && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 bg-black/60 backdrop-blur-xs animate-in fade-in">
+        <div className="fixed inset-0 z-[60] flex items-stretch justify-center p-3 bg-black/60 backdrop-blur-xs animate-in fade-in">
           <SignaturePad
             title="Firma del Empleado que Devuelve"
             subtitle={`Empleado: ${currentDevolucionGroup.empleadoDevuelve}`}
@@ -391,7 +391,7 @@ export const DevolucionReceiptModal: React.FC<DevolucionReceiptModalProps> = ({
 
       {/* Signature Overlay - Pañolero / Emisor */}
       {isSigningPanolero && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 bg-black/60 backdrop-blur-xs animate-in fade-in">
+        <div className="fixed inset-0 z-[60] flex items-stretch justify-center p-3 bg-black/60 backdrop-blur-xs animate-in fade-in">
           <SignaturePad
             title="Firma Pañolero / Emisor"
             subtitle={panoleroName}

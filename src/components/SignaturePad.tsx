@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { PenLine, Eraser, Check, X } from 'lucide-react';
 
 interface SignaturePadProps {
@@ -23,26 +23,51 @@ export const SignaturePad: React.FC<SignaturePadProps> = ({
   const hasDrawnRef = useRef(false);
   const [hasDrawn, setHasDrawn] = useState(false);
 
-  useEffect(() => {
+  const initCanvas = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
     const dpr = window.devicePixelRatio || 1;
-    canvas.width = rect.width * dpr;
-    canvas.height = rect.height * dpr;
+    const storeWidth = Math.round(rect.width * dpr);
+    const storeHeight = Math.round(rect.height * dpr);
     const ctx = canvas.getContext('2d');
-    if (ctx) {
-      ctx.scale(dpr, dpr);
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
-      ctx.strokeStyle = '#0f172a';
-      ctx.lineWidth = 2.5;
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, rect.width, rect.height);
+    if (!ctx) return;
+
+    if (canvas.width === storeWidth && canvas.height === storeHeight) return;
+
+    const backup = document.createElement('canvas');
+    backup.width = canvas.width;
+    backup.height = canvas.height;
+    const bctx = backup.getContext('2d');
+    if (bctx) bctx.drawImage(canvas, 0, 0);
+
+    canvas.width = storeWidth;
+    canvas.height = storeHeight;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = '#0f172a';
+    ctx.lineWidth = 2.5;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, rect.width, rect.height);
+    if (bctx && backup.width > 0 && backup.height > 0) {
+      ctx.drawImage(backup, 0, 0, rect.width, rect.height);
     }
+  }, []);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    initCanvas();
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => initCanvas()) : null;
+    if (ro) ro.observe(canvas);
     hasDrawnRef.current = false;
     setHasDrawn(false);
-  }, []);
+    return () => {
+      if (ro) ro.disconnect();
+    };
+  }, [initCanvas]);
 
   const getCoords = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
@@ -108,7 +133,7 @@ export const SignaturePad: React.FC<SignaturePadProps> = ({
   };
 
   return (
-    <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-2xl w-full overflow-hidden flex flex-col animate-in zoom-in-95">
+    <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full overflow-hidden flex flex-col animate-in zoom-in-95">
       {/* Header */}
       <div className="text-white p-5 flex items-center justify-between" style={{ backgroundColor: accentColor }}>
         <div className="flex items-center gap-3">
@@ -132,7 +157,7 @@ export const SignaturePad: React.FC<SignaturePadProps> = ({
       </div>
 
       {/* Canvas Area */}
-      <div className="p-5 bg-slate-50 flex flex-col">
+      <div className="p-5 bg-slate-50 flex flex-col flex-1 min-h-0">
         <div className="flex items-center justify-between mb-2">
           <span className="text-xs text-slate-600 font-medium">
             Dibuje la firma con dedo, mouse o tableta gráfica:
@@ -147,15 +172,17 @@ export const SignaturePad: React.FC<SignaturePadProps> = ({
           </button>
         </div>
 
-        <div className="relative bg-white rounded-2xl border-2 border-dashed border-sky-300 shadow-inner overflow-hidden">
+        <div
+          className="relative bg-white rounded-2xl border-2 border-dashed border-sky-300 shadow-inner overflow-hidden flex-1 min-h-0"
+          style={{ minHeight: height }}
+        >
           <canvas
             ref={canvasRef}
             onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
             onPointerLeave={handlePointerUp}
-            className="w-full cursor-crosshair touch-none"
-            style={{ height: `${height}px` }}
+            className="w-full h-full cursor-crosshair touch-none"
           />
           <div className="pointer-events-none absolute bottom-6 left-10 right-10 border-b border-slate-200 flex justify-end">
             <span className="text-[9px] text-slate-300 font-mono pr-1 uppercase tracking-widest select-none">
