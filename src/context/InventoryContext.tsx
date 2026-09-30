@@ -1784,23 +1784,21 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const totalSkus = items.length;
 
   const clearAllData = async () => {
+    // Vacía únicamente los datos de inventario y operación: la sesión, los usuarios
+    // y las firmas guardadas se conservan para poder recargar el Excel sin quedarse
+    // afuera del panel de Administración.
     setItems([]);
     setSalidas([]);
     setSalidaGroups([]);
     setDevolucionGroups([]);
     setIngresos([]);
-    setUsers([]);
-    setCurrentUser(null);
-    setSavedSignatures([]);
     try {
-      localStorage.removeItem(STORAGE_KEYS.ITEMS);
-      localStorage.removeItem(STORAGE_KEYS.SALIDAS);
-      localStorage.removeItem(STORAGE_KEYS.SALIDA_GROUPS);
-      localStorage.removeItem(STORAGE_KEYS.DEVOLUCION_GROUPS);
-      localStorage.removeItem(STORAGE_KEYS.INGRESOS);
-      localStorage.removeItem(STORAGE_KEYS.USER);
-      localStorage.removeItem(STORAGE_KEYS.USERS);
-      localStorage.removeItem(STORAGE_KEYS.SAVED_SIGNATURES);
+      // Se guardan listas vacías (y no se borran las claves) porque los inicializadores
+      // sólo siembran los datos de demostración cuando la clave NO existe.
+      localStorage.setItem(STORAGE_KEYS.SALIDAS, '[]');
+      localStorage.setItem(STORAGE_KEYS.SALIDA_GROUPS, '[]');
+      localStorage.setItem(STORAGE_KEYS.DEVOLUCION_GROUPS, '[]');
+      localStorage.setItem(STORAGE_KEYS.INGRESOS, '[]');
     } catch (e) {
       console.error('Error clearing data:', e);
     }

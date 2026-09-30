@@ -257,6 +257,22 @@ export async function clearSupabaseAll(): Promise<{ ok: boolean; failed: string[
       failed.push(op.name);
     }
   }
+
+  // Con RLS sin política el DELETE no da error pero borra 0 filas: hay que
+  // comprobar que las tablas quedaron realmente vacías para no informar un
+  // borrado que no ocurrió.
+  for (const op of ops) {
+    if (failed.includes(op.name)) continue;
+    const { count, error } = await supabase.from(op.name).select('*', { count: 'exact', head: true });
+    if (error) {
+      console.error('No se pudo verificar la tabla', op.name, ':', error.message);
+      failed.push(op.name);
+    } else if ((count ?? 0) > 0) {
+      console.error('La tabla', op.name, 'quedó con', count, 'filas: RLS bloqueó el borrado');
+      failed.push(op.name);
+    }
+  }
+
   return { ok: failed.length === 0, failed };
 }
 
