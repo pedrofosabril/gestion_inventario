@@ -119,9 +119,9 @@ interface InventoryContextType {
   }) => { success: boolean; message: string; ingreso?: IngresoRecord; newStock?: number };
 
   // Excel Migration / Import & Export
+  // Se importan por LOTES: cada lote es una hoja del archivo con su categoría de destino.
   importExcelRows: (
-    rows: any[], 
-    targetCategory: ItemCategory, 
+    batches: { category: ItemCategory; rows: any[] }[],
     mode: 'merge' | 'replace'
   ) => Promise<{ added: number; updated: number; errors: string[] }>;
   
@@ -1273,175 +1273,179 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   // Excel Importer from Array of parsed rows
   const importExcelRows = async (
-    rows: any[], 
-    targetCategory: ItemCategory, 
+    batches: { category: ItemCategory; rows: any[] }[],
     mode: 'merge' | 'replace'
   ) => {
     let added = 0;
     let updated = 0;
     const errors: string[] = [];
 
-    if (!rows || rows.length === 0) {
+    const allRows = batches.flatMap(b => b.rows);
+    if (!allRows || allRows.length === 0) {
       return { added: 0, updated: 0, errors: ['El archivo no contiene filas válidas.'] };
     }
 
-    const parsedItems: InventoryItem[] = [];
-
-    rows.forEach((row, idx) => {
-      // Flexible column name matching (case-insensitive & accent-insensitive)
-      const getVal = (possibleKeys: string[]) => {
-        for (const k of Object.keys(row)) {
-          const cleanK = k.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
-          for (const target of possibleKeys) {
-            if (cleanK === target || cleanK.includes(target)) {
-              return row[k];
-            }
+    // Flexible column name matching (case-insensitive & accent-insensitive)
+    const getVal = (row: any, possibleKeys: string[]) => {
+      for (const k of Object.keys(row)) {
+        const cleanK = k.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+        for (const target of possibleKeys) {
+          if (cleanK === target || cleanK.includes(target)) {
+            return row[k];
           }
         }
-        return undefined;
-      };
+      }
+      return undefined;
+    };
 
-      // 1. Código: search typical names or take first column if missing
-      let rawCode = getVal(['codigo', 'cod', 'code', 'articulo', 'item', 'parte', 'nro de parte', 'numero', 'referencia']);
-      if (!rawCode) {
-        const keys = Object.keys(row);
-        if (keys.length > 0 && row[keys[0]] !== undefined && String(row[keys[0]]).trim() !== '') {
-          rawCode = row[keys[0]];
+    const parsedItems: InventoryItem[] = [];
+
+    batches.forEach((batch, batchIdx) => {
+      const targetCategory = batch.category;
+      batch.rows.forEach((row: any, idx: number) => {
+        // 1. Código: search typical names or take first column if missing
+        let rawCode = getVal(row, ['codigo', 'cod', 'code', 'articulo', 'item', 'parte', 'nro de parte', 'numero', 'referencia']);
+        if (!rawCode) {
+          const keys = Object.keys(row);
+          if (keys.length > 0 && row[keys[0]] !== undefined && String(row[keys[0]]).trim() !== '') {
+            rawCode = row[keys[0]];
+          }
         }
-      }
-      
-      if (!rawCode || String(rawCode).trim() === '') {
-        return; // Skip empty rows
-      }
 
-      const codigo = String(rawCode).trim().replace(/^´|^`/, '');
-      const proveedor = String(getVal(['proveedor', 'marca', 'supplier', 'brand', 'fabricante']) || 'SULLAIR').trim();
-      const descripcion = String(getVal(['descripcion', 'desc', 'detalle', 'nombre', 'denominacion', 'repuesto', 'concepto']) || '').trim() || codigo;
-      
-      const rawStock = getVal(['stock', 'cant', 'cantidad', 'qty', 'existencia', 'unidades', 'saldo']);
-      let stock = 0;
-      if (typeof rawStock === 'number') {
-        stock = Math.max(0, Math.floor(rawStock));
-      } else if (rawStock !== undefined && rawStock !== null) {
-        const cleanStock = String(rawStock).replace(/[^0-9.-]/g, '');
-        stock = Math.max(0, parseInt(cleanStock, 10) || 0);
-      }
+        if (!rawCode || String(rawCode).trim() === '') {
+          return; // Skip empty rows
+        }
 
-      const ubicacion = String(getVal(['ubicacion', 'ubi', 'estante', 'cajon', 'posicion', 'pasillo', 'letra', 'seccion']) || 'A').trim().toUpperCase();
-      
-      const rawPrecio = getVal(['precio', 'unitario', 'price', 'costo', 'valor', 'p.unit', 'p.unitario']);
-      let precio = 0;
-      if (typeof rawPrecio === 'number') {
-        precio = rawPrecio;
-      } else if (rawPrecio) {
-        const cleanPrice = String(rawPrecio).replace(/\$/g, '').replace(/,/g, '.').replace(/[^0-9.-]/g, '').trim();
-        precio = parseFloat(cleanPrice) || 0;
-      }
+        const codigo = String(rawCode).trim().replace(/^´|^`/, '');
+        const proveedor = String(getVal(row, ['proveedor', 'marca', 'supplier', 'brand', 'fabricante']) || 'SULLAIR').trim();
+        const descripcion = String(getVal(row, ['descripcion', 'desc', 'detalle', 'nombre', 'denominacion', 'repuesto', 'concepto']) || '').trim() || codigo;
 
-      const rawFecha = getVal(['fecha', 'f. de control', 'f. de registro', 'f.control', 'f.registro', 'f.ingreso', 'date', 'ultimo movimiento']);
-      const fechaRegistro = rawFecha ? String(rawFecha) : new Date().toISOString().split('T')[0];
+        const rawStock = getVal(row, ['stock', 'cant', 'cantidad', 'qty', 'existencia', 'unidades', 'saldo']);
+        let stock = 0;
+        if (typeof rawStock === 'number') {
+          stock = Math.max(0, Math.floor(rawStock));
+        } else if (rawStock !== undefined && rawStock !== null) {
+          const cleanStock = String(rawStock).replace(/[^0-9.-]/g, '');
+          stock = Math.max(0, parseInt(cleanStock, 10) || 0);
+        }
 
-      const pServicio = parseInt(String(getVal(['servicio', 'p/servicio', 'para servicio', 'p_servicio']) || '0'), 10) || 0;
-      const subcat = String(getVal(['subcategoria', 'subcat', 'tipo', 'modelo', 'linea', 'familia']) || '').trim();
-      
-      const rawPorEncargo = getVal(['encargo', 'por encargo', 'pedido', 'a pedido']);
-      const porEncargo = rawPorEncargo === true || String(rawPorEncargo).toLowerCase() === 'si' || String(rawPorEncargo).toLowerCase() === 'true';
+        const ubicacion = String(getVal(row, ['ubicacion', 'ubi', 'estante', 'cajon', 'posicion', 'pasillo', 'letra', 'seccion']) || 'A').trim().toUpperCase();
 
-      // Detect sheet or category hint if available
-      let itemCategory = targetCategory;
-      if (row._ORIGEN_HOJA) {
-        const hName = String(row._ORIGEN_HOJA).toLowerCase();
-        if (hName.includes('fluido') || hName.includes('cajon') || hName.includes('aceite')) itemCategory = 'cajones_fluidos';
-        else if (hName.includes('submic') || hName.includes('fxf') || hName.includes('scf')) itemCategory = 'submicronicos';
-        else if (hName.includes('rodamiento') || hName.includes('skf') || hName.includes('timken')) itemCategory = 'rodamientos';
-        else if (hName.includes('entrepiso') || hName.includes('fleetguard') || hName.includes('lanss')) itemCategory = 'entrepiso';
-        else if (hName.includes('mv') || hName.includes('repuesto mv')) itemCategory = 'repuestos_mv';
-        else if (hName.includes('caja')) itemCategory = 'cajas';
-      }
+        const rawPrecio = getVal(row, ['precio', 'unitario', 'price', 'costo', 'valor', 'p.unit', 'p.unitario']);
+        let precio = 0;
+        if (typeof rawPrecio === 'number') {
+          precio = rawPrecio;
+        } else if (rawPrecio) {
+          const cleanPrice = String(rawPrecio).replace(/\$/g, '').replace(/,/g, '.').replace(/[^0-9.-]/g, '').trim();
+          precio = parseFloat(cleanPrice) || 0;
+        }
 
-      parsedItems.push({
-        id: `imp-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`,
-        codigo: replaceYazWithYas(codigo),
-        proveedor: replaceYazWithYas(proveedor),
-        descripcion: replaceYazWithYas(descripcion),
-        stock,
-        stockMinimo: 1,
-        ubicacion: ubicacion || 'A',
-        categoria: itemCategory,
-        subcategoria: subcat ? replaceYazWithYas(subcat) : undefined,
-        fechaRegistro,
-        fechaUltimoMovimiento: fechaRegistro,
-        precio,
-        precioTotal: stock * precio,
-        paraServicio: pServicio || undefined,
-        porEncargo: porEncargo || undefined,
-        codigoBarras: ''
+        const rawFecha = getVal(row, ['fecha', 'f. de control', 'f. de registro', 'f.control', 'f.registro', 'f.ingreso', 'date', 'ultimo movimiento']);
+        const fechaRegistro = rawFecha ? String(rawFecha) : new Date().toISOString().split('T')[0];
+
+        const pServicio = parseInt(String(getVal(row, ['servicio', 'p/servicio', 'para servicio', 'p_servicio']) || '0'), 10) || 0;
+        const subcat = String(getVal(row, ['subcategoria', 'subcat', 'tipo', 'modelo', 'linea', 'familia']) || '').trim();
+
+        const rawPorEncargo = getVal(row, ['encargo', 'por encargo', 'pedido', 'a pedido']);
+        const porEncargo = rawPorEncargo === true || String(rawPorEncargo).toLowerCase() === 'si' || String(rawPorEncargo).toLowerCase() === 'true';
+
+        parsedItems.push({
+          id: `imp-${Date.now()}-${batchIdx}-${idx}-${Math.random().toString(36).substring(2, 6)}`,
+          codigo: replaceYazWithYas(codigo),
+          proveedor: replaceYazWithYas(proveedor),
+          descripcion: replaceYazWithYas(descripcion),
+          stock,
+          stockMinimo: 1,
+          ubicacion: ubicacion || 'A',
+          categoria: targetCategory,
+          subcategoria: subcat ? replaceYazWithYas(subcat) : undefined,
+          fechaRegistro,
+          fechaUltimoMovimiento: fechaRegistro,
+          precio,
+          precioTotal: stock * precio,
+          paraServicio: pServicio || undefined,
+          porEncargo: porEncargo || undefined,
+          codigoBarras: ''
+        });
       });
     });
 
     const mergedParsed = mergeSameProductPairs(parsedItems);
 
-    // Compute the resulting catalog applying the selected mode against the current inventory
-    let savedItems: InventoryItem[];
-    let removedCodes: string[] = [];
+    // Aplicar el modo elegido contra el inventario actual, emparejando SIEMPRE por CÓDIGO.
+    const itemMap = new Map<string, InventoryItem>();
+    items.forEach(item => itemMap.set(item.codigo.toLowerCase().trim(), item));
 
-    if (mode === 'replace') {
-      removedCodes = items.filter(i => i.categoria === targetCategory).map(i => i.codigo);
-      savedItems = [...items.filter(i => i.categoria !== targetCategory), ...mergedParsed];
-      setItems(savedItems);
-      added = mergedParsed.length;
-    } else {
-      const itemMap = new Map<string, InventoryItem>();
-      items.forEach(item => itemMap.set(item.codigo.toLowerCase().trim(), item));
+    // Solo los productos realmente tocados por esta carga se persisten en la nube.
+    const touchedItems: InventoryItem[] = [];
 
-      mergedParsed.forEach(newItem => {
-        const key = newItem.codigo.toLowerCase().trim();
-        if (itemMap.has(key)) {
-          const existing = itemMap.get(key)!;
+    mergedParsed.forEach(newItem => {
+      const key = newItem.codigo.toLowerCase().trim();
+      const existing = itemMap.get(key);
+
+      if (mode === 'replace') {
+        // Reemplazo POR CÓDIGO: pisa los datos de los códigos que vienen en la hoja.
+        // Los productos de la sección que NO trae la hoja quedan intactos (no se borran).
+        if (existing) {
           itemMap.set(key, {
             ...existing,
-            stock: newItem.stock,
-            paraServicio: newItem.paraServicio ?? existing.paraServicio,
-            precio: newItem.precio > 0 ? newItem.precio : existing.precio,
-            precioTotal: newItem.stock * (newItem.precio > 0 ? newItem.precio : existing.precio),
-            descripcion: newItem.descripcion && newItem.descripcion !== newItem.codigo ? newItem.descripcion : existing.descripcion,
-            proveedor: newItem.proveedor && newItem.proveedor !== 'SULLAIR' ? newItem.proveedor : existing.proveedor,
-            ubicacion: newItem.ubicacion || existing.ubicacion,
-            categoria: newItem.categoria || existing.categoria,
-            porEncargo: newItem.porEncargo !== undefined ? newItem.porEncargo : existing.porEncargo
+            ...newItem,
+            id: existing.id,
+            stockMinimo: existing.stockMinimo ?? newItem.stockMinimo,
+            equivalencias: existing.equivalencias ?? newItem.equivalencias,
+            factura: existing.factura ?? newItem.factura,
+            notas: existing.notas ?? newItem.notas,
+            codigoBarras: existing.codigoBarras ?? newItem.codigoBarras,
+            porEncargo: existing.porEncargo ?? newItem.porEncargo,
+            precioTotal: newItem.stock * newItem.precio
           });
           updated++;
         } else {
-          itemMap.set(key, newItem);
+          itemMap.set(key, { ...newItem, stockMinimo: newItem.stockMinimo ?? 1 });
           added++;
         }
-      });
+        touchedItems.push(itemMap.get(key)!);
+        return;
+      }
 
-      savedItems = mergeSameProductPairs(Array.from(itemMap.values()));
-      setItems(savedItems);
+      // Modo 'merge': suma stock y actualiza campos con lo que trae la hoja sin pisar el resto.
+      if (existing) {
+        const newStock = existing.stock + newItem.stock;
+        itemMap.set(key, {
+          ...existing,
+          stock: newStock,
+          paraServicio: (existing.paraServicio ?? 0) + (newItem.paraServicio ?? 0),
+          precio: newItem.precio > 0 ? newItem.precio : existing.precio,
+          precioTotal: newStock * (newItem.precio > 0 ? newItem.precio : existing.precio),
+          descripcion: newItem.descripcion && newItem.descripcion !== newItem.codigo ? newItem.descripcion : existing.descripcion,
+          proveedor: newItem.proveedor && newItem.proveedor !== 'SULLAIR' ? newItem.proveedor : existing.proveedor,
+          ubicacion: newItem.ubicacion || existing.ubicacion,
+          categoria: newItem.categoria || existing.categoria,
+          porEncargo: newItem.porEncargo !== undefined ? newItem.porEncargo : existing.porEncargo
+        });
+        updated++;
+        touchedItems.push(itemMap.get(key)!);
+      } else {
+        itemMap.set(key, newItem);
+        added++;
+        touchedItems.push(newItem);
+      }
+    });
+
+    if (touchedItems.length > 0) {
+      setItems(mergeSameProductPairs(Array.from(itemMap.values())));
     }
 
     playBeep('success');
 
-    // Persist every resulting product in Supabase (cloud source of truth)
-    const saveResults = await Promise.allSettled(savedItems.map(item => saveInventoryItem(item)));
+    // Persistir en Supabase (fuente de verdad en la nube) los productos tocados por esta carga
+    const saveResults = await Promise.allSettled(
+      mergeSameProductPairs(touchedItems).map(item => saveInventoryItem(item))
+    );
     for (const res of saveResults) {
       if (res.status === 'rejected') {
         errors.push('No se pudo guardar en la nube: ' + String((res.reason as any)?.message ?? res.reason));
         console.error('Error al guardar producto importado en Supabase:', res.reason);
-      }
-    }
-
-    // In replace mode, also remove from the cloud the products of that section that no longer exist
-    if (mode === 'replace') {
-      const finalCodes = new Set(savedItems.map(i => i.codigo.toLowerCase().trim()));
-      const orphanCodes = Array.from(new Set(removedCodes)).filter(code => !finalCodes.has(code.toLowerCase().trim()));
-      const orphanResults = await Promise.allSettled(orphanCodes.map(code => deleteInventoryItem(code)));
-      for (const res of orphanResults) {
-        if (res.status === 'rejected') {
-          errors.push('No se pudo eliminar en la nube: ' + String((res.reason as any)?.message ?? res.reason));
-          console.error('Error al eliminar producto huérfano de Supabase:', res.reason);
-        }
       }
     }
 
