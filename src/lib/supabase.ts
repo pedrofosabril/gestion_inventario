@@ -216,6 +216,26 @@ export async function deleteInventoryItem(codigo: string): Promise<void> {
   if (repuestoError) throw repuestoError;
 }
 
+/** Elimina TODO el contenido cargado desde Supabase: repuestos, stock y movimientos.
+ *  Devuelve qué tablas no se pudieron vaciar (p. ej. por políticas RLS). */
+export async function clearSupabaseAll(): Promise<{ ok: boolean; failed: string[] }> {
+  const ops: { name: string; p: PromiseLike<{ error?: any }> }[] = [
+    { name: 'repuestos', p: supabase.from('repuestos').delete().neq('codigo', '') },
+    { name: 'stock', p: supabase.from('stock').delete().neq('id_stock', '') },
+    { name: 'movimientos', p: supabase.from('movimientos').delete().neq('id_movimiento', '') },
+  ];
+
+  const failed: string[] = [];
+  for (const op of ops) {
+    const { error } = await op.p;
+    if (error) {
+      console.error('No se pudo vaciar la tabla', op.name, ':', error.message);
+      failed.push(op.name);
+    }
+  }
+  return { ok: failed.length === 0, failed };
+}
+
 export async function createMovement(input: {
   tipo: 'Ingreso' | 'Salida' | 'Devolucion'; codigo: string; cantidad: number;
   comprobante?: string; clienteProveedor?: string; responsable?: string;

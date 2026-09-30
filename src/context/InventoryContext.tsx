@@ -23,7 +23,7 @@ import {
   INITIAL_USERS 
 } from '../data/initialData';
 import { replaceYazWithYas, sanitizeYazObject } from '../utils/sanitizeUtils';
-import { createMovement, deleteInventoryItem, getInventory, saveInventoryItem } from '../lib/supabase';
+import { createMovement, clearSupabaseAll, deleteInventoryItem, getInventory, saveInventoryItem } from '../lib/supabase';
 import { mergeSameProductPairs } from '../utils/productMerge';
 
 export type MainNavSection = ItemCategory | 'salidas_log' | 'ingresos_log' | 'gerencia_dashboard';
@@ -123,7 +123,7 @@ interface InventoryContextType {
     rows: any[], 
     targetCategory: ItemCategory, 
     mode: 'merge' | 'replace'
-  ) => { added: number; updated: number; errors: string[] };
+  ) => Promise<{ added: number; updated: number; errors: string[] }>;
   
   exportCategoryToExcel: (category?: ItemCategory | 'all' | 'salidas' | 'ingresos') => void;
   backupDatabase: () => void;
@@ -152,7 +152,7 @@ interface InventoryContextType {
   totalUnits: number;
   totalSkus: number;
   resetToDefaults: () => void;
-  clearAllData: () => void;
+  clearAllData: () => Promise<{ ok: boolean; failed: string[] }>;
   restoreDatabase: (jsonContent: string) => Promise<{ success: boolean; message: string }>;
 }
 
@@ -1272,7 +1272,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   };
 
   // Excel Importer from Array of parsed rows
-  const importExcelRows = (
+  const importExcelRows = async (
     rows: any[], 
     targetCategory: ItemCategory, 
     mode: 'merge' | 'replace'
@@ -1379,50 +1379,72 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       });
     });
 
+    const mergedParsed = mergeSameProductPairs(parsedItems);
+
+    // Compute the resulting catalog applying the selected mode against the current inventory
+    let savedItems: InventoryItem[];
+    let removedCodes: string[] = [];
+
     if (mode === 'replace') {
-      // Variantes P/SERVICIO + venta del mismo código → un solo producto.
-      const mergedParsed = mergeSameProductPairs(parsedItems);
-      setItems(prev => {
-        const remaining = prev.filter(i => i.categoria !== targetCategory);
-        return [...remaining, ...mergedParsed];
-      });
+      removedCodes = items.filter(i => i.categoria === targetCategory).map(i => i.codigo);
+      savedItems = [...items.filter(i => i.categoria !== targetCategory), ...mergedParsed];
+      setItems(savedItems);
       added = mergedParsed.length;
     } else {
-      // Merge: Update existing if found in items, or add new
-      // Variantes P/SERVICIO + venta del mismo código → un solo producto.
-      const mergedParsed = mergeSameProductPairs(parsedItems);
-      setItems(prev => {
-        const itemMap = new Map<string, InventoryItem>();
-        prev.forEach(item => itemMap.set(item.codigo.toLowerCase().trim(), item));
+      const itemMap = new Map<string, InventoryItem>();
+      items.forEach(item => itemMap.set(item.codigo.toLowerCase().trim(), item));
 
-        mergedParsed.forEach(newItem => {
-          const key = newItem.codigo.toLowerCase().trim();
-          if (itemMap.has(key)) {
-            const existing = itemMap.get(key)!;
-            itemMap.set(key, {
-              ...existing,
-              stock: newItem.stock,
-              paraServicio: newItem.paraServicio ?? existing.paraServicio,
-              precio: newItem.precio > 0 ? newItem.precio : existing.precio,
-              precioTotal: newItem.stock * (newItem.precio > 0 ? newItem.precio : existing.precio),
-              descripcion: newItem.descripcion && newItem.descripcion !== newItem.codigo ? newItem.descripcion : existing.descripcion,
-              proveedor: newItem.proveedor && newItem.proveedor !== 'SULLAIR' ? newItem.proveedor : existing.proveedor,
-              ubicacion: newItem.ubicacion || existing.ubicacion,
-              categoria: newItem.categoria || existing.categoria,
-              porEncargo: newItem.porEncargo !== undefined ? newItem.porEncargo : existing.porEncargo
-            });
-            updated++;
-          } else {
-            itemMap.set(key, newItem);
-            added++;
-          }
-        });
-
-        return mergeSameProductPairs(Array.from(itemMap.values()));
+      mergedParsed.forEach(newItem => {
+        const key = newItem.codigo.toLowerCase().trim();
+        if (itemMap.has(key)) {
+          const existing = itemMap.get(key)!;
+          itemMap.set(key, {
+            ...existing,
+            stock: newItem.stock,
+            paraServicio: newItem.paraServicio ?? existing.paraServicio,
+            precio: newItem.precio > 0 ? newItem.precio : existing.precio,
+            precioTotal: newItem.stock * (newItem.precio > 0 ? newItem.precio : existing.precio),
+            descripcion: newItem.descripcion && newItem.descripcion !== newItem.codigo ? newItem.descripcion : existing.descripcion,
+            proveedor: newItem.proveedor && newItem.proveedor !== 'SULLAIR' ? newItem.proveedor : existing.proveedor,
+            ubicacion: newItem.ubicacion || existing.ubicacion,
+            categoria: newItem.categoria || existing.categoria,
+            porEncargo: newItem.porEncargo !== undefined ? newItem.porEncargo : existing.porEncargo
+          });
+          updated++;
+        } else {
+          itemMap.set(key, newItem);
+          added++;
+        }
       });
+
+      savedItems = mergeSameProductPairs(Array.from(itemMap.values()));
+      setItems(savedItems);
     }
 
     playBeep('success');
+
+    // Persist every resulting product in Supabase (cloud source of truth)
+    const saveResults = await Promise.allSettled(savedItems.map(item => saveInventoryItem(item)));
+    for (const res of saveResults) {
+      if (res.status === 'rejected') {
+        errors.push('No se pudo guardar en la nube: ' + String((res.reason as any)?.message ?? res.reason));
+        console.error('Error al guardar producto importado en Supabase:', res.reason);
+      }
+    }
+
+    // In replace mode, also remove from the cloud the products of that section that no longer exist
+    if (mode === 'replace') {
+      const finalCodes = new Set(savedItems.map(i => i.codigo.toLowerCase().trim()));
+      const orphanCodes = Array.from(new Set(removedCodes)).filter(code => !finalCodes.has(code.toLowerCase().trim()));
+      const orphanResults = await Promise.allSettled(orphanCodes.map(code => deleteInventoryItem(code)));
+      for (const res of orphanResults) {
+        if (res.status === 'rejected') {
+          errors.push('No se pudo eliminar en la nube: ' + String((res.reason as any)?.message ?? res.reason));
+          console.error('Error al eliminar producto huérfano de Supabase:', res.reason);
+        }
+      }
+    }
+
     return { added, updated, errors };
   };
 
@@ -1757,7 +1779,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const totalUnits = items.reduce((sum, item) => sum + (item.stock || 0), 0);
   const totalSkus = items.length;
 
-  const clearAllData = () => {
+  const clearAllData = async () => {
     setItems([]);
     setSalidas([]);
     setSalidaGroups([]);
@@ -1778,6 +1800,16 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     } catch (e) {
       console.error('Error clearing data:', e);
     }
+    // Vacía también la base de datos en la nube (repuestos, stock y movimientos)
+    let failed: string[] = [];
+    try {
+      const res = await clearSupabaseAll();
+      failed = res.failed;
+    } catch (error) {
+      failed = ['supabase'];
+      console.error('No se pudieron borrar los datos en Supabase:', error);
+    }
+    return { ok: failed.length === 0, failed };
   };
 
   const restoreDatabase = async (jsonContent: string): Promise<{ success: boolean; message: string }> => {

@@ -159,11 +159,18 @@ export const ExcelImportDropzone: React.FC<ExcelImportDropzoneProps> = ({
     reader.readAsBinaryString(file);
   };
 
-  const handleExecuteImport = () => {
+  const handleExecuteImport = async () => {
     if (parsedRows.length === 0) return;
 
+    setIsProcessing(true);
+    setErrorMessage(null);
+
     try {
-      const res = importExcelRows(parsedRows, selectedCategory, importMode);
+      const res = await importExcelRows(parsedRows, selectedCategory, importMode);
+
+      if (res.errors.length > 0) {
+        setErrorMessage('Productos actualizados en la app, pero hubo errores al sincronizar con la nube: ' + res.errors.slice(0, 3).join(' | '));
+      }
       
       // Calculate total value loaded in this batch
       let batchValuation = 0;
@@ -194,6 +201,8 @@ export const ExcelImportDropzone: React.FC<ExcelImportDropzoneProps> = ({
       }
     } catch (err: any) {
       setErrorMessage(`Error durante la importación: ${err.message || 'Error desconocido'}`);
+    } finally {
+      setIsProcessing(false);
     }
   };
 
