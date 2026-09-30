@@ -359,6 +359,17 @@ export const PanoleroSimpleView: React.FC<PanoleroSimpleViewProps> = ({
                         </span>
                       </div>
 
+                      {item.paraServicio != null && item.paraServicio > 0 && (
+                        <div className="bg-sky-50 border-2 border-sky-300 px-4 py-2 rounded-xl text-center min-w-[110px]">
+                          <span className="text-[10px] uppercase font-black text-sky-800 block">
+                            P/SERVICIO
+                          </span>
+                          <span className="text-lg sm:text-xl font-black text-sky-700">
+                            {item.paraServicio} u.
+                          </span>
+                        </div>
+                      )}
+
                       {/* Action buttons on the result item */}
                       <div className="flex items-center gap-2">
                         <button

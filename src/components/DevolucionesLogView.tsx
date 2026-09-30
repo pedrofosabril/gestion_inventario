@@ -1,15 +1,30 @@
 import React, { useState } from 'react';
-import { ArrowDownUp, Eye, History, RotateCcw, Search } from 'lucide-react';
+import { ArrowDownUp, Check, Eye, History, RotateCcw, Search, Trash2, X } from 'lucide-react';
 import { useInventory } from '../context/InventoryContext';
 import { DevolucionGroupRecord } from '../types';
 import { formatDisplayDate } from '../utils/dateUtils';
 import { DevolucionReceiptModal } from './DevolucionReceiptModal';
 
 export const DevolucionesLogView: React.FC = () => {
-  const { devolucionGroups } = useInventory();
+  const { devolucionGroups, deleteDevolucionGroup, currentUser } = useInventory();
   const [searchTerm, setSearchTerm] = useState('');
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
   const [activeGroup, setActiveGroup] = useState<DevolucionGroupRecord | null>(null);
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'info' } | null>(null);
+
+  const isVentas = currentUser?.rol === 'ventas';
+
+  const showToast = (text: string, type: 'success' | 'info' = 'success') => {
+    setToastMessage({ text, type });
+    setTimeout(() => setToastMessage(null), 4500);
+  };
+
+  const handleConfirmDelete = (groupId: string) => {
+    const res = deleteDevolucionGroup(groupId, true);
+    setPendingDeleteId(null);
+    if (res.success) showToast(`${res.message} (Stock descontado del pañol)`, 'success');
+  };
 
   const filteredGroups = devolucionGroups
     .filter(group => {
@@ -32,6 +47,16 @@ export const DevolucionesLogView: React.FC = () => {
 
   return (
     <div className="flex flex-col gap-4 animate-in fade-in duration-200">
+      {toastMessage && (
+        <div className="fixed top-20 right-5 z-50 bg-slate-900 text-white px-4 py-3 rounded-xl shadow-xl flex items-center gap-2 text-sm font-bold animate-in slide-in-from-top-4 duration-200 max-w-xs">
+          <Check className="w-5 h-5 text-emerald-400" />
+          <span className="flex-1">{toastMessage.text}</span>
+          <button onClick={() => setToastMessage(null)} className="text-slate-300 hover:text-white cursor-pointer">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       <div className="bg-[#f4f9fd] rounded-2xl p-5 border border-[#c4e1f7] shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div className="flex items-center gap-2">
           <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center border border-amber-200">
@@ -98,13 +123,46 @@ export const DevolucionesLogView: React.FC = () => {
                   <span className="text-xs font-medium text-slate-600">{formatDisplayDate(group.fechaDevolucion)} · {group.horaDevolucion} hs</span>
                   <span className="text-xs font-bold text-slate-700">Devuelve: {group.empleadoDevuelve}</span>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setActiveGroup(group)}
-                  className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
-                >
-                  <Eye className="w-3.5 h-3.5" /> Ver comprobante
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setActiveGroup(group)}
+                    className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Eye className="w-3.5 h-3.5" /> Ver comprobante
+                  </button>
+                  {!isVentas && (
+                    pendingDeleteId === group.id ? (
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => handleConfirmDelete(group.id)}
+                          className="px-2.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+                          title="Anular devolución y descontar stock"
+                        >
+                          <Check className="w-3.5 h-3.5" /> Anular
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setPendingDeleteId(null)}
+                          className="p-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 cursor-pointer"
+                          title="Cancelar"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setPendingDeleteId(group.id)}
+                        className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 cursor-pointer"
+                        title="Eliminar esta devolución del historial"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )
+                  )}
+                </div>
               </div>
               <div className="p-4">
                 <p className="text-xs text-slate-500 mb-3"><strong className="text-slate-700">Motivo:</strong> {group.motivo || 'Devolución a pañol'}</p>
