@@ -38,13 +38,13 @@ async function readState(page) {
       enAdministracion: text.includes('Respaldo de base de datos'),
       usuariosGuardados: (() => {
         try {
-          const raw = localStorage.getItem('verdu_inventory_users_list_v2');
+          const raw = localStorage.getItem('verdu_inventory_users_list_v3');
           if (!raw) return false;
           const list = JSON.parse(raw);
           return list.some(u => u.rol === 'gerencia');
         } catch (e) { return false; }
       })(),
-      sesionGuardada: !!localStorage.getItem('verdu_inventory_user_v2'),
+      sesionGuardada: !!localStorage.getItem('verdu_inventory_user_v3'),
       firmasGuardadas: localStorage.getItem('verdu_firmas_guardadas_v1') !== null,
       nav: navBtns,
       despachos: (text.match(/Historial Salidas\s*(\d+)/) || [])[1] || null,
@@ -67,12 +67,13 @@ async function readState(page) {
   await page.goto(BASE, { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
   await page.evaluate(() => localStorage.clear());
   await page.evaluate(() => {
-    localStorage.setItem('verdu_inventory_user_v2', JSON.stringify({ id: 'test-vaciar', username: 'admin', nombre: 'Matias', rol: 'gerencia' }));
-    localStorage.setItem('verdu_inventory_users_list_v2', JSON.stringify([
+    localStorage.setItem('verdu_inventory_user_v3', JSON.stringify({ id: 'test-vaciar', username: 'admin', nombre: 'Matias', rol: 'gerencia' }));
+    localStorage.setItem('verdu_inventory_users_list_v3', JSON.stringify([
       { id: 'usr-9', username: 'admin', nombre: 'Matias', rol: 'gerencia', password: 'clave123' },
       { id: 'usr-2', username: 'panol', nombre: 'Marcelo', rol: 'panolero', password: 'panol' }
     ]));
     localStorage.setItem('verdu_tour_seen_test-vaciar_v2', 'true');
+    localStorage.setItem('verdu_inventory_last_activity_v1', String(Date.now())); // la sesion gerencia expira sin actividad reciente
   });
   await page.reload({ waitUntil: 'networkidle2', timeout: 60000 }).catch(() => {});
   await waitFor(page, () => page.evaluate(() => document.body.innerText.includes('Cerrar Sesi')), 40000);

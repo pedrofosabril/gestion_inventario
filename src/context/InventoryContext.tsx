@@ -23,7 +23,7 @@ import {
   INITIAL_USERS 
 } from '../data/initialData';
 import { replaceYazWithYas, sanitizeYazObject } from '../utils/sanitizeUtils';
-import { createMovement, clearSupabaseAll, deleteInventoryItem, getInventory, saveInventoryItem, getGlobalUsers, saveGlobalUser, deleteGlobalUser } from '../lib/supabase';
+import { createMovement, createMovementsBulk, clearSupabaseAll, deleteInventoryItem, getInventory, saveInventoryItem, getGlobalUsers, saveGlobalUser, deleteGlobalUser, MovementInput } from '../lib/supabase';
 import { mergeSameProductPairs } from '../utils/productMerge';
 
 export type MainNavSection = ItemCategory | 'salidas_log' | 'ingresos_log' | 'gerencia_dashboard';
@@ -126,6 +126,14 @@ interface InventoryContextType {
     batches: { category: ItemCategory; rows: any[] }[],
     mode: 'merge' | 'replace'
   ) => Promise<{ added: number; updated: number; errors: string[] }>;
+
+  /**
+   * Importa el historial de SALIDAS e INGRESOS de la planilla. No toca el stock: el Excel
+   * ya trae el stock final contado en las hojas de inventario.
+   */
+  importMovimientosRows: (
+    batches: { kind: 'salidas' | 'ingresos'; rows: any[] }[]
+  ) => Promise<{ salidas: number; ingresos: number; skipped: number; errors: string[] }>;
   
   exportCategoryToExcel: (category?: ItemCategory | 'all' | 'salidas' | 'ingresos') => void;
   backupDatabase: () => void;
@@ -1555,6 +1563,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
         const rawPorEncargo = getVal(row, ['encargo', 'por encargo', 'pedido', 'a pedido']);
         const porEncargo = rawPorEncargo === true || String(rawPorEncargo).toLowerCase() === 'si' || String(rawPorEncargo).toLowerCase() === 'true';
+        const equivalencias = String(getVal(row, ['equivalencias', 'equivalencia']) || '').trim();
 
         parsedItems.push({
           id: `imp-${Date.now()}-${batchIdx}-${idx}-${Math.random().toString(36).substring(2, 6)}`,
@@ -1564,6 +1573,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           stock,
           stockMinimo: 1,
           ubicacion: ubicacion || 'A',
+          equivalencias: equivalencias || undefined,
           categoria: targetCategory,
           subcategoria: subcat ? replaceYazWithYas(subcat) : undefined,
           fechaRegistro,
@@ -1657,6 +1667,115 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
 
     return { added, updated, errors };
+  };
+
+  /**
+   * Carga el historial de SALIDAS e INGRESOS que viene en el Excel (hojas "Salida" e
+   * "Ingreso"). No modifica el stock de los productos: el Excel ya trae el stock final
+   * contado en las hojas de inventario. Los movimientos repetidos se detectan contra el
+   * historial ya cargado para no duplicarlos al reimportar la misma planilla.
+   */
+  const importMovimientosRows = async (
+    batches: { kind: 'salidas' | 'ingresos'; rows: any[] }[]
+  ) => {
+    const errors: string[] = [];
+    let skipped = 0;
+
+    const itemPorCodigo = new Map<string, InventoryItem>();
+    items.forEach(i => itemPorCodigo.set(i.codigo.toLowerCase().trim(), i));
+
+    const claveSalida = (r: any) =>
+      `${String(r.codigo).toLowerCase().trim()}|${r.fechaSalida}|${r.cantidad}|${r.nroRemito}|${r.cliente}`;
+    const claveIngreso = (r: any) =>
+      `${String(r.codigo).toLowerCase().trim()}|${r.fechaIngreso}|${r.cantidad}|${r.factura}`;
+
+    const yaCargadas = new Set<string>();
+    salidas.forEach(s => yaCargadas.add(claveSalida({
+      codigo: s.codigo, fechaSalida: s.fechaSalida, cantidad: s.cantidad,
+      nroRemito: s.nroRemito, cliente: s.cliente
+    })));
+    ingresos.forEach(g => yaCargadas.add(claveIngreso({
+      codigo: g.codigo, fechaIngreso: g.fechaIngreso, cantidad: g.cantidad, factura: g.factura
+    })));
+
+    const nuevasSalidas: SalidaRecord[] = [];
+    const nuevosIngresos: IngresoRecord[] = [];
+    const movimientosNube: MovementInput[] = [];
+
+    batches.forEach(batch => {
+      batch.rows.forEach((row: any, idx: number) => {
+        const codigo = replaceYazWithYas(String(row.codigo ?? '').trim());
+        const cantidad = Math.max(0, Math.trunc(Number(row.cantidad) || 0));
+        if (!codigo || cantidad <= 0) return;
+
+        const item = itemPorCodigo.get(codigo.toLowerCase());
+
+        if (batch.kind === 'salidas') {
+          const fechaSalida = String(row.fechaSalida || '').trim();
+          const nroRemito = replaceYazWithYas(String(row.nroRemito || '').trim()) || 'S/N';
+          const cliente = replaceYazWithYas(String(row.cliente || '').trim()) || 'Verdu y Cía (General)';
+          const retira = replaceYazWithYas(String(row.retira || '').trim());
+          const clave = claveSalida({ codigo, fechaSalida, cantidad, nroRemito, cliente });
+          if (yaCargadas.has(clave)) { skipped++; return; }
+          yaCargadas.add(clave);
+          nuevasSalidas.push({
+            id: `sal-imp-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`,
+            nroRemito,
+            codigo,
+            descripcion: replaceYazWithYas(String(row.descripcion || '').trim()) || item?.descripcion || codigo,
+            fechaSalida,
+            cliente,
+            retira,
+            cantidad,
+            precioUnitario: item?.precio,
+            categoria: item?.categoria,
+            usuarioRegistro: 'Importación Excel'
+          });
+          movimientosNube.push({
+            tipo: 'Salida', codigo, cantidad, fecha: fechaSalida,
+            comprobante: nroRemito, clienteProveedor: cliente, responsable: retira
+          });
+        } else {
+          const fechaIngreso = String(row.fechaIngreso || '').trim();
+          const factura = replaceYazWithYas(String(row.factura || '').trim());
+          const proveedor = replaceYazWithYas(String(row.proveedor || '').trim()) || item?.proveedor || '';
+          const clave = claveIngreso({ codigo, fechaIngreso, cantidad, factura });
+          if (yaCargadas.has(clave)) { skipped++; return; }
+          yaCargadas.add(clave);
+          nuevosIngresos.push({
+            id: `ing-imp-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`,
+            codigo,
+            proveedor,
+            descripcion: replaceYazWithYas(String(row.descripcion || '').trim()) || item?.descripcion || codigo,
+            cantidad,
+            fechaIngreso,
+            factura,
+            precioUnitario: item?.precio,
+            ubicacion: item?.ubicacion,
+            categoria: item?.categoria,
+            usuarioRegistro: 'Importación Excel'
+          });
+          movimientosNube.push({
+            tipo: 'Ingreso', codigo, cantidad, fecha: fechaIngreso,
+            comprobante: factura, clienteProveedor: proveedor
+          });
+        }
+      });
+    });
+
+    if (nuevasSalidas.length > 0) setSalidas(prev => [...nuevasSalidas, ...prev]);
+    if (nuevosIngresos.length > 0) setIngresos(prev => [...nuevosIngresos, ...prev]);
+
+    if (movimientosNube.length > 0) {
+      playBeep('success');
+      const bulk = await createMovementsBulk(movimientosNube);
+      bulk.errors.forEach(e => errors.push('No se pudo guardar el historial en la nube: ' + e));
+      if (bulk.inserted < movimientosNube.length) {
+        errors.push(`Se guardaron ${bulk.inserted} de ${movimientosNube.length} movimientos en la nube.`);
+      }
+    }
+
+    return { salidas: nuevasSalidas.length, ingresos: nuevosIngresos.length, skipped, errors };
   };
 
   // Export to Excel helper
@@ -2173,6 +2292,7 @@ backupHistory,
         registerIngreso,
         deleteIngreso,
         importExcelRows,
+        importMovimientosRows,
         exportCategoryToExcel,
         backupDatabase,
         login,

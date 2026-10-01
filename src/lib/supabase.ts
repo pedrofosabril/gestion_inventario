@@ -276,17 +276,53 @@ export async function clearSupabaseAll(): Promise<{ ok: boolean; failed: string[
   return { ok: failed.length === 0, failed };
 }
 
-export async function createMovement(input: {
+export type MovementInput = {
   tipo: 'Ingreso' | 'Salida' | 'Devolucion'; codigo: string; cantidad: number;
   comprobante?: string; clienteProveedor?: string; responsable?: string;
-}): Promise<void> {
+  fecha?: string;
+};
+
+export async function createMovement(input: MovementInput): Promise<void> {
   const { error } = await supabase.from('movimientos').insert({
     id_movimiento: crypto.randomUUID(), tipo_movimiento: input.tipo, codigo: input.codigo,
-    cantidad: input.cantidad, fecha: new Date().toISOString().slice(0, 10),
+    cantidad: input.cantidad, fecha: input.fecha || new Date().toISOString().slice(0, 10),
     comprobante: input.comprobante ?? '', cliente_proveedor: input.clienteProveedor ?? '',
     retira_responsable: input.responsable ?? ''
   });
   if (error) throw error;
+}
+
+/**
+ * Inserta un historial completo de movimientos (por ejemplo, las hojas Ingreso y Salida
+ * de la planilla) en tandas. Devuelve cuántos quedaron guardados en la nube.
+ */
+export async function createMovementsBulk(
+  movements: MovementInput[],
+  chunkSize = 400
+): Promise<{ inserted: number; errors: string[] }> {
+  const errors: string[] = [];
+  let inserted = 0;
+
+  for (let i = 0; i < movements.length; i += chunkSize) {
+    const chunk = movements.slice(i, i + chunkSize).map(m => ({
+      id_movimiento: crypto.randomUUID(),
+      tipo_movimiento: m.tipo,
+      codigo: m.codigo,
+      cantidad: m.cantidad,
+      fecha: m.fecha || new Date().toISOString().slice(0, 10),
+      comprobante: m.comprobante ?? '',
+      cliente_proveedor: m.clienteProveedor ?? '',
+      retira_responsable: m.responsable ?? ''
+    }));
+    const { error } = await supabase.from('movimientos').insert(chunk);
+    if (error) {
+      errors.push(error.message);
+    } else {
+      inserted += chunk.length;
+    }
+  }
+
+  return { inserted, errors };
 }
 
 type GlobalUserRow = {
