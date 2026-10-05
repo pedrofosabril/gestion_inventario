@@ -216,8 +216,8 @@ export const IngresosLogView: React.FC<IngresosLogViewProps> = ({ onOpenScanner 
         </div>
 
         {/* Summary Stat */}
-        <div className="flex items-center justify-between sm:justify-end gap-3 bg-[#eaf4fb] p-2.5 rounded-lg border border-[#badbf5]">
-          <div>
+        <div className="flex items-center justify-center gap-4 bg-[#eaf4fb] p-2.5 rounded-lg border border-[#badbf5]">
+          <div className="text-center">
             <span className="text-[10px] text-slate-500 font-bold uppercase block">Total Ingresado</span>
             <span className="font-mono text-sm font-black text-sky-950">
               {totalUnidadesIngresadas} u. <span className="text-[11px] font-medium text-slate-600">({filteredIngresos.length} recepciones)</span>
@@ -240,7 +240,7 @@ export const IngresosLogView: React.FC<IngresosLogViewProps> = ({ onOpenScanner 
                 <th className="px-4 py-3 whitespace-nowrap">FECHA INGRESO</th>
                 <th className="px-4 py-3 whitespace-nowrap">UBICACIÓN</th>
                 <th className="px-4 py-3 text-right whitespace-nowrap">CANTIDAD</th>
-                {!isVentas && <th className="px-4 py-3 text-center whitespace-nowrap">ACCIONES</th>}
+                {!isVentas && <th className="sticky right-0 z-10 bg-[#dbeefa] shadow-[-8px_0_8px_-6px_rgba(0,0,0,0.2)] px-4 py-3 text-center whitespace-nowrap">ACCIONES</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-[#e2effa] bg-white">
@@ -292,7 +292,7 @@ export const IngresosLogView: React.FC<IngresosLogViewProps> = ({ onOpenScanner 
 
                     {/* Acciones */}
                     {!isVentas && (
-                      <td className="px-4 py-3 text-center whitespace-nowrap">
+                      <td className="sticky right-0 z-10 bg-inherit shadow-[-8px_0_8px_-6px_rgba(0,0,0,0.12)] px-4 py-3 text-center whitespace-nowrap">
                         {pendingDeleteId === ingreso.id ? (
                           <div className="flex flex-col items-center gap-1">
                             <span className="text-[10px] font-bold text-slate-500">¿Revertir el stock?</span>
