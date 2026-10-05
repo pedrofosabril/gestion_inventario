@@ -513,7 +513,8 @@ export const SalidasLogView: React.FC<SalidasLogViewProps> = ({ onOpenScanner })
                       <tr>
                         <th className="py-2 px-3">Código</th>
                         <th className="py-2 px-3">Descripción de la Pieza</th>
-                        <th className="py-2 px-2 text-center">Ubic.</th>
+                        <th className="py-2 px-2 text-center">Ubicación</th>
+                        <th className="py-2 px-2 text-center">Fecha</th>
                         <th className="py-2 px-3 text-center">Cant. Retirada</th>
                         {showPrices && <th className="py-2 px-3 text-right">P. Unitario</th>}
                         {showPrices && <th className="py-2 px-3 text-right">Subtotal</th>}
@@ -536,6 +537,9 @@ export const SalidasLogView: React.FC<SalidasLogViewProps> = ({ onOpenScanner })
                               {item.ubicacion || 'A'}
                             </span>
                           </td>
+                          <td className="py-2 px-2 text-center font-mono text-slate-600 whitespace-nowrap">
+                            {formatDisplayDate(group.fechaSalida)}
+                          </td>
                           <td className="py-2 px-3 text-center font-mono font-black text-rose-600">
                             -{item.cantidad} u.
                           </td>
@@ -554,7 +558,7 @@ export const SalidasLogView: React.FC<SalidasLogViewProps> = ({ onOpenScanner })
                     </tbody>
                     <tfoot className="border-t border-[#badbf5] font-bold bg-[#eaf4fb]">
                       <tr>
-                        <td colSpan={3} className="py-2.5 px-3 text-right uppercase text-[10px] text-slate-600">
+                        <td colSpan={4} className="py-2.5 px-3 text-right uppercase text-[10px] text-slate-600">
                           Total de la Salida:
                         </td>
                         <td className="py-2.5 px-3 text-center font-mono font-black text-slate-900">
