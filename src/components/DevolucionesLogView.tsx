@@ -3,6 +3,7 @@ import { ArrowDownUp, Check, Eye, History, RotateCcw, Search, Trash2, X } from '
 import { useInventory } from '../context/InventoryContext';
 import { DevolucionGroupRecord } from '../types';
 import { formatDisplayDate } from '../utils/dateUtils';
+import { matchesUbicacion } from '../utils/locationSearch';
 import { DevolucionReceiptModal } from './DevolucionReceiptModal';
 
 export const DevolucionesLogView: React.FC = () => {
@@ -20,10 +21,17 @@ export const DevolucionesLogView: React.FC = () => {
     setTimeout(() => setToastMessage(null), 4500);
   };
 
-  const handleConfirmDelete = (groupId: string) => {
-    const res = deleteDevolucionGroup(groupId, true);
+  const handleConfirmDelete = (groupId: string, revertStock: boolean) => {
+    const res = deleteDevolucionGroup(groupId, revertStock);
     setPendingDeleteId(null);
-    if (res.success) showToast(`${res.message} (Stock descontado del pañol)`, 'success');
+    if (res.success) {
+      showToast(
+        revertStock
+          ? `${res.message} (Stock descontado del pañol)`
+          : `${res.message} (Stock sin cambios)`,
+        'success'
+      );
+    }
   };
 
   const filteredGroups = devolucionGroups
@@ -34,7 +42,7 @@ export const DevolucionesLogView: React.FC = () => {
         group.numeroDevolucionFormatted.toLowerCase().includes(query) ||
         group.empleadoDevuelve.toLowerCase().includes(query) ||
         (group.motivo || '').toLowerCase().includes(query) ||
-        group.items.some(item => item.codigo.toLowerCase().includes(query) || item.descripcion.toLowerCase().includes(query))
+        group.items.some(item => item.codigo.toLowerCase().includes(query) || item.descripcion.toLowerCase().includes(query) || matchesUbicacion(item.ubicacion, query))
       );
     })
     .sort((a, b) => {
@@ -64,7 +72,6 @@ export const DevolucionesLogView: React.FC = () => {
           </div>
           <div>
             <h1 className="text-xl font-extrabold text-sky-950 tracking-tight">Historial de Devoluciones</h1>
-            <p className="text-xs text-slate-600">Material reintegrado al pañol por devoluciones de trabajo o taller.</p>
           </div>
         </div>
 
@@ -133,23 +140,34 @@ export const DevolucionesLogView: React.FC = () => {
                   </button>
                   {!isVentas && (
                     pendingDeleteId === group.id ? (
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => handleConfirmDelete(group.id)}
-                          className="px-2.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer"
-                          title="Anular devolución y descontar stock"
-                        >
-                          <Check className="w-3.5 h-3.5" /> Anular
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setPendingDeleteId(null)}
-                          className="p-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 cursor-pointer"
-                          title="Cancelar"
-                        >
-                          <X className="w-3.5 h-3.5" />
-                        </button>
+                      <div className="flex flex-col items-end gap-1">
+                        <span className="text-[10px] font-bold text-slate-500">¿Revertir el stock?</span>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => handleConfirmDelete(group.id, true)}
+                            className="px-2.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+                            title="Anular la devolución y descontar el stock"
+                          >
+                            <Check className="w-3.5 h-3.5" /> Revertir stock
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleConfirmDelete(group.id, false)}
+                            className="px-2.5 py-1.5 rounded-xl bg-slate-700 hover:bg-slate-800 text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+                            title="Borrar solo el historial y dejar el stock como está"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" /> Solo borrar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setPendingDeleteId(null)}
+                            className="p-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 cursor-pointer"
+                            title="Cancelar"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
                     ) : (
                       <button
@@ -166,8 +184,8 @@ export const DevolucionesLogView: React.FC = () => {
               </div>
               <div className="p-4">
                 <p className="text-xs text-slate-500 mb-3"><strong className="text-slate-700">Motivo:</strong> {group.motivo || 'Devolución a pañol'}</p>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs border-collapse">
+                <div className="overflow-x-auto table-scrollbar">
+                  <table className="w-full min-w-[520px] text-left text-xs border-collapse">
                     <thead className="bg-[#eaf4fb] text-sky-950 uppercase text-[10px]">
                       <tr><th className="p-2">Código</th><th className="p-2">Descripción</th><th className="p-2">Ubicación</th><th className="p-2 text-right">Cantidad</th></tr>
                     </thead>

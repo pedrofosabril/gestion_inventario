@@ -32,6 +32,7 @@ import {
 import confetti from 'canvas-confetti';
 import { useInventory } from '../context/InventoryContext';
 import { InventoryItem, ItemCategory, SalidaGroupRecord, DevolucionGroupRecord, PARAMETRIZED_OPERATORS, PARAMETRIZED_SUPPLIERS } from '../types';
+import { matchesUbicacion } from '../utils/locationSearch';
 import { SalidaReceiptModal } from './SalidaReceiptModal';
 import { DevolucionReceiptModal } from './DevolucionReceiptModal';
 import { ManualEntryModal } from './ManualEntryModal';
@@ -975,6 +976,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
         (i.codigoBarras && i.codigoBarras.toLowerCase().includes(barcodeInput.toLowerCase().trim())) ||
         i.descripcion.toLowerCase().includes(barcodeInput.toLowerCase().trim()) ||
         i.proveedor.toLowerCase().includes(barcodeInput.toLowerCase().trim()) ||
+        matchesUbicacion(i.ubicacion, barcodeInput) ||
         (i.equivalencias && i.equivalencias.toLowerCase().includes(barcodeInput.toLowerCase().trim()))
       ).slice(0, 8)
     : [];
@@ -1515,7 +1517,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
                         }`}>
                           {item.stock} u.
                         </span>
-                        <span className="text-[10px] text-slate-500 block font-mono">Ubic: {item.ubicacion}</span>
+                        <span className="text-[10px] text-slate-500 block font-mono">Ubicación: {item.ubicacion}</span>
                       </div>
                     </button>
                   ))}
@@ -1601,7 +1603,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
                               <span className="font-mono font-black text-xs text-slate-900">{draft.item.codigo}</span>
                               <span className="text-[10px] px-1.5 py-0.2 rounded bg-[#e8f4fc] text-[#006bb0] font-bold uppercase">{draft.item.proveedor}</span>
                               <span className="text-[10px] px-1.5 py-0.2 rounded bg-[#f4f9fd] text-slate-700 font-mono font-semibold border border-[#badbf5]">
-                                Ubic: {draft.item.ubicacion || 'A'}
+                                Ubicación: {draft.item.ubicacion || 'A'}
                               </span>
                             </div>
                             <p className="text-xs font-medium text-slate-700 line-clamp-1 mt-0.5">{draft.item.descripcion}</p>
@@ -1683,7 +1685,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
                               <span className="font-mono font-black text-xs text-slate-900">{draft.item.codigo}</span>
                               <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-100 text-amber-900 font-bold uppercase">{draft.item.proveedor}</span>
                               <span className="text-[10px] px-1.5 py-0.2 rounded bg-[#f4f9fd] text-slate-700 font-mono font-semibold border border-[#badbf5]">
-                                Ubic: {draft.item.ubicacion || 'A'}
+                                Ubicación: {draft.item.ubicacion || 'A'}
                               </span>
                             </div>
                             <p className="text-xs font-medium text-slate-700 line-clamp-1 mt-0.5">{draft.item.descripcion}</p>
@@ -1762,7 +1764,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
                               <span className="font-mono font-black text-xs text-slate-900">{draft.codigo}</span>
                               <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800 font-bold uppercase">{draft.proveedor}</span>
                               <span className="text-[10px] px-1.5 py-0.2 rounded bg-[#f4f9fd] text-slate-700 font-mono font-semibold border border-[#badbf5]">
-                                Ubic: {draft.ubicacion}
+                                Ubicación: {draft.ubicacion}
                               </span>
                               <span className="text-[10px] px-1.5 py-0.2 rounded bg-sky-100 text-sky-800 font-bold">
                                 {CATEGORY_NAMES[draft.categoria]}
