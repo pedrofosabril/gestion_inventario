@@ -28,6 +28,7 @@ import { SalidaRecord, SalidaGroupRecord, SalidaItemEntry } from '../types';
 import { SalidaReceiptModal } from './SalidaReceiptModal';
 import { generateSalidaPDF } from '../utils/pdfGenerator';
 import { formatDisplayDate } from '../utils/dateUtils';
+import { matchesUbicacion } from '../utils/locationSearch';
 
 interface SalidasLogViewProps {
   onOpenScanner: (code?: string) => void;
@@ -154,6 +155,7 @@ export const SalidasLogView: React.FC<SalidasLogViewProps> = ({ onOpenScanner })
       const matchItem = g.items.some(it => 
         it.codigo.toLowerCase().includes(q) || 
         it.descripcion.toLowerCase().includes(q) ||
+        matchesUbicacion(it.ubicacion, q) ||
         matchingInventoryCodes.has(it.codigo.toLowerCase())
       );
       return matchNum || matchClient || matchRetira || matchRemito || matchItem;

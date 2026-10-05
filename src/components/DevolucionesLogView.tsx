@@ -3,6 +3,7 @@ import { ArrowDownUp, Check, Eye, History, RotateCcw, Search, Trash2, X } from '
 import { useInventory } from '../context/InventoryContext';
 import { DevolucionGroupRecord } from '../types';
 import { formatDisplayDate } from '../utils/dateUtils';
+import { matchesUbicacion } from '../utils/locationSearch';
 import { DevolucionReceiptModal } from './DevolucionReceiptModal';
 
 export const DevolucionesLogView: React.FC = () => {
@@ -41,7 +42,7 @@ export const DevolucionesLogView: React.FC = () => {
         group.numeroDevolucionFormatted.toLowerCase().includes(query) ||
         group.empleadoDevuelve.toLowerCase().includes(query) ||
         (group.motivo || '').toLowerCase().includes(query) ||
-        group.items.some(item => item.codigo.toLowerCase().includes(query) || item.descripcion.toLowerCase().includes(query))
+        group.items.some(item => item.codigo.toLowerCase().includes(query) || item.descripcion.toLowerCase().includes(query) || matchesUbicacion(item.ubicacion, query))
       );
     })
     .sort((a, b) => {

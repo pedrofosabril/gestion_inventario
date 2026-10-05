@@ -16,6 +16,7 @@ import { useInventory } from '../context/InventoryContext';
 import { InventoryItem, SalidaRecord, IngresoRecord } from '../types';
 import { CameraBarcodeScanner } from './CameraBarcodeScanner';
 import { formatDisplayDate } from '../utils/dateUtils';
+import { matchesUbicacion } from '../utils/locationSearch';
 
 interface PanoleroSimpleViewProps {
   onOpenScanner: (initialCode?: string, mode?: 'salida' | 'ingreso' | 'devolucion') => void;
@@ -78,7 +79,7 @@ export const PanoleroSimpleView: React.FC<PanoleroSimpleViewProps> = ({
           itemBarcodeLower.includes(cleanTerm) ||
           (cleanTermAlphaNum && itemBarcodeAlphaNum.includes(cleanTermAlphaNum)) ||
           itemDescLower.includes(cleanTerm) ||
-          itemUbicLower.includes(cleanTerm) ||
+          matchesUbicacion(item.ubicacion, cleanTerm) ||
           itemProvLower.includes(cleanTerm) ||
           itemEquivLower.includes(cleanTerm)
         );

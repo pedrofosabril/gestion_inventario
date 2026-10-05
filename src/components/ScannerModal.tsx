@@ -32,6 +32,7 @@ import {
 import confetti from 'canvas-confetti';
 import { useInventory } from '../context/InventoryContext';
 import { InventoryItem, ItemCategory, SalidaGroupRecord, DevolucionGroupRecord, PARAMETRIZED_OPERATORS, PARAMETRIZED_SUPPLIERS } from '../types';
+import { matchesUbicacion } from '../utils/locationSearch';
 import { SalidaReceiptModal } from './SalidaReceiptModal';
 import { DevolucionReceiptModal } from './DevolucionReceiptModal';
 import { ManualEntryModal } from './ManualEntryModal';
@@ -975,6 +976,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
         (i.codigoBarras && i.codigoBarras.toLowerCase().includes(barcodeInput.toLowerCase().trim())) ||
         i.descripcion.toLowerCase().includes(barcodeInput.toLowerCase().trim()) ||
         i.proveedor.toLowerCase().includes(barcodeInput.toLowerCase().trim()) ||
+        matchesUbicacion(i.ubicacion, barcodeInput) ||
         (i.equivalencias && i.equivalencias.toLowerCase().includes(barcodeInput.toLowerCase().trim()))
       ).slice(0, 8)
     : [];

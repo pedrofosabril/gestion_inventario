@@ -19,6 +19,7 @@ import {
 import { useInventory } from '../context/InventoryContext';
 import { ItemCategory } from '../types';
 import { formatDisplayDate } from '../utils/dateUtils';
+import { matchesUbicacion } from '../utils/locationSearch';
 
 interface IngresosLogViewProps {
   onOpenScanner?: (code?: string, mode?: 'salida' | 'ingreso') => void;
@@ -74,7 +75,8 @@ export const IngresosLogView: React.FC<IngresosLogViewProps> = ({ onOpenScanner 
         i.codigo.toLowerCase().includes(q) ||
         i.descripcion.toLowerCase().includes(q) ||
         i.factura.toLowerCase().includes(q) ||
-        i.proveedor.toLowerCase().includes(q)
+        i.proveedor.toLowerCase().includes(q) ||
+        matchesUbicacion(i.ubicacion, q)
       );
     }
     return true;

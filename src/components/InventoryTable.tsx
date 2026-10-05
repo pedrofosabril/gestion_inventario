@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { useInventory } from '../context/InventoryContext';
 import { ItemCategory, InventoryItem } from '../types';
+import { collectUbicaciones, matchesUbicacion, splitUbicaciones } from '../utils/locationSearch';
 import { AddProductModal } from './AddProductModal';
 import { EditProductModal } from './EditProductModal';
 
@@ -159,14 +160,14 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({
     if (selectedSubCat !== 'all') {
       const matchSub = item.subcategoria && item.subcategoria.toUpperCase() === selectedSubCat.toUpperCase();
       const matchProv = item.proveedor && item.proveedor.toUpperCase() === selectedSubCat.toUpperCase();
-      const matchUbic = item.ubicacion && item.ubicacion.toUpperCase() === selectedSubCat.toUpperCase();
+      const matchUbic = item.ubicacion && splitUbicaciones(item.ubicacion).some(u => u.toUpperCase() === selectedSubCat.toUpperCase());
       if (!matchSub && !matchProv && !matchUbic) {
         return false;
       }
     }
 
     if (selectedUbicacion !== 'all') {
-      if (item.ubicacion !== selectedUbicacion) return false;
+      if (!splitUbicaciones(item.ubicacion).some(u => u === selectedUbicacion)) return false;
     }
 
     if (selectedTypeFilter === 'stock') {
@@ -199,7 +200,7 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({
         matchBarcode ||
         item.descripcion.toLowerCase().includes(q) ||
         item.proveedor.toLowerCase().includes(q) ||
-        item.ubicacion.toLowerCase().includes(q) ||
+        matchesUbicacion(item.ubicacion, q) ||
         (item.equivalencias && item.equivalencias.toLowerCase().includes(q))
       );
     }
@@ -207,14 +208,10 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({
     return true;
   });
 
-  // Unique ubicaciones in this category
-  const availableUbicaciones = Array.from(
-    new Set(
-      items.filter(i => selectedCategory === 'all' || i.categoria === selectedCategory)
-        .map(i => i.ubicacion)
-        .filter(Boolean)
-    )
-  ).sort();
+  // Unique ubicaciones in this category (split multi-location items like "A / entrepiso")
+  const availableUbicaciones = collectUbicaciones(
+    items.filter(i => selectedCategory === 'all' || i.categoria === selectedCategory)
+  );
 
   if (isVentas && category !== 'all' && !VENTAS_ALLOWED.includes(category)) {
     return (
