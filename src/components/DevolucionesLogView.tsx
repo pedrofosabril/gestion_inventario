@@ -71,7 +71,6 @@ export const DevolucionesLogView: React.FC = () => {
           </div>
           <div>
             <h1 className="text-xl font-extrabold text-sky-950 tracking-tight">Historial de Devoluciones</h1>
-            <p className="text-xs text-slate-600">Material reintegrado al pañol por devoluciones de trabajo o taller.</p>
           </div>
         </div>
 

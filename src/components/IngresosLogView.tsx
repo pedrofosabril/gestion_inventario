@@ -136,9 +136,6 @@ export const IngresosLogView: React.FC<IngresosLogViewProps> = ({ onOpenScanner 
               <h1 className="text-xl font-extrabold text-sky-950 tracking-tight">
                 Recepción de Mercadería e Ingresos
               </h1>
-              <p className="text-xs text-slate-600">
-                Historial de remesas, números de factura de proveedores y altas automáticas de stock
-              </p>
             </div>
           </div>
         </div>
@@ -216,31 +213,30 @@ export const IngresosLogView: React.FC<IngresosLogViewProps> = ({ onOpenScanner 
         </div>
 
         {/* Summary Stat */}
-        <div className="flex items-center justify-center gap-4 bg-[#eaf4fb] p-2.5 rounded-lg border border-[#badbf5]">
-          <div className="text-center">
-            <span className="text-[10px] text-slate-500 font-bold uppercase block">Total Ingresado</span>
-            <span className="font-mono text-sm font-black text-sky-950">
-              {totalUnidadesIngresadas} u. <span className="text-[11px] font-medium text-slate-600">({filteredIngresos.length} recepciones)</span>
-            </span>
-          </div>
+        <div className="flex items-center bg-[#eaf4fb] px-3 py-2 rounded-lg border border-[#badbf5] justify-self-end self-center">
+          <span className="text-[10px] text-slate-500 font-bold uppercase leading-tight">
+            Total Ingresado<br />
+            <span className="font-mono text-sm font-black text-sky-950">{totalUnidadesIngresadas} u.</span>
+            <span className="text-[10px] font-medium text-slate-600"> ({filteredIngresos.length} rec.)</span>
+          </span>
         </div>
 
       </div>
 
       {/* Ingresos Log Table */}
       <div className="bg-[#f8fcfe] rounded-2xl border border-[#c4e1f7] shadow-xs overflow-hidden">
-        <div className="overflow-x-auto table-scrollbar">
-          <table className="w-full min-w-[1000px] text-left text-xs border-collapse divide-y divide-[#cce4f8]">
+        <div className="overflow-x-auto">
+          <table className="w-full table-fixed text-left text-[11px] border-collapse divide-y divide-[#cce4f8]">
             <thead className="bg-[#dbeefa] text-sky-950 font-bold tracking-wider">
               <tr>
-                <th className="px-4 py-3 whitespace-nowrap">Nº FACTURA / REMITO</th>
-                <th className="px-4 py-3 whitespace-nowrap">CÓDIGO</th>
-                <th className="px-4 py-3 whitespace-nowrap">PROVEEDOR</th>
-                <th className="px-4 py-3 min-w-[180px]">DESCRIPCIÓN</th>
-                <th className="px-4 py-3 whitespace-nowrap">FECHA INGRESO</th>
-                <th className="px-4 py-3 whitespace-nowrap">UBICACIÓN</th>
-                <th className="px-4 py-3 text-right whitespace-nowrap">CANTIDAD</th>
-                {!isVentas && <th className="sticky right-0 z-10 bg-[#dbeefa] shadow-[-8px_0_8px_-6px_rgba(0,0,0,0.2)] px-4 py-3 text-center whitespace-nowrap">ACCIONES</th>}
+                <th className="px-2 py-3">FACTURA</th>
+                <th className="px-2 py-3">CÓDIGO</th>
+                <th className="px-2 py-3">PROVEEDOR</th>
+                <th className="px-2 py-3">DESCRIPCIÓN</th>
+                <th className="px-2 py-3">FECHA</th>
+                <th className="px-2 py-3 text-center">UBIC.</th>
+                <th className="px-2 py-3 text-right">CANT.</th>
+                {!isVentas && <th className="px-2 py-3 text-center">ACCIONES</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-[#e2effa] bg-white">
@@ -249,77 +245,77 @@ export const IngresosLogView: React.FC<IngresosLogViewProps> = ({ onOpenScanner 
                   <tr key={ingreso.id} className={`hover:bg-[#e5f3fd] transition-colors ${idx % 2 === 1 ? 'bg-[#f4f9fd]' : 'bg-white'}`}>
                     
                     {/* Factura */}
-                    <td className="px-4 py-3 font-mono font-bold text-slate-800 whitespace-nowrap">
-                      <span className="px-2 py-0.5 rounded bg-[#e8f4fc] text-sky-950 border border-[#c4e1f7]">
+                    <td className="px-2 py-2.5 font-mono font-bold text-slate-800 truncate" title={ingreso.factura}>
+                      <span className="px-1.5 py-0.5 rounded bg-[#e8f4fc] text-sky-950 border border-[#c4e1f7]">
                         {ingreso.factura}
                       </span>
                     </td>
 
                     {/* Código */}
-                    <td className="px-4 py-3 font-mono font-bold text-emerald-700 whitespace-nowrap">
+                    <td className="px-2 py-2.5 font-mono font-bold text-emerald-700 truncate" title={ingreso.codigo}>
                       {ingreso.codigo}
                     </td>
 
                     {/* Proveedor */}
-                    <td className="px-4 py-3 font-semibold text-slate-900 whitespace-nowrap">
-                      <span className="flex items-center gap-1.5">
-                        <Building2 className="w-3.5 h-3.5 text-slate-400" />
-                        {ingreso.proveedor}
+                    <td className="px-2 py-2.5 font-semibold text-slate-900 truncate" title={ingreso.proveedor}>
+                      <span className="flex items-center gap-1">
+                        <Building2 className="w-3 h-3 text-slate-400 shrink-0" />
+                        <span className="truncate">{ingreso.proveedor}</span>
                       </span>
                     </td>
 
                     {/* Descripción */}
-                    <td className="px-4 py-3 text-slate-700 font-medium">
+                    <td className="px-2 py-2.5 text-slate-700 font-medium truncate" title={ingreso.descripcion}>
                       {ingreso.descripcion}
                     </td>
 
                     {/* Fecha */}
-                    <td className="px-4 py-3 font-mono text-slate-600 whitespace-nowrap">
+                    <td className="px-2 py-2.5 font-mono text-slate-600 whitespace-nowrap">
                       {formatDisplayDate(ingreso.fechaIngreso)}
                     </td>
 
                     {/* Ubicación */}
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <span className="px-2 py-0.5 rounded font-mono font-bold text-[11px] bg-[#e8f4fc] text-sky-950 border border-[#c4e1f7]">
+                    <td className="px-2 py-2.5 text-center">
+                      <span className="px-1.5 py-0.5 rounded font-mono font-bold text-[10px] bg-[#e8f4fc] text-sky-950 border border-[#c4e1f7]">
                         {ingreso.ubicacion || 'A'}
                       </span>
                     </td>
 
                     {/* Cantidad */}
-                    <td className="px-4 py-3 text-right font-mono font-black text-emerald-600 whitespace-nowrap">
-                      +{ingreso.cantidad} u.
+                    <td className="px-2 py-2.5 text-right font-mono font-black text-emerald-600 whitespace-nowrap">
+                      +{ingreso.cantidad}
                     </td>
 
                     {/* Acciones */}
                     {!isVentas && (
-                      <td className="sticky right-0 z-10 bg-inherit shadow-[-8px_0_8px_-6px_rgba(0,0,0,0.12)] px-4 py-3 text-center whitespace-nowrap">
+                      <td className="px-2 py-2.5 text-center whitespace-nowrap">
                         {pendingDeleteId === ingreso.id ? (
-                          <div className="flex flex-col items-center gap-1">
-                            <span className="text-[10px] font-bold text-slate-500">¿Revertir el stock?</span>
-                            <div className="flex items-center justify-center gap-1.5">
+                          <div className="flex flex-col items-center gap-0.5">
+                            <span className="text-[9px] font-bold text-slate-500 leading-none">¿Revertir stock?</span>
+                            <div className="flex items-center justify-center gap-1">
                               <button
                                 type="button"
                                 onClick={() => handleConfirmDelete(ingreso.id, true)}
-                                className="px-2.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+                                className="px-1.5 py-1 rounded-md bg-rose-600 hover:bg-rose-700 text-white text-[10px] font-bold flex items-center gap-0.5 cursor-pointer"
                                 title="Borrar el historial y descontar el stock del pañol"
                               >
-                                <Check className="w-3.5 h-3.5" /> Revertir stock
+                                <Check className="w-3 h-3" /> Stock
                               </button>
                               <button
                                 type="button"
                                 onClick={() => handleConfirmDelete(ingreso.id, false)}
-                                className="px-2.5 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-800 text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+                                className="px-1.5 py-1 rounded-md bg-slate-700 hover:bg-slate-800 text-white text-[10px] font-bold flex items-center gap-0.5 cursor-pointer"
                                 title="Borrar solo el historial y dejar el stock como está"
                               >
-                                <Trash2 className="w-3.5 h-3.5" /> Solo borrar
+                                <Trash2 className="w-3 h-3" /> Hist.
                               </button>
                               <button
                                 type="button"
                                 onClick={() => setPendingDeleteId(null)}
-                                className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 cursor-pointer"
+                                className="p-1 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-600 cursor-pointer"
                                 title="Cancelar"
                               >
-                                <X className="w-3.5 h-3.5" />
+                                <X className="w-3 h-3" />
                               </button>
                             </div>
                           </div>
@@ -340,7 +336,7 @@ export const IngresosLogView: React.FC<IngresosLogViewProps> = ({ onOpenScanner 
                 ))
               ) : (
                 <tr>
-                  <td colSpan={!isVentas ? 8 : 7} className="p-12 text-center text-slate-400">
+                  <td colSpan={8} className="p-12 text-center text-slate-400">
                     No se encontraron registros de ingresos.
                   </td>
                 </tr>
