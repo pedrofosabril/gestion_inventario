@@ -403,7 +403,7 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
                               {item.proveedor}
                             </span>
                             <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-100 text-slate-700 font-mono">
-                              Ubic: {item.ubicacion}
+                              Ubicación: {item.ubicacion}
                             </span>
                           </div>
                           <p className="text-xs text-slate-600 line-clamp-1 mt-0.5 font-medium">

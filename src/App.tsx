@@ -50,6 +50,7 @@ import { DevolucionesLogView } from './components/DevolucionesLogView';
 import { ItemCategory, InventoryItem } from './types';
 import { OfflineStatusBadge } from './components/OfflineStatusBanner';
 import { startTour, hasSeenTour } from './utils/tour';
+import { itemInCategory } from './utils/locationSearch';
 
 export const VENTAS_ALLOWED_CATEGORIES: ItemCategory[] = [
   'panol',
@@ -297,15 +298,17 @@ const MainApp: React.FC = () => {
   };
 
   // Sections for Administración & Ventas navigation tabs
+  // Los productos con varias ubicaciones (ej. "A / entrepiso") cuentan en
+  // todas las secciones donde estánubicados.
   const ALL_SECTIONS: { id: ActiveView; label: string; icon: React.FC<{ className?: string }>; count?: number }[] = [
     ...(isGerencia ? [{ id: 'gerencia' as ActiveView, label: 'Administración', icon: ShieldCheck }] : []),
-    { id: 'panol', label: 'Pañol (General)', icon: Warehouse, count: items.filter(i => i.categoria === 'panol').length },
-    { id: 'cajones_fluidos', label: 'Cajones / Fluidos', icon: Droplet, count: items.filter(i => i.categoria === 'cajones_fluidos').length },
-    { id: 'submicronicos', label: 'Submicrónicos', icon: CircleDot, count: items.filter(i => i.categoria === 'submicronicos').length },
-    { id: 'rodamientos', label: 'Rodamientos', icon: Cog, count: items.filter(i => i.categoria === 'rodamientos').length },
-    { id: 'entrepiso', label: 'Entrepiso', icon: Building, count: items.filter(i => i.categoria === 'entrepiso').length },
-    { id: 'repuestos_mv', label: 'Repuestos MV', icon: Sliders, count: items.filter(i => i.categoria === 'repuestos_mv').length },
-    { id: 'cajas', label: 'Cajas Estantes', icon: Box, count: items.filter(i => i.categoria === 'cajas').length },
+    { id: 'panol', label: 'Pañol (General)', icon: Warehouse, count: items.filter(i => itemInCategory(i, 'panol')).length },
+    { id: 'cajones_fluidos', label: 'Cajones / Fluidos', icon: Droplet, count: items.filter(i => itemInCategory(i, 'cajones_fluidos')).length },
+    { id: 'submicronicos', label: 'Submicrónicos', icon: CircleDot, count: items.filter(i => itemInCategory(i, 'submicronicos')).length },
+    { id: 'rodamientos', label: 'Rodamientos', icon: Cog, count: items.filter(i => itemInCategory(i, 'rodamientos')).length },
+    { id: 'entrepiso', label: 'Entrepiso', icon: Building, count: items.filter(i => itemInCategory(i, 'entrepiso')).length },
+    { id: 'repuestos_mv', label: 'Repuestos MV', icon: Sliders, count: items.filter(i => itemInCategory(i, 'repuestos_mv')).length },
+    { id: 'cajas', label: 'Cajas Estantes', icon: Box, count: items.filter(i => itemInCategory(i, 'cajas')).length },
     { id: 'salidas', label: 'Historial Salidas', icon: History, count: salidas.length },
     { id: 'ingresos', label: 'Historial Ingresos', icon: ArrowDownLeft },
     { id: 'devoluciones', label: 'Historial Devoluciones', icon: RotateCcw, count: devolucionGroups.length }
@@ -391,7 +394,7 @@ const MainApp: React.FC = () => {
                                   {item.proveedor}
                                 </span>
                                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#d6ecfa] text-sky-900 font-bold">
-                                  Ubic: {item.ubicacion}
+                                  Ubicación: {item.ubicacion}
                                 </span>
                               </div>
                               <p className="text-xs text-slate-800 font-medium mt-1 line-clamp-2 leading-snug">

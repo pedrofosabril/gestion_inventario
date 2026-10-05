@@ -16,6 +16,7 @@ import { useInventory } from '../context/InventoryContext';
 import { InventoryItem, SalidaRecord, IngresoRecord } from '../types';
 import { CameraBarcodeScanner } from './CameraBarcodeScanner';
 import { formatDisplayDate } from '../utils/dateUtils';
+import { matchesUbicacion } from '../utils/locationSearch';
 
 interface PanoleroSimpleViewProps {
   onOpenScanner: (initialCode?: string, mode?: 'salida' | 'ingreso' | 'devolucion') => void;
@@ -78,7 +79,7 @@ export const PanoleroSimpleView: React.FC<PanoleroSimpleViewProps> = ({
           itemBarcodeLower.includes(cleanTerm) ||
           (cleanTermAlphaNum && itemBarcodeAlphaNum.includes(cleanTermAlphaNum)) ||
           itemDescLower.includes(cleanTerm) ||
-          itemUbicLower.includes(cleanTerm) ||
+          matchesUbicacion(item.ubicacion, cleanTerm) ||
           itemProvLower.includes(cleanTerm) ||
           itemEquivLower.includes(cleanTerm)
         );
@@ -220,21 +221,24 @@ export const PanoleroSimpleView: React.FC<PanoleroSimpleViewProps> = ({
     });
   });
 
-  const handleDeleteMovimiento = (tab: 'salida' | 'entrada' | 'devolucion', codigo: string) => {
+  const handleDeleteMovimiento = (tab: 'salida' | 'entrada' | 'devolucion', codigo: string, revertStock: boolean) => {
     const key = codigo.trim().toLowerCase();
+    const nota = revertStock
+      ? 'se revirtió el stock'
+      : 'el stock quedó como está';
 
     if (tab === 'salida') {
       const recs = salidasPorCodigo.get(key) ?? [];
-      recs.forEach(r => deleteSalida(r.id, true));
-      showToast(`Se eliminar${recs.length === 1 ? 'ó' : 'on'} ${recs.length} salida${recs.length === 1 ? '' : 's'} de ${codigo} y se devolvió el stock al pañol.`);
+      recs.forEach(r => deleteSalida(r.id, revertStock));
+      showToast(`Se eliminar${recs.length === 1 ? 'ó' : 'on'} ${recs.length} salida${recs.length === 1 ? '' : 's'} de ${codigo}: ${nota}.`);
     } else if (tab === 'entrada') {
       const recs = ingresosPorCodigo.get(key) ?? [];
-      recs.forEach(r => deleteIngreso(r.id, true));
-      showToast(`Se eliminar${recs.length === 1 ? 'ó' : 'on'} ${recs.length} entrada${recs.length === 1 ? '' : 's'} de ${codigo} y se descontó su stock.`);
+      recs.forEach(r => deleteIngreso(r.id, revertStock));
+      showToast(`Se eliminar${recs.length === 1 ? 'ó' : 'on'} ${recs.length} entrada${recs.length === 1 ? '' : 's'} de ${codigo}: ${nota}.`);
     } else {
       const refs = devolucionesPorCodigo.get(key) ?? [];
-      refs.forEach(r => deleteDevolucionItem(r.groupId, codigo, true));
-      showToast(`Se quitar${refs.length === 1 ? 'ó' : 'on'} ${refs.length} devolución${refs.length === 1 ? '' : 'es'} de ${codigo} y se descontó su stock.`);
+      refs.forEach(r => deleteDevolucionItem(r.groupId, codigo, revertStock));
+      showToast(`Se quitar${refs.length === 1 ? 'ó' : 'on'} ${refs.length} devolución${refs.length === 1 ? '' : 'es'} de ${codigo}: ${nota}.`);
     }
 
     setPendingDelete(null);
@@ -611,23 +615,36 @@ export const PanoleroSimpleView: React.FC<PanoleroSimpleViewProps> = ({
                           </span>
                           {!isVentas && (
                             confirmando ? (
-                              <span className="flex items-center gap-1.5">
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteMovimiento(movTab, row.codigo)}
-                                  className="px-2.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer"
-                                  title={`Borrar todos los registros de ${row.codigo}`}
-                                >
-                                  <Check className="w-3.5 h-3.5" /> Borrar
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => setPendingDelete(null)}
-                                  className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 cursor-pointer"
-                                  title="Cancelar"
-                                >
-                                  <X className="w-3.5 h-3.5" />
-                                </button>
+                              <span className="flex flex-col gap-1">
+                                <span className="text-[10px] font-bold text-slate-500 whitespace-nowrap">
+                                  ¿Revertir el stock?
+                                </span>
+                                <span className="flex items-center gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteMovimiento(movTab, row.codigo, true)}
+                                    className="px-2.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+                                    title="Borrar el historial y revertir el stock"
+                                  >
+                                    <Check className="w-3.5 h-3.5" /> Revertir stock
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteMovimiento(movTab, row.codigo, false)}
+                                    className="px-2.5 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-800 text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+                                    title="Borrar solo el historial y dejar el stock como está"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" /> Solo borrar
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setPendingDelete(null)}
+                                    className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 cursor-pointer"
+                                    title="Cancelar"
+                                  >
+                                    <X className="w-3.5 h-3.5" />
+                                  </button>
+                                </span>
                               </span>
                             ) : (
                               <button
