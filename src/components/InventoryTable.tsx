@@ -547,7 +547,7 @@ const isPorEncargo = !!item.porEncargo;
                       <td className="px-3 py-2 font-mono font-bold text-sky-950 whitespace-nowrap">
                         <div className="flex items-center gap-1.5 flex-wrap">
                           <span className="text-[#006bb0]">{item.codigo}</span>
-                          {item.codigoBarras && item.codigoBarras.trim() !== '' && (
+                          {!isVentas && item.codigoBarras && item.codigoBarras.trim() !== '' && (
                             <span 
                               className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-mono font-semibold border border-slate-200 flex items-center gap-1 shadow-2xs"
                               title={`Código de barras: ${item.codigoBarras}`}
@@ -682,6 +682,7 @@ const isPorEncargo = !!item.porEncargo;
                           )}
 
                           {/* Barcode scan and link button */}
+                          {!isVentas && (
                           <button
                             onClick={() => onOpenBarcode(item)}
                             className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
@@ -697,6 +698,7 @@ const isPorEncargo = !!item.porEncargo;
                           >
                             <Barcode className="w-3.5 h-3.5" />
                           </button>
+                          )}
 
                           {/* Edit (Restricted: Pañol & Administración only) */}
                           {!isVentas && (
@@ -784,7 +786,7 @@ const isPorEncargo = !!item.porEncargo;
                             {item.categoria === 'panol' ? 'Pañol' : item.categoria.replace('_', ' ')}
                           </span>
                         )}
-                        {item.codigoBarras && (
+                        {!isVentas && item.codigoBarras && (
                           <span className="text-[9px] px-1.5 py-0.2 rounded bg-slate-100 text-slate-700 font-mono font-semibold border border-slate-200 flex items-center gap-1">
                             <Barcode className="w-3 h-3 text-slate-500" />
                             {item.codigoBarras}
@@ -889,6 +891,7 @@ const isPorEncargo = !!item.porEncargo;
                             Salida
                           </button>
                         )}
+                        {!isVentas && (
                         <button
                           onClick={() => onOpenBarcode(item)}
                           className={`p-2 rounded-xl border cursor-pointer ${
@@ -900,6 +903,7 @@ const isPorEncargo = !!item.porEncargo;
                         >
                           <Barcode className="w-3.5 h-3.5" />
                         </button>
+                        )}
                         {!isVentas && (
                           <button
                             onClick={() => handleStartInlineEdit(item)}

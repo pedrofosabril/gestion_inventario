@@ -248,6 +248,7 @@ const MainApp: React.FC = () => {
   };
 
   const handleOpenBarcode = (item: InventoryItem) => {
+    if (isVentas) return;
     setBarcodeItem(item);
     setIsBarcodeOpen(true);
   };
@@ -384,7 +385,7 @@ const MainApp: React.FC = () => {
                             <div className="min-w-0 flex-1 pr-3">
                               <div className="flex items-center gap-2 flex-wrap">
                                 <span className="font-mono font-bold text-xs text-[#006bb0] group-hover:underline">{item.codigo}</span>
-                                {item.codigoBarras && item.codigoBarras.trim() !== '' && (
+                                {!isVentas && item.codigoBarras && item.codigoBarras.trim() !== '' && (
                                   <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-mono font-semibold border border-slate-200 flex items-center gap-1 shadow-2xs">
                                     <Barcode className="w-3 h-3 text-slate-500" />
                                     {item.codigoBarras}
@@ -550,7 +551,7 @@ const MainApp: React.FC = () => {
                       <div className="min-w-0 flex-1 pr-2">
                         <div className="flex items-center gap-1.5 flex-wrap">
                           <span className="font-mono font-bold text-[#006bb0]">{item.codigo}</span>
-                          {item.codigoBarras && item.codigoBarras.trim() !== '' && (
+                          {!isVentas && item.codigoBarras && item.codigoBarras.trim() !== '' && (
                             <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-100 text-slate-700 font-mono font-semibold border border-slate-200 flex items-center gap-1">
                               <Barcode className="w-3 h-3 text-slate-500" />
                               {item.codigoBarras}
@@ -885,6 +886,7 @@ const MainApp: React.FC = () => {
         defaultMode={scannerDefaultMode}
       />
 
+      {!isVentas && (
       <BarcodeGeneratorModal
         isOpen={isBarcodeOpen}
         onClose={() => {
@@ -893,6 +895,7 @@ const MainApp: React.FC = () => {
         }}
         item={barcodeItem}
       />
+      )}
 
       <ProductDetailModal
         isOpen={isDetailModalOpen}

@@ -1614,6 +1614,9 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             notas: existing.notas ?? newItem.notas,
             codigoBarras: existing.codigoBarras ?? newItem.codigoBarras,
             porEncargo: existing.porEncargo ?? newItem.porEncargo,
+            // Si la hoja no trae columna de p/servicio, el valor llega como undefined:
+            // se conserva el stock de servicio ya cargado en lugar de dejarlo en 0.
+            paraServicio: newItem.paraServicio ?? existing.paraServicio,
             precioTotal: newItem.stock * newItem.precio
           });
           updated++;

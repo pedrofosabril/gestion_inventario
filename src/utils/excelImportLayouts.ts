@@ -195,15 +195,23 @@ const firstValue = (row: unknown[], start: number, end: number) => {
  * arrancan en 0 dentro de la fila) a las claves canónicas que usa el importador.
  */
 function mapProductRow(row: unknown[], block: Block): Record<string, unknown> | null {
-  const get = (tokens: string[]): unknown => {
-    for (let i = 0; i < block.headers.length; i++) {
-      const nh = norm(block.headers[i]);
-      if (tokens.some(t => nh === t || nh.startsWith(t))) {
+  const findHeader = (tokens: string[]): number => {
+    // Primero se buscan coincidencias exactas y después las parciales, para que una
+    // columna como "CANT PS" no se tome como el stock normal por empezar con "CANT".
+    for (const exact of [true, false]) {
+      for (let i = 0; i < block.headers.length; i++) {
+        const nh = norm(block.headers[i]);
+        const hit = tokens.some(t => (exact ? nh === t : nh.startsWith(t)));
+        if (!hit) continue;
         const v = row[i];
-        if (v !== null && v !== undefined && String(v).trim() !== '') return v;
+        if (v !== null && v !== undefined && String(v).trim() !== '') return i;
       }
     }
-    return undefined;
+    return -1;
+  };
+  const get = (tokens: string[]): unknown => {
+    const i = findHeader(tokens);
+    return i === -1 ? undefined : row[i];
   };
 
   if (block.tipoColumn) {
@@ -371,8 +379,11 @@ export function parseSheet(sheetName: string, dataRows: unknown[][]): SheetLayou
         : kind === 'ingresos' ? mapIngresoRow(fila, block)
         : mapProductRow(fila, block);
       if (!mapped) continue;
+      // En productos la clave incluye el proveedor: el mismo código puede venir
+      // como variante de venta y como P/SERVICIO, y ambas filas deben sobrevivir
+      // para que después se sumen en el stock normal y el de servicio.
       const dedupeKey = kind === 'productos'
-        ? `p:${String(mapped.codigo).toLowerCase()}`
+        ? `p:${String(mapped.codigo).toLowerCase()}|${norm(mapped.proveedor)}`
         : `${kind[0]}:${mapped.codigo}|${mapped.fechaSalida ?? mapped.fechaIngreso}|${mapped.cantidad}|${mapped.nroRemito ?? mapped.factura ?? ''}|${mapped.cliente ?? mapped.proveedor ?? ''}`;
       if (seen.has(dedupeKey)) continue;
       seen.add(dedupeKey);

@@ -427,7 +427,7 @@ export const PanoleroSimpleView: React.FC<PanoleroSimpleViewProps> = ({
                         <span className="font-mono font-black text-xs sm:text-sm text-[#006bb0] bg-sky-100 px-2.5 py-1 rounded-lg border border-sky-200">
                           CÓDIGO: {item.codigo || 'S/C'}
                         </span>
-                        {item.codigoBarras && (
+                        {!isVentas && item.codigoBarras && (
                           <span className="font-mono font-bold text-xs text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-lg border border-indigo-200 flex items-center gap-1">
                             <Barcode className="w-3.5 h-3.5" />
                             {item.codigoBarras}
