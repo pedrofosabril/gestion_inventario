@@ -391,7 +391,7 @@ const MainApp: React.FC = () => {
                                   {item.proveedor}
                                 </span>
                                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#d6ecfa] text-sky-900 font-bold">
-                                  Ubic: {item.ubicacion}
+                                  Ubicación: {item.ubicacion}
                                 </span>
                               </div>
                               <p className="text-xs text-slate-800 font-medium mt-1 line-clamp-2 leading-snug">
