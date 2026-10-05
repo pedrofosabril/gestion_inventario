@@ -280,7 +280,8 @@ export const SalidaReceiptModal: React.FC<SalidaReceiptModalProps> = ({
                       <tr>
                         <th className="py-2.5 px-3">Código</th>
                         <th className="py-2.5 px-3">Descripción de la Pieza</th>
-                        <th className="py-2.5 px-2 text-center">Ubic.</th>
+                        <th className="py-2.5 px-2 text-center">Ubicación</th>
+                        <th className="py-2.5 px-2 text-center">Fecha</th>
                         <th className="py-2.5 px-3 text-center">Cant. Retirada</th>
                         <th className="py-2.5 px-3 text-center">Stock Restante</th>
                       </tr>
@@ -302,6 +303,9 @@ export const SalidaReceiptModal: React.FC<SalidaReceiptModalProps> = ({
                               {item.ubicacion || 'A'}
                             </span>
                           </td>
+                          <td className="py-2.5 px-2 text-center font-mono text-slate-600 whitespace-nowrap">
+                            {formatDisplayDate(salidaGroup.fechaSalida)}
+                          </td>
                           <td className="py-2.5 px-3 text-center">
                             <span className="font-mono font-black text-sm px-2.5 py-0.5 rounded-md bg-sky-100 text-sky-900 border border-sky-200">
                               {item.cantidad} u.
@@ -315,7 +319,7 @@ export const SalidaReceiptModal: React.FC<SalidaReceiptModalProps> = ({
                     </tbody>
                     <tfoot className="bg-[#eaf4fb] border-t-2 border-[#badbf5] font-bold">
                       <tr>
-                        <td colSpan={3} className="py-3 px-3 text-right uppercase text-[11px] text-slate-600">
+                        <td colSpan={4} className="py-3 px-3 text-right uppercase text-[11px] text-slate-600">
                           Total Despachado:
                         </td>
                         <td className="py-3 px-3 text-center font-mono text-sm font-black text-sky-950">
