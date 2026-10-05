@@ -73,9 +73,9 @@ export const DevolucionReceiptModal: React.FC<DevolucionReceiptModalProps> = ({
     }
   };
 
-  const handleDelete = () => {
+  const handleDelete = (revertStock: boolean) => {
     if (!currentDevolucionGroup) return;
-    deleteDevolucionGroup(currentDevolucionGroup.id, true);
+    deleteDevolucionGroup(currentDevolucionGroup.id, revertStock);
     setConfirmDelete(false);
     onDeleted?.();
     onClose();
@@ -204,7 +204,7 @@ export const DevolucionReceiptModal: React.FC<DevolucionReceiptModalProps> = ({
               <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">Artículos Devueltos</span>
               <span className="text-xs font-semibold text-slate-500">{currentDevolucionGroup.items.length} ítems en lote</span>
             </div>
-            <div className="divide-y divide-slate-100 overflow-x-auto">
+            <div className="divide-y divide-slate-100 overflow-x-auto table-scrollbar">
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
                   <tr className="bg-slate-100/60 text-slate-500 font-bold border-b border-slate-200">
@@ -319,7 +319,7 @@ export const DevolucionReceiptModal: React.FC<DevolucionReceiptModalProps> = ({
             <div className="bg-rose-50 border border-rose-200 p-4 rounded-2xl flex items-center justify-between gap-3 animate-in fade-in">
               <div className="flex items-center gap-2.5 text-rose-800 text-xs">
                 <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0" />
-                <span>¿Deseas anular esta devolución? El stock de los productos devueltos se descontará del inventario.</span>
+                <span>¿Anular esta devolución y revertir el stock, o solo borrar el comprobante?</span>
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 <button
@@ -331,10 +331,19 @@ export const DevolucionReceiptModal: React.FC<DevolucionReceiptModalProps> = ({
                 </button>
                 <button
                   type="button"
-                  onClick={handleDelete}
-                  className="px-3 py-1.5 text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white rounded-lg transition-colors cursor-pointer"
+                  onClick={() => handleDelete(false)}
+                  className="px-3 py-1.5 text-xs font-bold bg-slate-700 hover:bg-slate-800 text-white rounded-lg transition-colors cursor-pointer"
+                  title="Borrar solo el comprobante y dejar el stock como está"
                 >
-                  Confirmar anulación
+                  Solo borrar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDelete(true)}
+                  className="px-3 py-1.5 text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white rounded-lg transition-colors cursor-pointer"
+                  title="Anular la devolución y descontar el stock"
+                >
+                  Revertir stock
                 </button>
               </div>
             </div>

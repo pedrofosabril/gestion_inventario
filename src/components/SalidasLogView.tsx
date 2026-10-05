@@ -92,19 +92,29 @@ export const SalidasLogView: React.FC<SalidasLogViewProps> = ({ onOpenScanner })
     showToast(res.message, res.removedGroups > 0 || res.removedSalidas > 0 ? 'success' : 'info');
   };
 
-  const handleConfirmDeleteGroup = (groupId: string) => {
-    const res = deleteSalidaGroup(groupId, true);
+  const handleConfirmDeleteGroup = (groupId: string, revertStock: boolean) => {
+    const res = deleteSalidaGroup(groupId, revertStock);
     setPendingDeleteGroupId(null);
     if (res.success) {
-      showToast(`${res.message} (Stock reincorporado al pañol)`, 'success');
+      showToast(
+        revertStock
+          ? `${res.message} (Stock reincorporado al pañol)`
+          : `${res.message} (Stock sin cambios)`,
+        'success'
+      );
     }
   };
 
-  const handleConfirmDeleteSalida = (salidaId: string) => {
-    const res = deleteSalida(salidaId, true);
+  const handleConfirmDeleteSalida = (salidaId: string, revertStock: boolean) => {
+    const res = deleteSalida(salidaId, revertStock);
     setPendingDeleteSalidaId(null);
     if (res.success) {
-      showToast(`${res.message} (Stock reincorporado al pañol)`, 'success');
+      showToast(
+        revertStock
+          ? `${res.message} (Stock reincorporado al pañol)`
+          : `${res.message} (Stock sin cambios)`,
+        'success'
+      );
     }
   };
 
@@ -431,22 +441,33 @@ export const SalidasLogView: React.FC<SalidasLogViewProps> = ({ onOpenScanner })
                     {/* Delete / Duplicate Remover Button */}
                     {!isVentas && (
                       pendingDeleteGroupId === group.id ? (
-                        <div className="flex items-center gap-1 bg-rose-50 border border-rose-300 rounded-xl p-1 animate-in fade-in">
-                          <button
-                            type="button"
-                            onClick={() => handleConfirmDeleteGroup(group.id)}
-                            className="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-bold text-xs cursor-pointer shadow-2xs"
-                            title="Confirmar eliminación y devolver piezas al inventario"
-                          >
-                            Confirmar Borrado
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setPendingDeleteGroupId(null)}
-                            className="px-2 py-1 bg-white hover:bg-slate-100 text-slate-700 rounded-lg text-xs font-semibold border border-slate-300 cursor-pointer"
-                          >
-                            Cancelar
-                          </button>
+                        <div className="flex flex-col items-end gap-1 bg-rose-50 border border-rose-300 rounded-xl p-1.5 animate-in fade-in">
+                          <span className="text-[10px] font-bold text-slate-500">¿Revertir el stock?</span>
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => handleConfirmDeleteGroup(group.id, true)}
+                              className="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-bold text-xs cursor-pointer shadow-2xs flex items-center gap-1"
+                              title="Eliminar y devolver las piezas al inventario"
+                            >
+                              Revertir stock
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleConfirmDeleteGroup(group.id, false)}
+                              className="px-2.5 py-1 bg-slate-700 hover:bg-slate-800 text-white rounded-lg font-bold text-xs cursor-pointer shadow-2xs"
+                              title="Eliminar solo el historial y dejar el stock como está"
+                            >
+                              Solo borrar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setPendingDeleteGroupId(null)}
+                              className="px-2 py-1 bg-white hover:bg-slate-100 text-slate-700 rounded-lg text-xs font-semibold border border-slate-300 cursor-pointer"
+                            >
+                              Cancelar
+                            </button>
+                          </div>
                         </div>
                       ) : (
                         <button
@@ -486,8 +507,8 @@ export const SalidasLogView: React.FC<SalidasLogViewProps> = ({ onOpenScanner })
                 </div>
 
                 {/* Group Items Table */}
-                <div className="p-4 overflow-x-auto bg-white">
-                  <table className="w-full text-left text-xs border-collapse">
+                <div className="p-4 overflow-x-auto bg-white table-scrollbar">
+                  <table className="w-full min-w-[560px] text-left text-xs border-collapse">
                     <thead className="text-[10px] font-bold text-sky-950 uppercase tracking-wider bg-[#eaf4fb]">
                       <tr>
                         <th className="py-2 px-3">Código</th>
@@ -559,8 +580,8 @@ export const SalidasLogView: React.FC<SalidasLogViewProps> = ({ onOpenScanner })
 
         /* Individual Items Table View */
         <div className="bg-[#f8fcfe] rounded-2xl border border-[#c4e1f7] shadow-xs overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs border-collapse divide-y divide-[#cce4f8]">
+          <div className="overflow-x-auto table-scrollbar">
+            <table className="w-full min-w-[1100px] text-left text-xs border-collapse divide-y divide-[#cce4f8]">
               <thead className="bg-[#dbeefa] text-sky-950 font-bold tracking-wider">
                 <tr>
                   <th className="px-4 py-3 whitespace-nowrap">GRUPO / SALIDA</th>
@@ -644,21 +665,33 @@ export const SalidasLogView: React.FC<SalidasLogViewProps> = ({ onOpenScanner })
                       {!isVentas && (
                         <td className="px-4 py-3 text-center whitespace-nowrap">
                           {pendingDeleteSalidaId === salida.id ? (
-                            <div className="flex items-center justify-center gap-1">
-                              <button
-                                type="button"
-                                onClick={() => handleConfirmDeleteSalida(salida.id)}
-                                className="px-2 py-0.5 bg-rose-600 hover:bg-rose-700 text-white rounded text-[10px] font-bold cursor-pointer"
-                              >
-                                Borrar
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setPendingDeleteSalidaId(null)}
-                                className="px-1.5 py-0.5 bg-slate-200 text-slate-700 rounded text-[10px] font-medium cursor-pointer"
-                              >
-                                ✕
-                              </button>
+                            <div className="flex flex-col items-center gap-1">
+                              <span className="text-[10px] font-bold text-slate-500">¿Revertir stock?</span>
+                              <div className="flex items-center justify-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => handleConfirmDeleteSalida(salida.id, true)}
+                                  className="px-2 py-0.5 bg-rose-600 hover:bg-rose-700 text-white rounded text-[10px] font-bold cursor-pointer"
+                                  title="Borrar y devolver el stock al pañol"
+                                >
+                                  Revertir stock
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleConfirmDeleteSalida(salida.id, false)}
+                                  className="px-2 py-0.5 bg-slate-700 hover:bg-slate-800 text-white rounded text-[10px] font-bold cursor-pointer"
+                                  title="Borrar solo el historial y dejar el stock como está"
+                                >
+                                  Solo borrar
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setPendingDeleteSalidaId(null)}
+                                  className="px-1.5 py-0.5 bg-slate-200 text-slate-700 rounded text-[10px] font-medium cursor-pointer"
+                                >
+                                  ✕
+                                </button>
+                              </div>
                             </div>
                           ) : (
                             <button

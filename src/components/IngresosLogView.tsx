@@ -41,10 +41,17 @@ export const IngresosLogView: React.FC<IngresosLogViewProps> = ({ onOpenScanner 
     setTimeout(() => setToastMessage(null), 4500);
   };
 
-  const handleConfirmDelete = (ingresoId: string) => {
-    const res = deleteIngreso(ingresoId, true);
+  const handleConfirmDelete = (ingresoId: string, revertStock: boolean) => {
+    const res = deleteIngreso(ingresoId, revertStock);
     setPendingDeleteId(null);
-    if (res.success) showToast(`${res.message} (Stock descontado del pañol)`, 'success');
+    if (res.success) {
+      showToast(
+        revertStock
+          ? `${res.message} (Stock descontado del pañol)`
+          : `${res.message} (Stock sin cambios)`,
+        'success'
+      );
+    }
   };
 
   // Reception form state
@@ -222,8 +229,8 @@ export const IngresosLogView: React.FC<IngresosLogViewProps> = ({ onOpenScanner 
 
       {/* Ingresos Log Table */}
       <div className="bg-[#f8fcfe] rounded-2xl border border-[#c4e1f7] shadow-xs overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs border-collapse divide-y divide-[#cce4f8]">
+        <div className="overflow-x-auto table-scrollbar">
+          <table className="w-full min-w-[1000px] text-left text-xs border-collapse divide-y divide-[#cce4f8]">
             <thead className="bg-[#dbeefa] text-sky-950 font-bold tracking-wider">
               <tr>
                 <th className="px-4 py-3 whitespace-nowrap">Nº FACTURA / REMITO</th>
@@ -287,23 +294,34 @@ export const IngresosLogView: React.FC<IngresosLogViewProps> = ({ onOpenScanner 
                     {!isVentas && (
                       <td className="px-4 py-3 text-center whitespace-nowrap">
                         {pendingDeleteId === ingreso.id ? (
-                          <div className="flex items-center justify-center gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => handleConfirmDelete(ingreso.id)}
-                              className="px-2.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer"
-                              title="Confirmar borrado"
-                            >
-                              <Check className="w-3.5 h-3.5" /> Borrar
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setPendingDeleteId(null)}
-                              className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 cursor-pointer"
-                              title="Cancelar"
-                            >
-                              <X className="w-3.5 h-3.5" />
-                            </button>
+                          <div className="flex flex-col items-center gap-1">
+                            <span className="text-[10px] font-bold text-slate-500">¿Revertir el stock?</span>
+                            <div className="flex items-center justify-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => handleConfirmDelete(ingreso.id, true)}
+                                className="px-2.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+                                title="Borrar el historial y descontar el stock del pañol"
+                              >
+                                <Check className="w-3.5 h-3.5" /> Revertir stock
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleConfirmDelete(ingreso.id, false)}
+                                className="px-2.5 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-800 text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+                                title="Borrar solo el historial y dejar el stock como está"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" /> Solo borrar
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setPendingDeleteId(null)}
+                                className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 cursor-pointer"
+                                title="Cancelar"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
                           </div>
                         ) : (
                           <button

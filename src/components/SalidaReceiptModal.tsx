@@ -67,9 +67,9 @@ export const SalidaReceiptModal: React.FC<SalidaReceiptModalProps> = ({
     }
   };
 
-  const handleDelete = () => {
+  const handleDelete = (revertStock: boolean) => {
     if (!currentSalidaGroup) return;
-    deleteSalidaGroup(currentSalidaGroup.id, true);
+    deleteSalidaGroup(currentSalidaGroup.id, revertStock);
     setConfirmDelete(false);
     onClose();
     if (onDeleted) onDeleted();
@@ -430,15 +430,24 @@ export const SalidaReceiptModal: React.FC<SalidaReceiptModalProps> = ({
                   <span>Borrar / Anular Salida</span>
                 </button>
               ) : (
-                <div className="flex items-center gap-1.5 bg-rose-50 border border-rose-300 rounded-xl p-1.5 text-xs animate-in fade-in">
+                <div className="flex items-center gap-1.5 bg-rose-50 border border-rose-300 rounded-xl p-1.5 text-xs animate-in fade-in flex-wrap">
                   <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 ml-1" />
                   <span className="text-rose-900 font-bold text-[11px] px-1">¿Borrar y devolver stock?</span>
                   <button
                     type="button"
-                    onClick={handleDelete}
+                    onClick={() => handleDelete(true)}
                     className="px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs cursor-pointer shadow-2xs"
+                    title="Borrar la salida y reintegrar el stock al inventario"
                   >
-                    Sí, Borrar
+                    Sí, devolver stock
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDelete(false)}
+                    className="px-2.5 py-1 rounded-lg bg-slate-700 hover:bg-slate-800 text-white font-bold text-xs cursor-pointer shadow-2xs"
+                    title="Borrar solo el comprobante y dejar el stock como está"
+                  >
+                    Solo borrar
                   </button>
                   <button
                     type="button"
