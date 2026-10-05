@@ -40,3 +40,38 @@ export function matchesUbicacion(ubicacion: string | undefined, query: string): 
     u => u.toLowerCase() === q || u.toLowerCase().includes(q)
   );
 }
+
+/**
+ * Un producto con varias ubicaciones pertenece a más de una sección.
+ * Ej: un ítem con ubicación "A / entrepiso" está en el Pañol (es su
+ * categoría) pero además se lo tiene que encontrar en la sección Entrepiso.
+ */
+const CATEGORY_UBIC_ALIASES: Record<string, string[]> = {
+  panol: ['panol', 'pañol'],
+  entrepiso: ['entrepiso', 'entre piso', 'entrepiso_panol'],
+  submicronicos: ['submicronico', 'submicronicos'],
+  cajones_fluidos: ['cajon', 'cajones', 'fluido', 'fluidos', 'aceite'],
+  rodamientos: ['rodamiento', 'rodamientos', 'skf', 'timken'],
+  repuestos_mv: ['mv', 'repuesto mv', 'repuestos mv'],
+  cajas: ['caja', 'cajas'],
+};
+
+export function matchesCategoryByUbicacion(
+  ubicacion: string | undefined,
+  category: string
+): boolean {
+  const aliases = CATEGORY_UBIC_ALIASES[category];
+  if (!aliases) return false;
+  const tokens = splitUbicaciones(ubicacion).map(u => u.toLowerCase());
+  return tokens.some(t => aliases.some(a => t === a || t.includes(a)));
+}
+
+/** ¿El producto pertenece a la sección indicada (por categoría o por ubicación)? */
+export function itemInCategory(
+  item: { categoria?: string; ubicacion?: string | null },
+  category: string
+): boolean {
+  if (category === 'all') return true;
+  if (item.categoria === category) return true;
+  return matchesCategoryByUbicacion(item.ubicacion, category);
+}

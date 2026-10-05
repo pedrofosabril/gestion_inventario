@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { useInventory } from '../context/InventoryContext';
 import { ItemCategory, InventoryItem } from '../types';
-import { collectUbicaciones, matchesUbicacion, splitUbicaciones } from '../utils/locationSearch';
+import { collectUbicaciones, itemInCategory, matchesUbicacion, splitUbicaciones } from '../utils/locationSearch';
 import { AddProductModal } from './AddProductModal';
 import { EditProductModal } from './EditProductModal';
 
@@ -153,7 +153,7 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({
       return false;
     }
 
-    if (selectedCategory !== 'all' && item.categoria !== selectedCategory) {
+    if (selectedCategory !== 'all' && !itemInCategory(item, selectedCategory)) {
       return false;
     }
     
@@ -210,7 +210,7 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({
 
   // Unique ubicaciones in this category (split multi-location items like "A / entrepiso")
   const availableUbicaciones = collectUbicaciones(
-    items.filter(i => selectedCategory === 'all' || i.categoria === selectedCategory)
+    items.filter(i => itemInCategory(i, selectedCategory))
   );
 
   if (isVentas && category !== 'all' && !VENTAS_ALLOWED.includes(category)) {
@@ -247,14 +247,14 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({
 
   const getSubCategoryCount = (sub: string) => {
     return items.filter(item => {
-      if (selectedCategory !== 'all' && item.categoria !== selectedCategory) return false;
+      if (!itemInCategory(item, selectedCategory)) return false;
       const matchSub = item.subcategoria && item.subcategoria.toUpperCase() === sub.toUpperCase();
       const matchProv = item.proveedor && item.proveedor.toUpperCase() === sub.toUpperCase();
-      const matchUbic = item.ubicacion && item.ubicacion.toUpperCase() === sub.toUpperCase();
+      const matchUbic = item.ubicacion && splitUbicaciones(item.ubicacion).some(u => u.toUpperCase() === sub.toUpperCase());
       return matchSub || matchProv || matchUbic;
     }).length;
   };
-  const allSubCategoryCount = items.filter(item => selectedCategory === 'all' || item.categoria === selectedCategory).length;
+  const allSubCategoryCount = items.filter(item => itemInCategory(item, selectedCategory)).length;
 
   return (
     <div className="flex flex-col gap-3.5 animate-in fade-in duration-200 w-full">

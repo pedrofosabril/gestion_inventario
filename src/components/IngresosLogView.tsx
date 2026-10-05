@@ -228,16 +228,26 @@ export const IngresosLogView: React.FC<IngresosLogViewProps> = ({ onOpenScanner 
       {/* Ingresos Log Table */}
       <div className="bg-[#f8fcfe] rounded-2xl border border-[#c4e1f7] shadow-xs overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full table-fixed text-left text-[11px] border-collapse divide-y divide-[#cce4f8]">
-<thead className="bg-[#dbeefa] text-sky-950 font-bold">
+<table className="w-full table-fixed text-left text-[11px] border-collapse divide-y divide-[#cce4f8]">
+              <colgroup>
+                <col style={{ width: '13%' }} />
+                <col style={{ width: '12%' }} />
+                <col style={{ width: '16%' }} />
+                <col />
+                <col style={{ width: '12%' }} />
+                <col style={{ width: '11%' }} />
+                <col style={{ width: '8%' }} />
+                {!isVentas && <col style={{ width: '8%' }} />}
+              </colgroup>
+              <thead className="bg-[#dbeefa] text-sky-950 font-bold">
                 <tr>
                   <th className="px-2 py-3">FACTURA / REMITO</th>
                   <th className="px-2 py-3">CÓDIGO</th>
                   <th className="px-2 py-3">PROVEEDOR</th>
                   <th className="px-2 py-3">DESCRIPCIÓN</th>
-                  <th className="px-2 py-3">FECHA INGRESO</th>
+                  <th className="px-2 py-3 whitespace-nowrap">FECHA INGRESO</th>
                   <th className="px-2 py-3 text-center">UBICACIÓN</th>
-                  <th className="px-2 py-3 text-right">CANTIDAD</th>
+                  <th className="px-2 py-3 text-right whitespace-nowrap">CANTIDAD</th>
                   {!isVentas && <th className="px-2 py-3 text-center">ACCIONES</th>}
                 </tr>
               </thead>
