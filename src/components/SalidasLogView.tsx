@@ -32,9 +32,13 @@ import { matchesUbicacion } from '../utils/locationSearch';
 
 interface SalidasLogViewProps {
   onOpenScanner: (code?: string) => void;
+  /** Versión para el perfil de pañol: sin banner de título (la pestaña de arriba
+   *  ya identifica el movimiento) y sin acciones duplicadas con los botones
+   *  grandes de la pantalla principal. */
+  paraPanol?: boolean;
 }
 
-export const SalidasLogView: React.FC<SalidasLogViewProps> = ({ onOpenScanner }) => {
+export const SalidasLogView: React.FC<SalidasLogViewProps> = ({ onOpenScanner, paraPanol }) => {
   const { 
     salidas, 
     salidaGroups, 
@@ -229,18 +233,20 @@ export const SalidasLogView: React.FC<SalidasLogViewProps> = ({ onOpenScanner })
 
       {/* Header Banner */}
       <div className="bg-[#f4f9fd] rounded-2xl p-5 border border-[#c4e1f7] shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <div className="w-9 h-9 rounded-xl bg-orange-100 text-orange-600 flex items-center justify-center border border-orange-200">
-              <ArrowUpRight className="w-5 h-5" />
-            </div>
-            <div>
-              <h1 className="text-xl font-extrabold text-sky-950 tracking-tight">
-                Registro de Salidas y Despachos
-              </h1>
+        {!paraPanol && (
+          <div>
+            <div className="flex items-center gap-2">
+              <div className="w-9 h-9 rounded-xl bg-orange-100 text-orange-600 flex items-center justify-center border border-orange-200">
+                <ArrowUpRight className="w-5 h-5" />
+              </div>
+              <div>
+                <h1 className="text-xl font-extrabold text-sky-950 tracking-tight">
+                  Registro de Salidas y Despachos
+                </h1>
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         <div className="flex flex-wrap items-center gap-2">
           {/* View Mode Toggle */}

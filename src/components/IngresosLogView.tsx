@@ -23,9 +23,13 @@ import { matchesUbicacion } from '../utils/locationSearch';
 
 interface IngresosLogViewProps {
   onOpenScanner?: (code?: string, mode?: 'salida' | 'ingreso') => void;
+  /** Versión para el perfil de pañol: sin banner de título (la pestaña de arriba
+   *  ya identifica el movimiento) y sin acciones duplicadas con los botones
+   *  grandes de la pantalla principal. */
+  paraPanol?: boolean;
 }
 
-export const IngresosLogView: React.FC<IngresosLogViewProps> = ({ onOpenScanner }) => {
+export const IngresosLogView: React.FC<IngresosLogViewProps> = ({ onOpenScanner, paraPanol }) => {
   const { ingresos, registerIngreso, exportCategoryToExcel, deleteIngreso, currentUser } = useInventory();
   
   const [searchTerm, setSearchTerm] = useState<string>('');
@@ -129,37 +133,44 @@ export const IngresosLogView: React.FC<IngresosLogViewProps> = ({ onOpenScanner 
       
       {/* Header Banner */}
       <div className="bg-[#f4f9fd] rounded-2xl p-5 border border-[#c4e1f7] shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center border border-emerald-200">
-              <ArrowDownLeft className="w-5 h-5" />
-            </div>
-            <div>
-              <h1 className="text-xl font-extrabold text-sky-950 tracking-tight">
-                Recepción de Mercadería e Ingresos
-              </h1>
+        {!paraPanol && (
+          <div>
+            <div className="flex items-center gap-2">
+              <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center border border-emerald-200">
+                <ArrowDownLeft className="w-5 h-5" />
+              </div>
+              <div>
+                <h1 className="text-xl font-extrabold text-sky-950 tracking-tight">
+                  Recepción de Mercadería e Ingresos
+                </h1>
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         <div className="flex flex-wrap items-center gap-2">
-          {onOpenScanner && (
-            <button
-              onClick={() => onOpenScanner(undefined, 'ingreso')}
-              className="px-4 py-2 bg-[#0080D0] hover:bg-[#0070b8] text-white text-xs font-bold rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
-            >
-              <Scan className="w-4 h-4" />
-              Escanear para Sumar Stock
-            </button>
+          {/* En el pañol ya están los botones grandes de Entrada arriba */}
+          {!paraPanol && (
+            <>
+              {onOpenScanner && (
+                <button
+                  onClick={() => onOpenScanner(undefined, 'ingreso')}
+                  className="px-4 py-2 bg-[#0080D0] hover:bg-[#0070b8] text-white text-xs font-bold rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Scan className="w-4 h-4" />
+                  Escanear para Sumar Stock
+                </button>
+              )}
+
+              <button
+                onClick={() => setIsReceivingModalOpen(true)}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+              >
+                <PackagePlus className="w-4 h-4" />
+                Registrar Manualmente
+              </button>
+            </>
           )}
-          
-          <button
-            onClick={() => setIsReceivingModalOpen(true)}
-            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
-          >
-            <PackagePlus className="w-4 h-4" />
-            Registrar Manualmente
-          </button>
           
           <button
             onClick={() => exportCategoryToExcel('ingresos')}
