@@ -1,3 +1,6 @@
+/** De qué stock se descuenta una salida: stock normal/venta o stock P/SERVICIO. */
+export type SalidaStockOrigen = 'normal' | 'servicio';
+
 export type ItemCategory = 
   | 'panol'
   | 'cajones_fluidos'
@@ -43,6 +46,7 @@ export interface SalidaItemEntry {
   precioUnitario: number;
   precioTotal: number;
   categoria?: ItemCategory;
+  origenStock?: SalidaStockOrigen;
 }
 
 export interface SalidaGroupRecord {
@@ -113,6 +117,7 @@ export interface SalidaRecord {
   cantidad: number;
   precioUnitario?: number;
   categoria?: ItemCategory;
+  origenStock?: SalidaStockOrigen;
   esTaller?: boolean;
   esRemitoInterno?: boolean;
   esDevuelto?: boolean;

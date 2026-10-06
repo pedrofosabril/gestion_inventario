@@ -249,7 +249,7 @@ export const SalidaReceiptModal: React.FC<SalidaReceiptModalProps> = ({
           {(() => {
             const consolidatedItems: SalidaItemEntry[] = Array.from(
               (salidaGroup.items || []).reduce((map, item) => {
-                const k = (item.codigo || '').trim().toLowerCase();
+                const k = `${(item.codigo || '').trim().toLowerCase()}\u0000${item.origenStock || ''}`;
                 if (!k) return map;
                 if (map.has(k)) {
                   const existing = map.get(k)!;
@@ -291,6 +291,9 @@ export const SalidaReceiptModal: React.FC<SalidaReceiptModalProps> = ({
                         <tr key={item.id || `${item.codigo}-${idx}`} className="hover:bg-[#f4f9fd] transition-colors">
                           <td className="py-2.5 px-3 font-mono font-bold text-[#006bb0] whitespace-nowrap">
                             {item.codigo}
+                            {item.origenStock === 'servicio' && (
+                              <span className="ml-1.5 text-[9px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-200 font-bold">P/SERVICIO</span>
+                            )}
                           </td>
                           <td className="py-2.5 px-3 text-slate-700">
                             <div className="font-semibold text-slate-900">{item.descripcion}</div>

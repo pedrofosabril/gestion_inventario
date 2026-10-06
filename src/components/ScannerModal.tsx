@@ -31,7 +31,7 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { useInventory } from '../context/InventoryContext';
-import { InventoryItem, ItemCategory, SalidaGroupRecord, DevolucionGroupRecord, PARAMETRIZED_OPERATORS, PARAMETRIZED_SUPPLIERS } from '../types';
+import { InventoryItem, ItemCategory, SalidaGroupRecord, DevolucionGroupRecord, SalidaStockOrigen, PARAMETRIZED_OPERATORS, PARAMETRIZED_SUPPLIERS } from '../types';
 import { matchesUbicacion } from '../utils/locationSearch';
 import { SalidaReceiptModal } from './SalidaReceiptModal';
 import { DevolucionReceiptModal } from './DevolucionReceiptModal';
@@ -48,7 +48,17 @@ interface ScannerModalProps {
 interface GroupSalidaDraft {
   item: InventoryItem;
   cantidad: number;
+  origenStock: SalidaStockOrigen;
 }
+
+// Unidades disponibles de un producto según el stock elegido (normal o P/SERVICIO).
+const salidaDisponible = (item: InventoryItem, origen: SalidaStockOrigen): number =>
+  origen === 'servicio' ? (item.paraServicio ?? 0) : item.stock;
+
+const ORIGEN_LABEL: Record<SalidaStockOrigen, string> = {
+  normal: 'Normal',
+  servicio: 'P/SERVICIO'
+};
 
 interface GroupDevolucionDraft {
   item: InventoryItem;
@@ -182,7 +192,15 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
   const [groupSalidaItems, setGroupSalidaItems] = useState<GroupSalidaDraft[]>(() => {
     try {
       const saved = sessionStorage.getItem('verdu_scanner_salida_draft_v1');
-      if (saved) return JSON.parse(saved);
+      if (saved) {
+        const parsed: GroupSalidaDraft[] = JSON.parse(saved);
+        return parsed
+          .filter(g => g && g.item && g.cantidad > 0)
+          .map(g => ({
+            ...g,
+            origenStock: g.origenStock === 'servicio' ? 'servicio' : 'normal'
+          }));
+      }
     } catch {}
     return [];
   });
@@ -419,7 +437,9 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
       return;
     }
 
-    if (foundItem.stock <= 0) {
+    const stockNormal = foundItem.stock;
+    const stockServicio = foundItem.paraServicio ?? 0;
+    if (stockNormal <= 0 && stockServicio <= 0) {
       setErrorMessage(`El producto "${foundItem.codigo} - ${foundItem.descripcion}" no tiene stock disponible (0 u.).`);
       if (soundEnabled) playScannerBeep('warning');
       return;
@@ -429,8 +449,9 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
       const existingIndex = prev.findIndex(g => g.item.codigo.toLowerCase() === foundItem.codigo.toLowerCase());
       if (existingIndex !== -1) {
         const existing = prev[existingIndex];
-        if (existing.cantidad >= foundItem.stock) {
-          setErrorMessage(`Stock máximo alcanzado: en pañol hay ${foundItem.stock} u.`);
+        const cap = salidaDisponible(existing.item, existing.origenStock);
+        if (existing.cantidad >= cap) {
+          setErrorMessage(`No queda más stock ${ORIGEN_LABEL[existing.origenStock]} en ${foundItem.codigo}: ${cap} u. ${existing.origenStock === 'normal' && stockServicio > 0 ? 'Cambiá la opción a P/SERVICIO si querés retirar de ahí.' : ''}`);
           if (soundEnabled) playScannerBeep('warning');
           return prev;
         }
@@ -440,12 +461,17 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
           cantidad: existing.cantidad + 1
         };
         if (soundEnabled) playScannerBeep('scan');
-        setSuccessToast(`+1 u. agregada a ${foundItem.codigo} (Total a retirar: ${existing.cantidad + 1} u.)`);
+        setSuccessToast(`+1 u. agregada a ${foundItem.codigo} (${ORIGEN_LABEL[existing.origenStock]}, total a retirar: ${existing.cantidad + 1} u.)`);
         return updated;
       } else {
+        const origenDefault: SalidaStockOrigen = stockNormal > 0 ? 'normal' : 'servicio';
         if (soundEnabled) playScannerBeep('scan');
-        setSuccessToast(`Producto ${foundItem.codigo} agregado al lote de salida.`);
-        return [{ item: foundItem, cantidad: 1 }, ...prev];
+        setSuccessToast(
+          stockServicio > 0
+            ? `Producto ${foundItem.codigo} agregado. Elegí si se descuenta de stock normal o P/SERVICIO.`
+            : `Producto ${foundItem.codigo} agregado al lote de salida.`
+        );
+        return [{ item: foundItem, cantidad: 1, origenStock: origenDefault }, ...prev];
       }
     });
 
@@ -458,8 +484,25 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
       const updated = [...prev];
       const target = updated[index];
       if (!target) return prev;
-      const clamped = Math.max(1, Math.min(target.item.stock, newQty));
+      const cap = salidaDisponible(target.item, target.origenStock);
+      const clamped = Math.max(1, Math.min(cap, newQty));
       updated[index] = { ...target, cantidad: clamped };
+      return updated;
+    });
+  };
+
+  const handleChangeSalidaOrigen = (index: number, origen: SalidaStockOrigen) => {
+    setGroupSalidaItems(prev => {
+      const updated = [...prev];
+      const target = updated[index];
+      if (!target) return prev;
+      const cap = salidaDisponible(target.item, origen);
+      updated[index] = {
+        ...target,
+        origenStock: origen,
+        cantidad: Math.min(target.cantidad, Math.max(1, cap))
+      };
+      if (soundEnabled) playScannerBeep('scan');
       return updated;
     });
   };
@@ -487,7 +530,8 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
     const payload = {
       items: groupSalidaItems.map(g => ({
         codigo: g.item.codigo,
-        cantidad: g.cantidad
+        cantidad: g.cantidad,
+        origenStock: g.origenStock
       })),
       retira: retira.trim(),
       esRemitoInterno,
@@ -828,23 +872,27 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
   };
 
   // ==================== MANUAL ENTRY HANDLERS ====================
-  const handleManualAddSalidaItem = (item: InventoryItem, qty: number) => {
+  const handleManualAddSalidaItem = (item: InventoryItem, qty: number, origenStock?: SalidaStockOrigen) => {
     setErrorMessage(null);
     setSuccessToast(null);
 
-    if (item.stock <= 0) {
+    const stockNormal = item.stock;
+    const stockServicio = item.paraServicio ?? 0;
+    if (stockNormal <= 0 && stockServicio <= 0) {
       setErrorMessage(`El producto ${item.codigo} no tiene stock disponible.`);
       if (soundEnabled) playScannerBeep('warning');
       return;
     }
+    const origen: SalidaStockOrigen = origenStock ?? (stockNormal > 0 ? 'normal' : 'servicio');
+    const cap = salidaDisponible(item, origen);
 
     setGroupSalidaItems(prev => {
-      const existingIdx = prev.findIndex(g => g.item.id === item.id);
+      const existingIdx = prev.findIndex(g => g.item.id === item.id && g.origenStock === origen);
       if (existingIdx !== -1) {
         const currentQty = prev[existingIdx].cantidad;
         const newQty = currentQty + qty;
-        if (newQty > item.stock) {
-          setErrorMessage(`No puedes retirar más de ${item.stock} unidades de ${item.codigo}.`);
+        if (newQty > cap) {
+          setErrorMessage(`No puedes retirar más de ${cap} unidades de ${item.codigo} de stock ${ORIGEN_LABEL[origen]}.`);
           if (soundEnabled) playScannerBeep('warning');
           return prev;
         }
@@ -855,17 +903,17 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
         };
         return updated;
       } else {
-        if (qty > item.stock) {
-          setErrorMessage(`No puedes retirar más de ${item.stock} unidades de ${item.codigo}.`);
+        if (qty > cap) {
+          setErrorMessage(`No puedes retirar más de ${cap} unidades de ${item.codigo} de stock ${ORIGEN_LABEL[origen]}.`);
           if (soundEnabled) playScannerBeep('warning');
           return prev;
         }
-        return [{ item, cantidad: qty }, ...prev];
+        return [{ item, cantidad: qty, origenStock: origen }, ...prev];
       }
     });
 
     if (soundEnabled) playScannerBeep('scan');
-    setSuccessToast(`Agregado a la salida: ${qty} u. de ${item.codigo}`);
+    setSuccessToast(`Agregado a la salida: ${qty} u. de ${item.codigo} (${ORIGEN_LABEL[origen]})`);
   };
 
   const handleManualAddExistingIngresoItem = (item: InventoryItem, qty: number, precio?: number) => {
@@ -1592,12 +1640,15 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
                     </div>
                   ) : (
                     groupSalidaItems.map((draft, idx) => {
-                      const remainingStock = Math.max(0, draft.item.stock - draft.cantidad);
+                      const capOrigen = salidaDisponible(draft.item, draft.origenStock);
+                      const remainingStock = Math.max(0, capOrigen - draft.cantidad);
                       const subtotal = draft.cantidad * draft.item.precio;
+                      const stockServicio = draft.item.paraServicio ?? 0;
+                      const hasDualStock = stockServicio > 0;
 
                       return (
                         <div 
-                          key={draft.item.id || idx}
+                          key={`${draft.item.id || draft.item.codigo}-${draft.origenStock}`}
                           className="bg-white rounded-xl p-3 border border-[#c4e1f7] shadow-2xs hover:border-[#006bb0] transition-all flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"
                         >
                           <div className="min-w-0 flex-1">
@@ -1611,9 +1662,39 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
                             <p className="text-xs font-medium text-slate-700 line-clamp-1 mt-0.5">{draft.item.descripcion}</p>
                             <div className="flex items-center gap-3 text-[11px] text-slate-500 mt-1">
                               {showPrices && <span>P. Unit: <strong className="font-mono text-slate-700">${draft.item.precio.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</strong></span>}
-                              <span>Stock Pañol: <strong className="text-slate-700">{draft.item.stock} u.</strong></span>
-                              <span className="text-emerald-700 font-bold">Quedarán: {remainingStock} u.</span>
+                              <span>
+                                Stock {hasDualStock ? 'Normal' : 'Pañol'}: <strong className="text-slate-700">{draft.item.stock} u.</strong>
+                              </span>
+                              {hasDualStock && <span>P/SERVICIO: <strong className="text-slate-700">{stockServicio} u.</strong></span>}
+                              <span className="text-emerald-700 font-bold">Quedarán en {ORIGEN_LABEL[draft.origenStock]}: {remainingStock} u.</span>
                             </div>
+                            {hasDualStock && (
+                              <div className="flex items-center gap-1 mt-2">
+                                <span className="text-[10px] text-slate-400 font-bold uppercase">Desde:</span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleChangeSalidaOrigen(idx, 'normal')}
+                                  className={`text-[10px] px-2 py-1 rounded-md font-bold transition-colors cursor-pointer ${
+                                    draft.origenStock === 'normal'
+                                      ? 'bg-[#006bb0] text-white shadow-2xs'
+                                      : 'bg-[#f4f9fd] text-slate-600 border border-[#badbf5] hover:bg-[#e8f4fc]'
+                                  }`}
+                                >
+                                  Normal ({draft.item.stock} u.)
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleChangeSalidaOrigen(idx, 'servicio')}
+                                  className={`text-[10px] px-2 py-1 rounded-md font-bold transition-colors cursor-pointer ${
+                                    draft.origenStock === 'servicio'
+                                      ? 'bg-[#006bb0] text-white shadow-2xs'
+                                      : 'bg-[#f4f9fd] text-slate-600 border border-[#badbf5] hover:bg-[#e8f4fc]'
+                                  }`}
+                                >
+                                  P/SERVICIO ({stockServicio} u.)
+                                </button>
+                              </div>
+                            )}
                           </div>
 
                           <div className="flex items-center gap-3 self-end sm:self-center shrink-0">
@@ -1628,7 +1709,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
                               <input
                                 type="number"
                                 min="1"
-                                max={draft.item.stock}
+                                max={capOrigen}
                                 value={draft.cantidad}
                                 onChange={e => handleUpdateSalidaQty(idx, parseInt(e.target.value) || 1)}
                                 className="w-12 text-center font-mono font-black text-xs text-slate-900 focus:outline-none"
