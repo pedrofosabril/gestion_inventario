@@ -6,7 +6,14 @@ import { formatDisplayDate } from '../utils/dateUtils';
 import { matchesUbicacion } from '../utils/locationSearch';
 import { DevolucionReceiptModal } from './DevolucionReceiptModal';
 
-export const DevolucionesLogView: React.FC = () => {
+interface DevolucionesLogViewProps {
+  /** Versión para el perfil de pañol: sin banner de título (la pestaña de arriba
+   *  ya identifica el movimiento) y sin acciones duplicadas con los botones
+   *  grandes de la pantalla principal. */
+  paraPanol?: boolean;
+}
+
+export const DevolucionesLogView: React.FC<DevolucionesLogViewProps> = ({ paraPanol }) => {
   const { devolucionGroups, deleteDevolucionGroup, currentUser } = useInventory();
   const [searchTerm, setSearchTerm] = useState('');
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
@@ -66,14 +73,16 @@ export const DevolucionesLogView: React.FC = () => {
       )}
 
       <div className="bg-[#f4f9fd] rounded-2xl p-5 border border-[#c4e1f7] shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-        <div className="flex items-center gap-2">
-          <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center border border-amber-200">
-            <RotateCcw className="w-5 h-5" />
+        {!paraPanol && (
+          <div className="flex items-center gap-2">
+            <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center border border-amber-200">
+              <RotateCcw className="w-5 h-5" />
+            </div>
+            <div>
+              <h1 className="text-xl font-extrabold text-sky-950 tracking-tight">Historial de Devoluciones</h1>
+            </div>
           </div>
-          <div>
-            <h1 className="text-xl font-extrabold text-sky-950 tracking-tight">Historial de Devoluciones</h1>
-          </div>
-        </div>
+        )}
 
         <button
           type="button"
