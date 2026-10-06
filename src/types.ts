@@ -1,4 +1,4 @@
-/** De qué stock se descuenta una salida: stock normal/venta o stock P/SERVICIO. */
+/** De qué stock se descuenta una salida: stock original/venta o stock P/SERVICIO. */
 export type SalidaStockOrigen = 'normal' | 'servicio';
 
 export type ItemCategory = 

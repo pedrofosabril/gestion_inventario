@@ -195,7 +195,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
             <div className="p-3.5 rounded-2xl bg-white border border-[#c4e1f7] shadow-2xs flex flex-col justify-between">
               <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1">
                 <Boxes className="w-3.5 h-3.5 text-sky-600" />
-                Stock normal
+                Stock original
               </span>
               <div className="mt-1.5 flex items-center justify-between">
                 <span className={`text-lg font-mono font-black ${

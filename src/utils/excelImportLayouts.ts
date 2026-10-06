@@ -197,7 +197,7 @@ const firstValue = (row: unknown[], start: number, end: number) => {
 function mapProductRow(row: unknown[], block: Block): Record<string, unknown> | null {
   const findHeader = (tokens: string[]): number => {
     // Primero se buscan coincidencias exactas y después las parciales, para que una
-    // columna como "CANT PS" no se tome como el stock normal por empezar con "CANT".
+    // columna como "CANT PS" no se tome como el stock original por empezar con "CANT".
     for (const exact of [true, false]) {
       for (let i = 0; i < block.headers.length; i++) {
         const nh = norm(block.headers[i]);
@@ -381,7 +381,7 @@ export function parseSheet(sheetName: string, dataRows: unknown[][]): SheetLayou
       if (!mapped) continue;
       // En productos la clave incluye el proveedor: el mismo código puede venir
       // como variante de venta y como P/SERVICIO, y ambas filas deben sobrevivir
-      // para que después se sumen en el stock normal y el de servicio.
+      // para que después se sumen en el stock original y el de servicio.
       const dedupeKey = kind === 'productos'
         ? `p:${String(mapped.codigo).toLowerCase()}|${norm(mapped.proveedor)}`
         : `${kind[0]}:${mapped.codigo}|${mapped.fechaSalida ?? mapped.fechaIngreso}|${mapped.cantidad}|${mapped.nroRemito ?? mapped.factura ?? ''}|${mapped.cliente ?? mapped.proveedor ?? ''}`;

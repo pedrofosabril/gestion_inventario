@@ -8,7 +8,7 @@ import { isPServicioProveedor } from './barcodeUtils';
  *
  * Para que NO haya duplicados en ninguna parte del sistema, cualquier grupo
  * de ítems con el MISMO código se fusiona en UN solo producto, quedando:
- *   - stock        → Stock normal (suma de filas de venta)
+ *   - stock        → Stock original (suma de filas de venta)
  *   - paraServicio → Stock p/servicio (suma de filas P/SERVICIO + propio)
  *
  * Las filas "cascarón" (solo código, sin ninguna otra información y sin

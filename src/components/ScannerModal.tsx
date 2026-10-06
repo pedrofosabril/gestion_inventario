@@ -468,7 +468,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
         if (soundEnabled) playScannerBeep('scan');
         setSuccessToast(
           stockServicio > 0
-            ? `Producto ${foundItem.codigo} agregado. Elegí si se descuenta de stock normal o P/SERVICIO.`
+            ? `Producto ${foundItem.codigo} agregado. Elegí si se descuenta de stock original o P/SERVICIO.`
             : `Producto ${foundItem.codigo} agregado al lote de salida.`
         );
         return [{ item: foundItem, cantidad: 1, origenStock: origenDefault }, ...prev];
