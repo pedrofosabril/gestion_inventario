@@ -155,13 +155,17 @@ const STORAGE_KEYS = {
   SALIDA_GROUPS: 'verdu_inventory_salida_groups_v18_exact_mv_cajas',
   DEVOLUCION_GROUPS: 'verdu_inventory_devolucion_groups_v1',
   INGRESOS: 'verdu_inventory_ingresos_v18_exact_mv_cajas',
-  USER: 'verdu_inventory_user_v2',
-  USERS: 'verdu_inventory_users_list_v2',
+  USER: 'verdu_inventory_user_v3',
+  USERS: 'verdu_inventory_users_list_v3',
   BACKUP_HISTORY: 'verdu_backup_history_v1'
 };
 
 // Clean legacy cached demo data from previous versions & sanitize any Yaz occurrences
 try {
+  // Remove all accounts and active sessions from the previous storage version.
+  localStorage.removeItem('verdu_inventory_user_v2');
+  localStorage.removeItem('verdu_inventory_users_list_v2');
+
   const legacyPrefixes = [
     'verdu_inventory_items_',
     'verdu_inventory_salidas_',
