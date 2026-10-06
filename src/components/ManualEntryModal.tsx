@@ -197,12 +197,12 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
       return;
     }
     if (salidaQty > salidaCap) {
-      setErrorMsg(`No puedes retirar más de ${salidaCap} unidades de stock ${salidaOrigen === 'servicio' ? 'P/SERVICIO' : 'normal'} de este producto.`);
+      setErrorMsg(`No puedes retirar más de ${salidaCap} unidades de stock ${salidaOrigen === 'servicio' ? 'P/SERVICIO' : 'original'} de este producto.`);
       return;
     }
 
     onAddSalidaItem(selectedItem, salidaQty, salidaOrigen);
-    setSuccessMsg(`✓ Se agregaron ${salidaQty} u. de "${selectedItem.codigo}" a la lista de salida (${salidaOrigen === 'servicio' ? 'P/SERVICIO' : 'normal'}).`);
+    setSuccessMsg(`✓ Se agregaron ${salidaQty} u. de "${selectedItem.codigo}" a la lista de salida (${salidaOrigen === 'servicio' ? 'P/SERVICIO' : 'original'}).`);
     setErrorMsg(null);
     setSelectedItem(null);
     setSearchTerm('');
@@ -576,7 +576,7 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
                                   : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-600'
                               }`}
                             >
-                              Normal ({selectedItem.stock} u.)
+                              Original ({selectedItem.stock} u.)
                             </button>
                             <button
                               type="button"

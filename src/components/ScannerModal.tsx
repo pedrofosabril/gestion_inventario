@@ -51,12 +51,12 @@ interface GroupSalidaDraft {
   origenStock: SalidaStockOrigen;
 }
 
-// Unidades disponibles de un producto según el stock elegido (normal o P/SERVICIO).
+// Unidades disponibles de un producto según el stock elegido (original o P/SERVICIO).
 const salidaDisponible = (item: InventoryItem, origen: SalidaStockOrigen): number =>
   origen === 'servicio' ? (item.paraServicio ?? 0) : item.stock;
 
 const ORIGEN_LABEL: Record<SalidaStockOrigen, string> = {
-  normal: 'Normal',
+  normal: 'Original',
   servicio: 'P/SERVICIO'
 };
 
@@ -1663,7 +1663,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
                             <div className="flex items-center gap-3 text-[11px] text-slate-500 mt-1">
                               {showPrices && <span>P. Unit: <strong className="font-mono text-slate-700">${draft.item.precio.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</strong></span>}
                               <span>
-                                Stock {hasDualStock ? 'Normal' : 'Pañol'}: <strong className="text-slate-700">{draft.item.stock} u.</strong>
+                                Stock {hasDualStock ? 'Original' : 'Pañol'}: <strong className="text-slate-700">{draft.item.stock} u.</strong>
                               </span>
                               {hasDualStock && <span>P/SERVICIO: <strong className="text-slate-700">{stockServicio} u.</strong></span>}
                               <span className="text-emerald-700 font-bold">Quedarán en {ORIGEN_LABEL[draft.origenStock]}: {remainingStock} u.</span>
@@ -1680,7 +1680,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
                                       : 'bg-[#f4f9fd] text-slate-600 border border-[#badbf5] hover:bg-[#e8f4fc]'
                                   }`}
                                 >
-                                  Normal ({draft.item.stock} u.)
+                                  Original ({draft.item.stock} u.)
                                 </button>
                                 <button
                                   type="button"
