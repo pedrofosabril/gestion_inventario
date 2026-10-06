@@ -1,5 +1,5 @@
 ﻿import React, { useState } from 'react';
-import { Lock, ShieldCheck, User, X, KeyRound, AlertCircle, ShoppingBag, Wrench, Eye, EyeOff, Info, RefreshCw } from 'lucide-react';
+import { Lock, ShieldCheck, User, X, KeyRound, AlertCircle, ShoppingBag, Wrench, Eye, EyeOff, Info, RefreshCw, HelpCircle } from 'lucide-react';
 import { useInventory } from '../context/InventoryContext';
 
 interface LoginModalProps {
@@ -188,10 +188,28 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-bold text-sky-950 flex items-center gap-1.5">
-              <KeyRound className="w-3.5 h-3.5 text-[#006bb0]" />
-              Contraseña
-            </label>
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-sky-950 flex items-center gap-1.5">
+                <KeyRound className="w-3.5 h-3.5 text-[#006bb0]" />
+                Contraseña
+              </label>
+              {!isResetMode && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsResetMode((v) => !v);
+                    setResetMsg(null);
+                    setResetErr(null);
+                    setResetUser(selectedUser);
+                    setResetNewPass('');
+                  }}
+                  className="text-[11px] text-sky-700 hover:text-sky-900 p-0.5 rounded hover:bg-sky-50 transition-colors"
+                  title="¿Olvidaste tu contraseña?"
+                >
+                  <HelpCircle className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
             <div className="relative w-full">
               <input
                 type={showPassword ? 'text' : 'password'}
@@ -230,24 +248,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
             </div>
           )}
 
-          {!isResetMode && (
-            <div className="flex items-center justify-end mt-1 mb-1">
-              <button
-                type="button"
-                onClick={() => {
-                  setIsResetMode((v) => !v);
-                  setResetMsg(null);
-                  setResetErr(null);
-                  setResetUser(selectedUser);
-                  setResetNewPass('');
-                }}
-                className="text-[11px] font-semibold text-sky-700 hover:text-sky-900 underline decoration-dotted underline-offset-4 flex items-center gap-1 cursor-pointer"
-              >
-                <RefreshCw className="w-3.5 h-3.5" />
-                ¿Olvidaste tu contraseña?
-              </button>
-            </div>
-          )}
+          {/* botón eliminado de aquí: ahora junto a "Contraseña" */}
 
           {isResetMode && (
             <div className="p-3 rounded-xl border border-[#c4e1f7] bg-[#f4f9fd] flex flex-col gap-2 mt-1">
