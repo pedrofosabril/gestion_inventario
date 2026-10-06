@@ -149,6 +149,7 @@ interface InventoryContextType {
   }) => Promise<{ success: boolean; message: string; user?: UserAccount }>;
   hasGerente: boolean;
   logout: () => void;
+  resetUserPassword: (username: string, newPassword: string) => Promise<{ success: boolean; message: string }>;
   
   // Helpers & Stats
   findItemByCode: (code: string) => InventoryItem | undefined;
@@ -2027,6 +2028,75 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return res.success;
   };
 
+  const resetUserPassword = async (
+    username: string,
+    newPassword: string
+  ): Promise<{ success: boolean; message: string }> => {
+    const cleanUsername = (username || '').trim().toLowerCase();
+    if (!cleanUsername) {
+      return { success: false, message: 'Por favor ingresa tu nombre de usuario.' };
+    }
+    if (!newPassword) {
+      return { success: false, message: 'Por favor ingresa la nueva contraseña.' };
+    }
+    if (newPassword.length < 8) {
+      return { success: false, message: 'La contraseña debe tener al menos 8 caracteres.' };
+    }
+    if (!/[A-Z]/.test(newPassword)) {
+      return { success: false, message: 'La contraseña debe contener al menos una letra mayúscula.' };
+    }
+    if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?~`§±°]/.test(newPassword)) {
+      return { success: false, message: 'La contraseña debe contener al menos un carácter especial (ej: ! @ # $ % * - _).' };
+    }
+
+    let user = users.find(u => u.username.toLowerCase() === cleanUsername);
+
+    if (!user) {
+      const globalUsers = await hasGlobalUsers();
+      const serverUser = globalUsers.find(u => u.username.toLowerCase() === cleanUsername);
+      if (serverUser) {
+        user = serverUser;
+      }
+    }
+
+    if (!user) {
+      return { success: false, message: `El usuario "${cleanUsername}" no está registrado.` };
+    }
+
+    const updatedUser: UserAccount = { ...user, password: newPassword };
+
+    try {
+      await saveGlobalUser(updatedUser);
+    } catch (e) {
+      console.error('No se pudo actualizar la contraseña en Supabase:', e);
+      return { success: false, message: 'No se pudo guardar la contraseña en el servidor. Revisa tu conexión e inténtalo nuevamente.' };
+    }
+
+    setUsers(prev => {
+      const exists = prev.some(u => u.username.toLowerCase() === cleanUsername);
+      const next = exists
+        ? prev.map(u => (u.username.toLowerCase() === cleanUsername ? updatedUser : u))
+        : [...prev, updatedUser];
+      try {
+        localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(next));
+      } catch (e) {
+        console.error('Error storing users in localStorage:', e);
+      }
+      return next;
+    });
+
+    if (currentUser?.username.toLowerCase() === cleanUsername) {
+      setCurrentUser(updatedUser);
+      try {
+        localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(updatedUser));
+      } catch (e) {
+        console.error('Error storing user in localStorage:', e);
+      }
+    }
+
+    return { success: true, message: `Contraseña de "${cleanUsername}" actualizada correctamente.` };
+  };
+
   const registerUser = async (userData: {
     username: string;
     nombre: string;
@@ -2300,6 +2370,7 @@ backupHistory,
         registerUser,
         hasGerente,
         logout,
+        resetUserPassword,
         findItemByCode,
         getLowStockItems,
         getOutOfStockItems,
