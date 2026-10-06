@@ -148,11 +148,22 @@ interface InventoryContextType {
     password?: string;
   }) => Promise<{ success: boolean; message: string; user?: UserAccount }>;
   hasGerente: boolean;
-  updateUserPassword: (
-    username: string,
-    currentPassword: string,
-    newPassword: string
-  ) => Promise<{ success: boolean; message: string }>;
+  logout: () => void;
+  
+  // Helpers & Stats
+  findItemByCode: (code: string) => InventoryItem | undefined;
+  getLowStockItems: () => InventoryItem[];
+  getOutOfStockItems: () => InventoryItem[];
+  getStockAntiguoItems: () => InventoryItem[];
+  getPorEncargoItems: () => InventoryItem[];
+  isItemStockAntiguo: (item: InventoryItem) => boolean;
+  getNextSalidaNumber: () => number;
+  totalValuation: number;
+  totalUnits: number;
+  totalSkus: number;
+  resetToDefaults: () => void;
+  clearAllData: () => Promise<{ ok: boolean; failed: string[] }>;
+  restoreDatabase: (jsonContent: string) => Promise<{ success: boolean; message: string }>;
 }
 
 const InventoryContext = createContext<InventoryContextType | undefined>(undefined);
@@ -2016,71 +2027,60 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return res.success;
   };
 
-  const updateUserPassword = async (
-    username: string,
-    currentPassword: string,
-    newPassword: string
-  ): Promise<{ success: boolean; message: string }> => {
-    const cleanUsername = (username || '').trim().toLowerCase();
+  const registerUser = async (userData: {
+    username: string;
+    nombre: string;
+    rol: UserRole;
+    password?: string;
+  }): Promise<{ success: boolean; message: string; user?: UserAccount }> => {
+    const cleanUsername = (userData.username || '').trim().toLowerCase().replace(/\s+/g, '');
+    const cleanNombre = (userData.nombre || '').trim();
+    const cleanPass = userData.password || '';
+
+    if (!cleanNombre) {
+      return { success: false, message: 'Por favor ingresa tu nombre completo o alias.' };
+    }
     if (!cleanUsername) {
-      return { success: false, message: 'Debes ingresar un nombre de usuario.' };
+      return { success: false, message: 'Por favor define un nombre de usuario.' };
     }
-    if (!currentPassword) {
-      return { success: false, message: 'Debes ingresar tu contraseña actual.' };
+    if (cleanUsername.length < 3) {
+      return { success: false, message: 'El nombre de usuario debe tener al menos 3 caracteres.' };
     }
-    if (!newPassword) {
-      return { success: false, message: 'Debes ingresar una nueva contraseña.' };
+    if (!cleanPass || cleanPass.length < 8) {
+      return { success: false, message: 'La contraseña debe tener al menos 8 caracteres.' };
     }
-    if (newPassword.length < 8) {
-      return { success: false, message: 'La nueva contraseña debe tener al menos 8 caracteres.' };
+    if (!/[A-Z]/.test(cleanPass)) {
+      return { success: false, message: 'La contraseña debe contener al menos una letra mayúscula.' };
     }
-    if (!/[A-Z]/.test(newPassword)) {
-      return { success: false, message: 'La nueva contraseña debe contener al menos una letra mayúscula.' };
-    }
-    if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?~`§±°]/.test(newPassword)) {
-      return {
-        success: false,
-        message: 'La nueva contraseña debe contener al menos un carácter especial (ej: ! @ # $ % * - _).'
-      };
-    }
-    if (currentPassword === newPassword) {
-      return { success: false, message: 'La nueva contraseña debe ser distinta a la actual.' };
+    if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?~`§±°]/.test(cleanPass)) {
+      return { success: false, message: 'La contraseña debe contener al menos un carácter especial (ej: ! @ # $ % * - _).' };
     }
 
-    let user = users.find(u => u.username.toLowerCase() === cleanUsername);
-
-    if (!user) {
-      const globalUsers = await hasGlobalUsers();
-      if (globalUsers.length > 0) {
-        const serverUser = globalUsers.find(u => u.username.toLowerCase() === cleanUsername);
-        if (serverUser) {
-          user = serverUser;
-          setUsers(prev => {
-            const merged = new Map<string, UserAccount>();
-            for (const u of prev) merged.set(u.username.toLowerCase(), u);
-            merged.set(serverUser.username.toLowerCase(), serverUser);
-            const all = Array.from(merged.values());
-            try {
-              localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(all));
-            } catch (e) {
-              console.error('Error storing users in localStorage:', e);
-            }
-            return all;
-          });
-        }
-      }
+    // Check if username already taken (local cache + shared table)
+    const localTaken = users.some(u => u.username.toLowerCase() === cleanUsername);
+    const globalUsers = await hasGlobalUsers();
+    const globalTaken = globalUsers.some(u => u.username.toLowerCase() === cleanUsername);
+    if (localTaken || globalTaken) {
+      return { success: false, message: `El nombre de usuario "${cleanUsername}" ya existe. Por favor elige otro.` };
     }
 
-    if (!user) {
-      return { success: false, message: 'El usuario no existe.' };
+    const newUser: UserAccount = {
+      id: `usr-${Date.now()}`,
+      username: cleanUsername,
+      nombre: cleanNombre,
+      rol: userData.rol,
+      password: cleanPass,
+    };
+
+    // Persist to the shared table first so the account works from any computer
+    try {
+      await saveGlobalUser(newUser);
+    } catch (e) {
+      console.error('No se pudo crear la cuenta en Supabase:', e);
+      return { success: false, message: 'No se pudo crear la cuenta en el servidor. Revisa tu conexión e inténtalo nuevamente.' };
     }
 
-    if (user.password && user.password !== currentPassword) {
-      return { success: false, message: 'La contraseña actual es incorrecta.' };
-    }
-
-    const updatedUser: UserAccount = { ...user, password: newPassword };
-    const updatedUsers = users.map(u => (u.username.toLowerCase() === cleanUsername ? updatedUser : u));
+    const updatedUsers = [...users, newUser];
     setUsers(updatedUsers);
     try {
       localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(updatedUsers));
@@ -2088,26 +2088,18 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       console.error('Error storing users in localStorage:', e);
     }
 
+    // Automatically log in with the new account
+    setCurrentUser(newUser);
+    const now = Date.now();
+    setLastActivityAt(now);
     try {
-      await saveGlobalUser(updatedUser);
+      localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(newUser));
+      localStorage.setItem(STORAGE_KEYS.LAST_ACTIVITY, String(now));
     } catch (e) {
-      console.error('No se pudo actualizar la contraseña en Supabase:', e);
-      return {
-        success: false,
-        message: 'No se pudo actualizar la contraseña en el servidor. Revisa tu conexión e inténtalo nuevamente.'
-      };
+      console.error('Error storing user in localStorage:', e);
     }
 
-    if (currentUser?.username.toLowerCase() === cleanUsername) {
-      setCurrentUser(updatedUser);
-      try {
-        localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(updatedUser));
-      } catch (e) {
-        console.error('Error storing user in localStorage:', e);
-      }
-    }
-
-    return { success: true, message: 'Contraseña actualizada correctamente.' };
+    return { success: true, message: 'Cuenta creada con éxito. ¡Bienvenido a Verdu y Cía.!', user: newUser };
   };
 
   const hasGerente = users.some(u => u.rol === 'gerencia');
@@ -2308,7 +2300,6 @@ backupHistory,
         registerUser,
         hasGerente,
         logout,
-        updateUserPassword,
         findItemByCode,
         getLowStockItems,
         getOutOfStockItems,
