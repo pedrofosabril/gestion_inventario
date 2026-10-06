@@ -43,6 +43,28 @@ create table if not exists public.stock (
   unique (codigo, ubicacion)
 );
 
+create table if not exists public.usuarios (
+  username text primary key,
+  nombre text not null,
+  rol text not null default 'observador'
+    check (rol in ('gerencia', 'panolero', 'ventas', 'observador')),
+  password text,
+  created_at timestamptz not null default now()
+);
+
+alter table public.usuarios enable row level security;
+
+-- Sin los GRANT el rol anon recibe "permission denied" aunque existan políticas.
+grant usage on schema public to anon, authenticated;
+grant select, insert, update, delete on public.usuarios to anon, authenticated;
+
+-- La app usa el anon key y gestiona sus propias cuentas (login propio con
+-- username + password). Los usuarios se comparten entre todas las computadoras.
+drop policy if exists usuarios_read on public.usuarios;
+create policy usuarios_read on public.usuarios for select to anon, authenticated using (true);
+drop policy if exists usuarios_write on public.usuarios;
+create policy usuarios_write on public.usuarios for all to anon, authenticated using (true) with check (true);
+
 create table if not exists public.movimiento_grupos (
   id uuid primary key default gen_random_uuid(),
   numero bigint generated always as identity unique,
@@ -129,3 +151,8 @@ drop policy if exists inventory_read_movimientos on public.movimientos;
 create policy inventory_read_movimientos on public.movimientos for select to authenticated using (true);
 drop policy if exists inventory_write_movimientos on public.movimientos;
 create policy inventory_write_movimientos on public.movimientos for all to authenticated using (public.puede_operar_inventario()) with check (public.puede_operar_inventario());
+
+-- La app opera con la clave anon y su botón "Vaciar la base de datos" debe
+-- poder borrar toda la tabla `movimientos`. Política idempotente.
+drop policy if exists movimientos_delete_anon on public.movimientos;
+create policy movimientos_delete_anon on public.movimientos for delete to anon using (true);

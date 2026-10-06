@@ -22,6 +22,7 @@ import {
 import { SalidaGroupRecord, SalidaItemEntry } from '../types';
 import { useInventory } from '../context/InventoryContext';
 import { generateSalidaPDF } from '../utils/pdfGenerator';
+import { formatDisplayDate } from '../utils/dateUtils';
 import { SignaturePad } from './SignaturePad';
 import { SavedSignaturePicker } from './SavedSignaturePicker';
 
@@ -66,9 +67,9 @@ export const SalidaReceiptModal: React.FC<SalidaReceiptModalProps> = ({
     }
   };
 
-  const handleDelete = () => {
+  const handleDelete = (revertStock: boolean) => {
     if (!currentSalidaGroup) return;
-    deleteSalidaGroup(currentSalidaGroup.id, true);
+    deleteSalidaGroup(currentSalidaGroup.id, revertStock);
     setConfirmDelete(false);
     onClose();
     if (onDeleted) onDeleted();
@@ -169,7 +170,7 @@ export const SalidaReceiptModal: React.FC<SalidaReceiptModalProps> = ({
               </div>
               <div className="text-xs font-bold text-slate-600 mt-0.5 flex items-center sm:justify-end gap-1">
                 <Calendar className="w-3.5 h-3.5 text-sky-600" />
-                <span>{salidaGroup.fechaSalida}</span>
+                <span>{formatDisplayDate(salidaGroup.fechaSalida)}</span>
                 <span className="text-slate-300">•</span>
                 <Clock className="w-3.5 h-3.5 text-sky-600" />
                 <span>{salidaGroup.horaSalida} hs</span>
@@ -279,7 +280,8 @@ export const SalidaReceiptModal: React.FC<SalidaReceiptModalProps> = ({
                       <tr>
                         <th className="py-2.5 px-3">Código</th>
                         <th className="py-2.5 px-3">Descripción de la Pieza</th>
-                        <th className="py-2.5 px-2 text-center">Ubic.</th>
+                        <th className="py-2.5 px-2 text-center">Ubicación</th>
+                        <th className="py-2.5 px-2 text-center">Fecha</th>
                         <th className="py-2.5 px-3 text-center">Cant. Retirada</th>
                         <th className="py-2.5 px-3 text-center">Stock Restante</th>
                       </tr>
@@ -304,6 +306,9 @@ export const SalidaReceiptModal: React.FC<SalidaReceiptModalProps> = ({
                               {item.ubicacion || 'A'}
                             </span>
                           </td>
+                          <td className="py-2.5 px-2 text-center font-mono text-slate-600 whitespace-nowrap">
+                            {formatDisplayDate(salidaGroup.fechaSalida)}
+                          </td>
                           <td className="py-2.5 px-3 text-center">
                             <span className="font-mono font-black text-sm px-2.5 py-0.5 rounded-md bg-sky-100 text-sky-900 border border-sky-200">
                               {item.cantidad} u.
@@ -317,7 +322,7 @@ export const SalidaReceiptModal: React.FC<SalidaReceiptModalProps> = ({
                     </tbody>
                     <tfoot className="bg-[#eaf4fb] border-t-2 border-[#badbf5] font-bold">
                       <tr>
-                        <td colSpan={3} className="py-3 px-3 text-right uppercase text-[11px] text-slate-600">
+                        <td colSpan={4} className="py-3 px-3 text-right uppercase text-[11px] text-slate-600">
                           Total Despachado:
                         </td>
                         <td className="py-3 px-3 text-center font-mono text-sm font-black text-sky-950">
@@ -432,15 +437,24 @@ export const SalidaReceiptModal: React.FC<SalidaReceiptModalProps> = ({
                   <span>Borrar / Anular Salida</span>
                 </button>
               ) : (
-                <div className="flex items-center gap-1.5 bg-rose-50 border border-rose-300 rounded-xl p-1.5 text-xs animate-in fade-in">
+                <div className="flex items-center gap-1.5 bg-rose-50 border border-rose-300 rounded-xl p-1.5 text-xs animate-in fade-in flex-wrap">
                   <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 ml-1" />
                   <span className="text-rose-900 font-bold text-[11px] px-1">¿Borrar y devolver stock?</span>
                   <button
                     type="button"
-                    onClick={handleDelete}
+                    onClick={() => handleDelete(true)}
                     className="px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs cursor-pointer shadow-2xs"
+                    title="Borrar la salida y reintegrar el stock al inventario"
                   >
-                    Sí, Borrar
+                    Sí, devolver stock
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDelete(false)}
+                    className="px-2.5 py-1 rounded-lg bg-slate-700 hover:bg-slate-800 text-white font-bold text-xs cursor-pointer shadow-2xs"
+                    title="Borrar solo el comprobante y dejar el stock como está"
+                  >
+                    Solo borrar
                   </button>
                   <button
                     type="button"
@@ -505,7 +519,7 @@ export const SalidaReceiptModal: React.FC<SalidaReceiptModalProps> = ({
 
       {/* Interactive Digital Signature Overlay - Empleado que Retira */}
       {isSigning && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 bg-black/60 backdrop-blur-xs animate-in fade-in">
+        <div className="fixed inset-0 z-[60] flex items-stretch justify-center p-3 bg-black/60 backdrop-blur-xs animate-in fade-in">
           <SignaturePad
             title="Firma Digital de Recepción"
             subtitle={`Receptor: ${currentSalidaGroup.retira}`}
@@ -518,7 +532,7 @@ export const SalidaReceiptModal: React.FC<SalidaReceiptModalProps> = ({
 
       {/* Interactive Digital Signature Overlay - Pañolero / Emisor */}
       {isSigningPanolero && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 bg-black/60 backdrop-blur-xs animate-in fade-in">
+        <div className="fixed inset-0 z-[60] flex items-stretch justify-center p-3 bg-black/60 backdrop-blur-xs animate-in fade-in">
           <SignaturePad
             title="Firma Pañolero / Emisor"
             subtitle={panoleroName}

@@ -264,6 +264,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
 
             {/* Código de barras / Equivalencias */}
             <div className="flex flex-col justify-between gap-1.5">
+              {!isVentas && (
               <div>
                 <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1">
                   <Barcode className="w-3.5 h-3.5 text-slate-700" />
@@ -294,6 +295,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                   )}
                 </div>
               </div>
+              )}
               {item.equivalencias && (
                 <p className="text-xs text-slate-600 mt-1">
                   <strong>Equivalencias:</strong> {item.equivalencias}

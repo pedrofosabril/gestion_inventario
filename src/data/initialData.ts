@@ -1,21 +1,7 @@
 import { InventoryItem, SalidaRecord, IngresoRecord, UserAccount, SalidaGroupRecord } from '../types';
 
-export const INITIAL_USERS: UserAccount[] = [
-  {
-    id: 'usr-2',
-    username: 'panol',
-    nombre: 'Marcelo',
-    rol: 'panolero',
-    password: 'panol',
-  },
-  {
-    id: 'usr-4',
-    username: 'ventas',
-    nombre: 'Ventas',
-    rol: 'ventas',
-    password: 'ventas',
-  }
-];
+// The application starts without user accounts. Create the first account from the access screen.
+export const INITIAL_USERS: UserAccount[] = [];
 
 const RAW_INVENTORY: unknown = [
   {

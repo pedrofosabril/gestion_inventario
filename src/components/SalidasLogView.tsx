@@ -20,18 +20,25 @@ import {
   Trash2,
   AlertTriangle,
   Sparkles,
-  X
+  X,
+  ArrowDownUp
 } from 'lucide-react';
 import { useInventory } from '../context/InventoryContext';
 import { SalidaRecord, SalidaGroupRecord, SalidaItemEntry } from '../types';
 import { SalidaReceiptModal } from './SalidaReceiptModal';
 import { generateSalidaPDF } from '../utils/pdfGenerator';
+import { formatDisplayDate } from '../utils/dateUtils';
+import { matchesUbicacion } from '../utils/locationSearch';
 
 interface SalidasLogViewProps {
   onOpenScanner: (code?: string) => void;
+  /** Versión para el perfil de pañol: sin banner de título (la pestaña de arriba
+   *  ya identifica el movimiento) y sin acciones duplicadas con los botones
+   *  grandes de la pantalla principal. */
+  paraPanol?: boolean;
 }
 
-export const SalidasLogView: React.FC<SalidasLogViewProps> = ({ onOpenScanner }) => {
+export const SalidasLogView: React.FC<SalidasLogViewProps> = ({ onOpenScanner, paraPanol }) => {
   const { 
     salidas, 
     salidaGroups, 
@@ -51,6 +58,7 @@ export const SalidasLogView: React.FC<SalidasLogViewProps> = ({ onOpenScanner })
   const [selectedClient, setSelectedClient] = useState<string>('all');
   const [selectedRetira, setSelectedRetira] = useState<string>('all');
   const [selectedRemitoType, setSelectedRemitoType] = useState<'all' | 'interno' | 'cliente'>('all');
+  const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
   
   // Selected group for receipt view
   const [activeReceiptGroup, setActiveReceiptGroup] = useState<SalidaGroupRecord | null>(null);
@@ -89,19 +97,29 @@ export const SalidasLogView: React.FC<SalidasLogViewProps> = ({ onOpenScanner })
     showToast(res.message, res.removedGroups > 0 || res.removedSalidas > 0 ? 'success' : 'info');
   };
 
-  const handleConfirmDeleteGroup = (groupId: string) => {
-    const res = deleteSalidaGroup(groupId, true);
+  const handleConfirmDeleteGroup = (groupId: string, revertStock: boolean) => {
+    const res = deleteSalidaGroup(groupId, revertStock);
     setPendingDeleteGroupId(null);
     if (res.success) {
-      showToast(`${res.message} (Stock reincorporado al pañol)`, 'success');
+      showToast(
+        revertStock
+          ? `${res.message} (Stock reincorporado al pañol)`
+          : `${res.message} (Stock sin cambios)`,
+        'success'
+      );
     }
   };
 
-  const handleConfirmDeleteSalida = (salidaId: string) => {
-    const res = deleteSalida(salidaId, true);
+  const handleConfirmDeleteSalida = (salidaId: string, revertStock: boolean) => {
+    const res = deleteSalida(salidaId, revertStock);
     setPendingDeleteSalidaId(null);
     if (res.success) {
-      showToast(`${res.message} (Stock reincorporado al pañol)`, 'success');
+      showToast(
+        revertStock
+          ? `${res.message} (Stock reincorporado al pañol)`
+          : `${res.message} (Stock sin cambios)`,
+        'success'
+      );
     }
   };
 
@@ -141,11 +159,16 @@ export const SalidasLogView: React.FC<SalidasLogViewProps> = ({ onOpenScanner })
       const matchItem = g.items.some(it => 
         it.codigo.toLowerCase().includes(q) || 
         it.descripcion.toLowerCase().includes(q) ||
+        matchesUbicacion(it.ubicacion, q) ||
         matchingInventoryCodes.has(it.codigo.toLowerCase())
       );
       return matchNum || matchClient || matchRetira || matchRemito || matchItem;
     }
     return true;
+  }).sort((a, b) => {
+    const comparison = `${a.fechaSalida} ${a.horaSalida || ''}`.localeCompare(`${b.fechaSalida} ${b.horaSalida || ''}`);
+    if (comparison !== 0) return sortOrder === 'desc' ? -comparison : comparison;
+    return sortOrder === 'desc' ? b.numeroSalida - a.numeroSalida : a.numeroSalida - b.numeroSalida;
   });
 
   // Filter individual items
@@ -176,6 +199,10 @@ export const SalidasLogView: React.FC<SalidasLogViewProps> = ({ onOpenScanner })
       );
     }
     return true;
+  }).sort((a, b) => {
+    const comparison = `${a.fechaSalida} ${a.horaSalida || ''}`.localeCompare(`${b.fechaSalida} ${b.horaSalida || ''}`);
+    if (comparison !== 0) return sortOrder === 'desc' ? -comparison : comparison;
+    return sortOrder === 'desc' ? (b.numeroSalida || 0) - (a.numeroSalida || 0) : (a.numeroSalida || 0) - (b.numeroSalida || 0);
   });
 
   const totalUnidadesRetiradas = viewMode === 'groups'
@@ -206,18 +233,20 @@ export const SalidasLogView: React.FC<SalidasLogViewProps> = ({ onOpenScanner })
 
       {/* Header Banner */}
       <div className="bg-[#f4f9fd] rounded-2xl p-5 border border-[#c4e1f7] shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <div className="w-9 h-9 rounded-xl bg-orange-100 text-orange-600 flex items-center justify-center border border-orange-200">
-              <ArrowUpRight className="w-5 h-5" />
-            </div>
-            <div>
-              <h1 className="text-xl font-extrabold text-sky-950 tracking-tight">
-                Registro de Salidas y Despachos
-              </h1>
+        {!paraPanol && (
+          <div>
+            <div className="flex items-center gap-2">
+              <div className="w-9 h-9 rounded-xl bg-orange-100 text-orange-600 flex items-center justify-center border border-orange-200">
+                <ArrowUpRight className="w-5 h-5" />
+              </div>
+              <div>
+                <h1 className="text-xl font-extrabold text-sky-950 tracking-tight">
+                  Registro de Salidas y Despachos
+                </h1>
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         <div className="flex flex-wrap items-center gap-2">
           {/* View Mode Toggle */}
@@ -252,6 +281,16 @@ export const SalidasLogView: React.FC<SalidasLogViewProps> = ({ onOpenScanner })
           >
             <Download className="w-3.5 h-3.5 text-[#006bb0]" />
             Exportar (.xlsx)
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setSortOrder(order => order === 'desc' ? 'asc' : 'desc')}
+            className="px-3.5 py-2 border border-[#b8ddf5] bg-white hover:bg-[#eaf4fb] text-slate-700 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
+            title="Alternar el orden del historial por fecha"
+          >
+            <ArrowDownUp className="w-3.5 h-3.5 text-[#006bb0]" />
+            {sortOrder === 'desc' ? 'Más reciente primero' : 'Más antiguo primero'}
           </button>
         </div>
       </div>
@@ -376,7 +415,7 @@ export const SalidasLogView: React.FC<SalidasLogViewProps> = ({ onOpenScanner })
 
                     <div className="flex items-center gap-1.5 text-xs text-slate-600 font-medium">
                       <Calendar className="w-3.5 h-3.5 text-sky-600" />
-                      <span>{group.fechaSalida}</span>
+                      <span>{formatDisplayDate(group.fechaSalida)}</span>
                       <Clock className="w-3.5 h-3.5 text-sky-600 ml-1" />
                       <span>{group.horaSalida} hs</span>
                     </div>
@@ -410,22 +449,33 @@ export const SalidasLogView: React.FC<SalidasLogViewProps> = ({ onOpenScanner })
                     {/* Delete / Duplicate Remover Button */}
                     {!isVentas && (
                       pendingDeleteGroupId === group.id ? (
-                        <div className="flex items-center gap-1 bg-rose-50 border border-rose-300 rounded-xl p-1 animate-in fade-in">
-                          <button
-                            type="button"
-                            onClick={() => handleConfirmDeleteGroup(group.id)}
-                            className="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-bold text-xs cursor-pointer shadow-2xs"
-                            title="Confirmar eliminación y devolver piezas al inventario"
-                          >
-                            Confirmar Borrado
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setPendingDeleteGroupId(null)}
-                            className="px-2 py-1 bg-white hover:bg-slate-100 text-slate-700 rounded-lg text-xs font-semibold border border-slate-300 cursor-pointer"
-                          >
-                            Cancelar
-                          </button>
+                        <div className="flex flex-col items-end gap-1 bg-rose-50 border border-rose-300 rounded-xl p-1.5 animate-in fade-in">
+                          <span className="text-[10px] font-bold text-slate-500">¿Revertir el stock?</span>
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => handleConfirmDeleteGroup(group.id, true)}
+                              className="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-bold text-xs cursor-pointer shadow-2xs flex items-center gap-1"
+                              title="Eliminar y devolver las piezas al inventario"
+                            >
+                              Revertir stock
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleConfirmDeleteGroup(group.id, false)}
+                              className="px-2.5 py-1 bg-slate-700 hover:bg-slate-800 text-white rounded-lg font-bold text-xs cursor-pointer shadow-2xs"
+                              title="Eliminar solo el historial y dejar el stock como está"
+                            >
+                              Solo borrar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setPendingDeleteGroupId(null)}
+                              className="px-2 py-1 bg-white hover:bg-slate-100 text-slate-700 rounded-lg text-xs font-semibold border border-slate-300 cursor-pointer"
+                            >
+                              Cancelar
+                            </button>
+                          </div>
                         </div>
                       ) : (
                         <button
@@ -465,13 +515,14 @@ export const SalidasLogView: React.FC<SalidasLogViewProps> = ({ onOpenScanner })
                 </div>
 
                 {/* Group Items Table */}
-                <div className="p-4 overflow-x-auto bg-white">
-                  <table className="w-full text-left text-xs border-collapse">
+                <div className="p-4 overflow-x-auto bg-white table-scrollbar">
+                  <table className="w-full min-w-[560px] text-left text-xs border-collapse">
                     <thead className="text-[10px] font-bold text-sky-950 uppercase tracking-wider bg-[#eaf4fb]">
                       <tr>
                         <th className="py-2 px-3">Código</th>
                         <th className="py-2 px-3">Descripción de la Pieza</th>
-                        <th className="py-2 px-2 text-center">Ubic.</th>
+                        <th className="py-2 px-2 text-center">Ubicación</th>
+                        <th className="py-2 px-2 text-center">Fecha</th>
                         <th className="py-2 px-3 text-center">Cant. Retirada</th>
                         {showPrices && <th className="py-2 px-3 text-right">P. Unitario</th>}
                         {showPrices && <th className="py-2 px-3 text-right">Subtotal</th>}
@@ -494,6 +545,9 @@ export const SalidasLogView: React.FC<SalidasLogViewProps> = ({ onOpenScanner })
                               {item.ubicacion || 'A'}
                             </span>
                           </td>
+                          <td className="py-2 px-2 text-center font-mono text-slate-600 whitespace-nowrap">
+                            {formatDisplayDate(group.fechaSalida)}
+                          </td>
                           <td className="py-2 px-3 text-center font-mono font-black text-rose-600">
                             -{item.cantidad} u.
                           </td>
@@ -512,7 +566,7 @@ export const SalidasLogView: React.FC<SalidasLogViewProps> = ({ onOpenScanner })
                     </tbody>
                     <tfoot className="border-t border-[#badbf5] font-bold bg-[#eaf4fb]">
                       <tr>
-                        <td colSpan={3} className="py-2.5 px-3 text-right uppercase text-[10px] text-slate-600">
+                        <td colSpan={4} className="py-2.5 px-3 text-right uppercase text-[10px] text-slate-600">
                           Total de la Salida:
                         </td>
                         <td className="py-2.5 px-3 text-center font-mono font-black text-slate-900">
@@ -538,8 +592,8 @@ export const SalidasLogView: React.FC<SalidasLogViewProps> = ({ onOpenScanner })
 
         /* Individual Items Table View */
         <div className="bg-[#f8fcfe] rounded-2xl border border-[#c4e1f7] shadow-xs overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs border-collapse divide-y divide-[#cce4f8]">
+          <div className="overflow-x-auto table-scrollbar">
+            <table className="w-full min-w-[1100px] text-left text-xs border-collapse divide-y divide-[#cce4f8]">
               <thead className="bg-[#dbeefa] text-sky-950 font-bold tracking-wider">
                 <tr>
                   <th className="px-4 py-3 whitespace-nowrap">GRUPO / SALIDA</th>
@@ -583,7 +637,7 @@ export const SalidasLogView: React.FC<SalidasLogViewProps> = ({ onOpenScanner })
 
                       {/* Fecha */}
                       <td className="px-4 py-3 font-mono text-slate-600 whitespace-nowrap">
-                        {salida.fechaSalida}
+                        {formatDisplayDate(salida.fechaSalida)}
                       </td>
 
                       {/* Cliente */}
@@ -623,21 +677,33 @@ export const SalidasLogView: React.FC<SalidasLogViewProps> = ({ onOpenScanner })
                       {!isVentas && (
                         <td className="px-4 py-3 text-center whitespace-nowrap">
                           {pendingDeleteSalidaId === salida.id ? (
-                            <div className="flex items-center justify-center gap-1">
-                              <button
-                                type="button"
-                                onClick={() => handleConfirmDeleteSalida(salida.id)}
-                                className="px-2 py-0.5 bg-rose-600 hover:bg-rose-700 text-white rounded text-[10px] font-bold cursor-pointer"
-                              >
-                                Borrar
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setPendingDeleteSalidaId(null)}
-                                className="px-1.5 py-0.5 bg-slate-200 text-slate-700 rounded text-[10px] font-medium cursor-pointer"
-                              >
-                                ✕
-                              </button>
+                            <div className="flex flex-col items-center gap-1">
+                              <span className="text-[10px] font-bold text-slate-500">¿Revertir stock?</span>
+                              <div className="flex items-center justify-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => handleConfirmDeleteSalida(salida.id, true)}
+                                  className="px-2 py-0.5 bg-rose-600 hover:bg-rose-700 text-white rounded text-[10px] font-bold cursor-pointer"
+                                  title="Borrar y devolver el stock al pañol"
+                                >
+                                  Revertir stock
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleConfirmDeleteSalida(salida.id, false)}
+                                  className="px-2 py-0.5 bg-slate-700 hover:bg-slate-800 text-white rounded text-[10px] font-bold cursor-pointer"
+                                  title="Borrar solo el historial y dejar el stock como está"
+                                >
+                                  Solo borrar
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setPendingDeleteSalidaId(null)}
+                                  className="px-1.5 py-0.5 bg-slate-200 text-slate-700 rounded text-[10px] font-medium cursor-pointer"
+                                >
+                                  ✕
+                                </button>
+                              </div>
                             </div>
                           ) : (
                             <button

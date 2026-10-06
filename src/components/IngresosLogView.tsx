@@ -11,21 +11,53 @@ import {
   PackagePlus,
   Calendar,
   Scan,
-  Barcode
+  Barcode,
+  ArrowDownUp,
+  Trash2,
+  History
 } from 'lucide-react';
 import { useInventory } from '../context/InventoryContext';
 import { ItemCategory } from '../types';
+import { formatDisplayDate } from '../utils/dateUtils';
+import { matchesUbicacion } from '../utils/locationSearch';
 
 interface IngresosLogViewProps {
   onOpenScanner?: (code?: string, mode?: 'salida' | 'ingreso') => void;
+  /** Versión para el perfil de pañol: sin banner de título (la pestaña de arriba
+   *  ya identifica el movimiento) y sin acciones duplicadas con los botones
+   *  grandes de la pantalla principal. */
+  paraPanol?: boolean;
 }
 
-export const IngresosLogView: React.FC<IngresosLogViewProps> = ({ onOpenScanner }) => {
-  const { ingresos, registerIngreso, exportCategoryToExcel } = useInventory();
+export const IngresosLogView: React.FC<IngresosLogViewProps> = ({ onOpenScanner, paraPanol }) => {
+  const { ingresos, registerIngreso, exportCategoryToExcel, deleteIngreso, currentUser } = useInventory();
   
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [selectedSupplier, setSelectedSupplier] = useState<string>('all');
   const [isReceivingModalOpen, setIsReceivingModalOpen] = useState<boolean>(false);
+  const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'info' } | null>(null);
+
+  const isVentas = currentUser?.rol === 'ventas';
+
+  const showToast = (text: string, type: 'success' | 'info' = 'success') => {
+    setToastMessage({ text, type });
+    setTimeout(() => setToastMessage(null), 4500);
+  };
+
+  const handleConfirmDelete = (ingresoId: string, revertStock: boolean) => {
+    const res = deleteIngreso(ingresoId, revertStock);
+    setPendingDeleteId(null);
+    if (res.success) {
+      showToast(
+        revertStock
+          ? `${res.message} (Stock descontado del pañol)`
+          : `${res.message} (Stock sin cambios)`,
+        'success'
+      );
+    }
+  };
 
   // Reception form state
   const [codigo, setCodigo] = useState<string>('');
@@ -47,10 +79,14 @@ export const IngresosLogView: React.FC<IngresosLogViewProps> = ({ onOpenScanner 
         i.codigo.toLowerCase().includes(q) ||
         i.descripcion.toLowerCase().includes(q) ||
         i.factura.toLowerCase().includes(q) ||
-        i.proveedor.toLowerCase().includes(q)
+        i.proveedor.toLowerCase().includes(q) ||
+        matchesUbicacion(i.ubicacion, q)
       );
     }
     return true;
+  }).sort((a, b) => {
+    const comparison = a.fechaIngreso.localeCompare(b.fechaIngreso);
+    return sortOrder === 'desc' ? -comparison : comparison;
   });
 
   const totalUnidadesIngresadas = filteredIngresos.reduce((sum, i) => sum + i.cantidad, 0);
@@ -80,42 +116,61 @@ export const IngresosLogView: React.FC<IngresosLogViewProps> = ({ onOpenScanner 
   return (
     <div className="flex flex-col gap-4 animate-in fade-in duration-200">
       
+      {/* Toast */}
+      {toastMessage && (
+        <div className="fixed top-20 right-5 z-50 bg-slate-900 text-white px-4 py-3 rounded-xl shadow-xl flex items-center gap-2 text-sm font-bold animate-in slide-in-from-top-4 duration-200 max-w-xs">
+          {toastMessage.type === 'success' ? (
+            <Check className="w-5 h-5 text-emerald-400" />
+          ) : (
+            <History className="w-5 h-5 text-sky-300" />
+          )}
+          <span className="flex-1">{toastMessage.text}</span>
+          <button onClick={() => setToastMessage(null)} className="text-slate-300 hover:text-white cursor-pointer">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+      
       {/* Header Banner */}
       <div className="bg-[#f4f9fd] rounded-2xl p-5 border border-[#c4e1f7] shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center border border-emerald-200">
-              <ArrowDownLeft className="w-5 h-5" />
-            </div>
-            <div>
-              <h1 className="text-xl font-extrabold text-sky-950 tracking-tight">
-                Recepción de Mercadería e Ingresos
-              </h1>
-              <p className="text-xs text-slate-600">
-                Historial de remesas, números de factura de proveedores y altas automáticas de stock
-              </p>
+        {!paraPanol && (
+          <div>
+            <div className="flex items-center gap-2">
+              <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center border border-emerald-200">
+                <ArrowDownLeft className="w-5 h-5" />
+              </div>
+              <div>
+                <h1 className="text-xl font-extrabold text-sky-950 tracking-tight">
+                  Recepción de Mercadería e Ingresos
+                </h1>
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         <div className="flex flex-wrap items-center gap-2">
-          {onOpenScanner && (
-            <button
-              onClick={() => onOpenScanner(undefined, 'ingreso')}
-              className="px-4 py-2 bg-[#0080D0] hover:bg-[#0070b8] text-white text-xs font-bold rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
-            >
-              <Scan className="w-4 h-4" />
-              Escanear para Sumar Stock
-            </button>
+          {/* En el pañol ya están los botones grandes de Entrada arriba */}
+          {!paraPanol && (
+            <>
+              {onOpenScanner && (
+                <button
+                  onClick={() => onOpenScanner(undefined, 'ingreso')}
+                  className="px-4 py-2 bg-[#0080D0] hover:bg-[#0070b8] text-white text-xs font-bold rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Scan className="w-4 h-4" />
+                  Escanear para Sumar Stock
+                </button>
+              )}
+
+              <button
+                onClick={() => setIsReceivingModalOpen(true)}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+              >
+                <PackagePlus className="w-4 h-4" />
+                Registrar Manualmente
+              </button>
+            </>
           )}
-          
-          <button
-            onClick={() => setIsReceivingModalOpen(true)}
-            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
-          >
-            <PackagePlus className="w-4 h-4" />
-            Registrar Manualmente
-          </button>
           
           <button
             onClick={() => exportCategoryToExcel('ingresos')}
@@ -123,6 +178,16 @@ export const IngresosLogView: React.FC<IngresosLogViewProps> = ({ onOpenScanner 
           >
             <Download className="w-3.5 h-3.5 text-[#006bb0]" />
             Exportar Ingresos (.xlsx)
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setSortOrder(order => order === 'desc' ? 'asc' : 'desc')}
+            className="px-3.5 py-2 border border-[#b8ddf5] bg-white hover:bg-[#eaf4fb] text-slate-700 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
+            title="Alternar el orden del historial por fecha"
+          >
+            <ArrowDownUp className="w-3.5 h-3.5 text-[#006bb0]" />
+            {sortOrder === 'desc' ? 'Más reciente primero' : 'Más antiguo primero'}
           </button>
         </div>
       </div>
@@ -161,13 +226,12 @@ export const IngresosLogView: React.FC<IngresosLogViewProps> = ({ onOpenScanner 
         </div>
 
         {/* Summary Stat */}
-        <div className="flex items-center justify-between sm:justify-end gap-3 bg-[#eaf4fb] p-2.5 rounded-lg border border-[#badbf5]">
-          <div>
-            <span className="text-[10px] text-slate-500 font-bold uppercase block">Total Ingresado</span>
-            <span className="font-mono text-sm font-black text-sky-950">
-              {totalUnidadesIngresadas} u. <span className="text-[11px] font-medium text-slate-600">({filteredIngresos.length} recepciones)</span>
-            </span>
-          </div>
+        <div className="flex items-center bg-[#eaf4fb] px-3 py-2 rounded-lg border border-[#badbf5] justify-self-end self-center">
+          <span className="text-[10px] text-slate-500 font-bold uppercase leading-tight">
+            Total Ingresado<br />
+            <span className="font-mono text-sm font-black text-sky-950">{totalUnidadesIngresadas} u.</span>
+            <span className="text-[10px] font-medium text-slate-600"> ({filteredIngresos.length} rec.)</span>
+          </span>
         </div>
 
       </div>
@@ -175,70 +239,127 @@ export const IngresosLogView: React.FC<IngresosLogViewProps> = ({ onOpenScanner 
       {/* Ingresos Log Table */}
       <div className="bg-[#f8fcfe] rounded-2xl border border-[#c4e1f7] shadow-xs overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs border-collapse divide-y divide-[#cce4f8]">
-            <thead className="bg-[#dbeefa] text-sky-950 font-bold tracking-wider">
-              <tr>
-                <th className="px-4 py-3 whitespace-nowrap">Nº FACTURA / REMITO</th>
-                <th className="px-4 py-3 whitespace-nowrap">CÓDIGO</th>
-                <th className="px-4 py-3 whitespace-nowrap">PROVEEDOR</th>
-                <th className="px-4 py-3 min-w-[180px]">DESCRIPCIÓN</th>
-                <th className="px-4 py-3 whitespace-nowrap">FECHA INGRESO</th>
-                <th className="px-4 py-3 whitespace-nowrap">UBICACIÓN</th>
-                <th className="px-4 py-3 text-right whitespace-nowrap">CANTIDAD</th>
-              </tr>
-            </thead>
+<table className="w-full table-fixed text-left text-[11px] border-collapse divide-y divide-[#cce4f8]">
+              <colgroup>
+                <col style={{ width: '13%' }} />
+                <col style={{ width: '12%' }} />
+                <col style={{ width: '16%' }} />
+                <col />
+                <col style={{ width: '12%' }} />
+                <col style={{ width: '11%' }} />
+                <col style={{ width: '8%' }} />
+                {!isVentas && <col style={{ width: '8%' }} />}
+              </colgroup>
+              <thead className="bg-[#dbeefa] text-sky-950 font-bold">
+                <tr>
+                  <th className="px-2 py-3">FACTURA / REMITO</th>
+                  <th className="px-2 py-3">CÓDIGO</th>
+                  <th className="px-2 py-3">PROVEEDOR</th>
+                  <th className="px-2 py-3">DESCRIPCIÓN</th>
+                  <th className="px-2 py-3 whitespace-nowrap">FECHA INGRESO</th>
+                  <th className="px-2 py-3 text-center">UBICACIÓN</th>
+                  <th className="px-2 py-3 text-right whitespace-nowrap">CANTIDAD</th>
+                  {!isVentas && <th className="px-2 py-3 text-center">ACCIONES</th>}
+                </tr>
+              </thead>
             <tbody className="divide-y divide-[#e2effa] bg-white">
               {filteredIngresos.length > 0 ? (
                 filteredIngresos.map((ingreso, idx) => (
                   <tr key={ingreso.id} className={`hover:bg-[#e5f3fd] transition-colors ${idx % 2 === 1 ? 'bg-[#f4f9fd]' : 'bg-white'}`}>
                     
                     {/* Factura */}
-                    <td className="px-4 py-3 font-mono font-bold text-slate-800 whitespace-nowrap">
-                      <span className="px-2 py-0.5 rounded bg-[#e8f4fc] text-sky-950 border border-[#c4e1f7]">
+                    <td className="px-2 py-2.5 font-mono font-bold text-slate-800 truncate" title={ingreso.factura}>
+                      <span className="px-1.5 py-0.5 rounded bg-[#e8f4fc] text-sky-950 border border-[#c4e1f7]">
                         {ingreso.factura}
                       </span>
                     </td>
 
                     {/* Código */}
-                    <td className="px-4 py-3 font-mono font-bold text-emerald-700 whitespace-nowrap">
+                    <td className="px-2 py-2.5 font-mono font-bold text-emerald-700 truncate" title={ingreso.codigo}>
                       {ingreso.codigo}
                     </td>
 
                     {/* Proveedor */}
-                    <td className="px-4 py-3 font-semibold text-slate-900 whitespace-nowrap">
-                      <span className="flex items-center gap-1.5">
-                        <Building2 className="w-3.5 h-3.5 text-slate-400" />
-                        {ingreso.proveedor}
+                    <td className="px-2 py-2.5 font-semibold text-slate-900 truncate" title={ingreso.proveedor}>
+                      <span className="flex items-center gap-1">
+                        <Building2 className="w-3 h-3 text-slate-400 shrink-0" />
+                        <span className="truncate">{ingreso.proveedor}</span>
                       </span>
                     </td>
 
                     {/* Descripción */}
-                    <td className="px-4 py-3 text-slate-700 font-medium">
+                    <td className="px-2 py-2.5 text-slate-700 font-medium truncate" title={ingreso.descripcion}>
                       {ingreso.descripcion}
                     </td>
 
                     {/* Fecha */}
-                    <td className="px-4 py-3 font-mono text-slate-600 whitespace-nowrap">
-                      {ingreso.fechaIngreso}
+                    <td className="px-2 py-2.5 font-mono text-slate-600 whitespace-nowrap">
+                      {formatDisplayDate(ingreso.fechaIngreso)}
                     </td>
 
                     {/* Ubicación */}
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <span className="px-2 py-0.5 rounded font-mono font-bold text-[11px] bg-[#e8f4fc] text-sky-950 border border-[#c4e1f7]">
+                    <td className="px-2 py-2.5 text-center">
+                      <span className="px-1.5 py-0.5 rounded font-mono font-bold text-[10px] bg-[#e8f4fc] text-sky-950 border border-[#c4e1f7]">
                         {ingreso.ubicacion || 'A'}
                       </span>
                     </td>
 
                     {/* Cantidad */}
-                    <td className="px-4 py-3 text-right font-mono font-black text-emerald-600 whitespace-nowrap">
-                      +{ingreso.cantidad} u.
+                    <td className="px-2 py-2.5 text-right font-mono font-black text-emerald-600 whitespace-nowrap">
+                      +{ingreso.cantidad}
                     </td>
+
+                    {/* Acciones */}
+                    {!isVentas && (
+                      <td className="px-2 py-2.5 text-center whitespace-nowrap">
+                        {pendingDeleteId === ingreso.id ? (
+                          <div className="flex flex-col items-center gap-0.5">
+                            <span className="text-[9px] font-bold text-slate-500 leading-none">¿Revertir stock?</span>
+                            <div className="flex items-center justify-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => handleConfirmDelete(ingreso.id, true)}
+                                className="px-1.5 py-1 rounded-md bg-rose-600 hover:bg-rose-700 text-white text-[10px] font-bold flex items-center gap-0.5 cursor-pointer"
+                                title="Borrar el historial y descontar el stock del pañol"
+                              >
+                                <Check className="w-3 h-3" /> Stock
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleConfirmDelete(ingreso.id, false)}
+                                className="px-1.5 py-1 rounded-md bg-slate-700 hover:bg-slate-800 text-white text-[10px] font-bold flex items-center gap-0.5 cursor-pointer"
+                                title="Borrar solo el historial y dejar el stock como está"
+                              >
+                                <Trash2 className="w-3 h-3" /> Hist.
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setPendingDeleteId(null)}
+                                className="p-1 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-600 cursor-pointer"
+                                title="Cancelar"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setPendingDeleteId(ingreso.id)}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer"
+                            title="Eliminar este ingreso del historial y descontar su stock"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </td>
+                    )}
 
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td colSpan={7} className="p-12 text-center text-slate-400">
+                  <td colSpan={8} className="p-12 text-center text-slate-400">
                     No se encontraron registros de ingresos.
                   </td>
                 </tr>

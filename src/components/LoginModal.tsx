@@ -16,10 +16,10 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    const success = login(selectedUser, password);
+    const success = await login(selectedUser, password);
     if (success) {
       setPassword('');
       onClose();

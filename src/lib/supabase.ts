@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { InventoryItem, ItemCategory } from '../types';
+import { InventoryItem, ItemCategory, UserAccount, UserRole } from '../types';
 import { CATEGORY_MAP, type CategoryEntry } from '../data/categoryMap';
 import { isSullairProveedor } from '../utils/barcodeUtils';
 import { mergeSameProductPairs } from '../utils/productMerge';
@@ -23,6 +23,7 @@ type RepuestoRow = {
   uso_destino: string | null;
   precio: number | string | null;
   barra: string | null;
+  categoria: string | null;
 };
 
 type StockRow = {
@@ -100,10 +101,23 @@ const determineCategory = (
   return 'panol';
 };
 
+/** Lee `repuestos` con la columna `categoria` y cae a las columnas viejas si la
+ *  migración todavía no está aplicada (mismo criterio que `stock_servicio`). */
+async function fetchRepuestos(): Promise<RepuestoRow[]> {
+  try {
+    return await fetchAllRows<RepuestoRow>('repuestos', 'codigo, proveedor, descripcion, equivalencias, uso_destino, precio, barra, categoria');
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!/categoria/i.test(message)) throw error;
+    const legacy = await fetchAllRows<RepuestoRow>('repuestos', 'codigo, proveedor, descripcion, equivalencias, uso_destino, precio, barra');
+    return legacy.map(row => ({ ...row, categoria: null }));
+  }
+}
+
 /** Reads the existing Supabase tables and maps them to the application model. */
 export async function getInventory(): Promise<InventoryItem[]> {
   const [repuestos, stock] = await Promise.all([
-    fetchAllRows<RepuestoRow>('repuestos', 'codigo, proveedor, descripcion, equivalencias, uso_destino, precio, barra'),
+    fetchRepuestos(),
     fetchAllRows<StockRow>('stock', '*')
   ]);
 
@@ -124,6 +138,8 @@ export async function getInventory(): Promise<InventoryItem[]> {
     const latestControl = rows.map(row => row.fecha_control).filter(Boolean).sort().at(-1);
     const ubicaciones = rows.map(row => row.ubicacion).filter(Boolean) as string[];
     const isPorEncargo = rows.length === 0;
+    // La categoría elegida al importar por hoja queda guardada en la nube y manda sobre la derivación.
+    const savedCategory = (repuesto.categoria || null) as ItemCategory | null;
     const mapped: CategoryEntry[] | undefined = CATEGORY_MAP[repuesto.codigo];
 
     if (mapped && mapped.length > 0) {
@@ -135,7 +151,7 @@ export async function getInventory(): Promise<InventoryItem[]> {
           descripcion: repuesto.descripcion ?? '',
           equivalencias: repuesto.equivalencias ?? undefined,
           subcategoria: entry.subcategoria ?? repuesto.uso_destino ?? undefined,
-          categoria: entry.categoria as ItemCategory,
+          categoria: savedCategory ?? (entry.categoria as ItemCategory),
           stock: quantity, stockMinimo: 0,
           paraServicio: paraServicio || undefined,
           ubicacion: ubicaciones.join(' / '),
@@ -154,8 +170,8 @@ export async function getInventory(): Promise<InventoryItem[]> {
         proveedor: repuesto.proveedor ?? '',
         descripcion: repuesto.descripcion ?? '',
         equivalencias: repuesto.equivalencias ?? undefined,
-        subcategoria: repuesto.uso_destino ?? undefined,
-        categoria: determineCategory(repuesto.codigo, repuesto.descripcion ?? '', repuesto.proveedor ?? '', ubicaciones),
+subcategoria: repuesto.uso_destino ?? undefined,
+          categoria: savedCategory ?? determineCategory(repuesto.codigo, repuesto.descripcion ?? '', repuesto.proveedor ?? '', ubicaciones),
         stock: quantity, stockMinimo: 0,
         paraServicio: paraServicio || undefined,
         ubicacion: ubicaciones.join(' / '),
@@ -174,15 +190,23 @@ precioTotal: quantity * numberOf(price),
 }
 
 export async function saveInventoryItem(item: InventoryItem): Promise<void> {
-  const { error: repuestoError } = await supabase.from('repuestos').upsert({
+  const repuestoPayload = {
     codigo: item.codigo,
     proveedor: item.proveedor,
     descripcion: item.descripcion,
     equivalencias: item.equivalencias ?? null,
     uso_destino: item.subcategoria ?? null,
     precio: item.precio,
-    barra: item.codigoBarras || (isSullairProveedor(item.proveedor) && item.codigo ? item.codigo : null)
-  }, { onConflict: 'codigo' });
+    barra: item.codigoBarras || (isSullairProveedor(item.proveedor) && item.codigo ? item.codigo : null),
+    categoria: item.categoria
+  };
+  // La columna `categoria` puede no existir todavía (migración pendiente):
+  // en ese caso se guarda sin ella para no romper el alta/edición.
+  let { error: repuestoError } = await supabase.from('repuestos').upsert(repuestoPayload, { onConflict: 'codigo' });
+  if (repuestoError && /categoria/i.test(repuestoError.message)) {
+    const { categoria: _omit, ...legacyRepuestoPayload } = repuestoPayload;
+    ({ error: repuestoError } = await supabase.from('repuestos').upsert(legacyRepuestoPayload, { onConflict: 'codigo' }));
+  }
   if (repuestoError) throw repuestoError;
 
   const { data: existing, error: existingError } = await supabase
@@ -216,15 +240,123 @@ export async function deleteInventoryItem(codigo: string): Promise<void> {
   if (repuestoError) throw repuestoError;
 }
 
-export async function createMovement(input: {
+/** Elimina TODO el contenido cargado desde Supabase: repuestos, stock y movimientos.
+ *  Devuelve qué tablas no se pudieron vaciar (p. ej. por políticas RLS). */
+export async function clearSupabaseAll(): Promise<{ ok: boolean; failed: string[] }> {
+  const ops: { name: string; p: PromiseLike<{ error?: any }> }[] = [
+    { name: 'repuestos', p: supabase.from('repuestos').delete().neq('codigo', '') },
+    { name: 'stock', p: supabase.from('stock').delete().neq('id_stock', '') },
+    { name: 'movimientos', p: supabase.from('movimientos').delete().neq('id_movimiento', '') },
+  ];
+
+  const failed: string[] = [];
+  for (const op of ops) {
+    const { error } = await op.p;
+    if (error) {
+      console.error('No se pudo vaciar la tabla', op.name, ':', error.message);
+      failed.push(op.name);
+    }
+  }
+
+  // Con RLS sin política el DELETE no da error pero borra 0 filas: hay que
+  // comprobar que las tablas quedaron realmente vacías para no informar un
+  // borrado que no ocurrió.
+  for (const op of ops) {
+    if (failed.includes(op.name)) continue;
+    const { count, error } = await supabase.from(op.name).select('*', { count: 'exact', head: true });
+    if (error) {
+      console.error('No se pudo verificar la tabla', op.name, ':', error.message);
+      failed.push(op.name);
+    } else if ((count ?? 0) > 0) {
+      console.error('La tabla', op.name, 'quedó con', count, 'filas: RLS bloqueó el borrado');
+      failed.push(op.name);
+    }
+  }
+
+  return { ok: failed.length === 0, failed };
+}
+
+export type MovementInput = {
   tipo: 'Ingreso' | 'Salida' | 'Devolucion'; codigo: string; cantidad: number;
   comprobante?: string; clienteProveedor?: string; responsable?: string;
-}): Promise<void> {
+  fecha?: string;
+};
+
+export async function createMovement(input: MovementInput): Promise<void> {
   const { error } = await supabase.from('movimientos').insert({
     id_movimiento: crypto.randomUUID(), tipo_movimiento: input.tipo, codigo: input.codigo,
-    cantidad: input.cantidad, fecha: new Date().toISOString().slice(0, 10),
+    cantidad: input.cantidad, fecha: input.fecha || new Date().toISOString().slice(0, 10),
     comprobante: input.comprobante ?? '', cliente_proveedor: input.clienteProveedor ?? '',
     retira_responsable: input.responsable ?? ''
   });
+  if (error) throw error;
+}
+
+/**
+ * Inserta un historial completo de movimientos (por ejemplo, las hojas Ingreso y Salida
+ * de la planilla) en tandas. Devuelve cuántos quedaron guardados en la nube.
+ */
+export async function createMovementsBulk(
+  movements: MovementInput[],
+  chunkSize = 400
+): Promise<{ inserted: number; errors: string[] }> {
+  const errors: string[] = [];
+  let inserted = 0;
+
+  for (let i = 0; i < movements.length; i += chunkSize) {
+    const chunk = movements.slice(i, i + chunkSize).map(m => ({
+      id_movimiento: crypto.randomUUID(),
+      tipo_movimiento: m.tipo,
+      codigo: m.codigo,
+      cantidad: m.cantidad,
+      fecha: m.fecha || new Date().toISOString().slice(0, 10),
+      comprobante: m.comprobante ?? '',
+      cliente_proveedor: m.clienteProveedor ?? '',
+      retira_responsable: m.responsable ?? ''
+    }));
+    const { error } = await supabase.from('movimientos').insert(chunk);
+    if (error) {
+      errors.push(error.message);
+    } else {
+      inserted += chunk.length;
+    }
+  }
+
+  return { inserted, errors };
+}
+
+type GlobalUserRow = {
+  username: string;
+  nombre: string;
+  rol: string;
+  password: string | null;
+};
+
+/** Fetches all user accounts stored globally (shared across all computers). */
+export async function getGlobalUsers(): Promise<UserAccount[]> {
+  const rows = await fetchAllRows<GlobalUserRow>('usuarios', 'username, nombre, rol, password');
+  return (rows ?? []).map(row => ({
+    id: `usr-${row.username}`,
+    username: row.username,
+    nombre: row.nombre,
+    rol: (row.rol ?? 'observador') as UserRole,
+    password: row.password ?? undefined,
+  }));
+}
+
+/** Upserts a user account into the shared global users table. */
+export async function saveGlobalUser(user: UserAccount): Promise<void> {
+  const { error } = await supabase.from('usuarios').upsert({
+    username: user.username,
+    nombre: user.nombre,
+    rol: user.rol,
+    password: user.password ?? null,
+  }, { onConflict: 'username' });
+  if (error) throw error;
+}
+
+/** Deletes a user account from the shared global users table. */
+export async function deleteGlobalUser(username: string): Promise<void> {
+  const { error } = await supabase.from('usuarios').delete().eq('username', username);
   if (error) throw error;
 }

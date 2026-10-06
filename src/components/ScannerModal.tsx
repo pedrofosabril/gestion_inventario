@@ -32,6 +32,7 @@ import {
 import confetti from 'canvas-confetti';
 import { useInventory } from '../context/InventoryContext';
 import { InventoryItem, ItemCategory, SalidaGroupRecord, DevolucionGroupRecord, SalidaStockOrigen, PARAMETRIZED_OPERATORS, PARAMETRIZED_SUPPLIERS } from '../types';
+import { matchesUbicacion } from '../utils/locationSearch';
 import { SalidaReceiptModal } from './SalidaReceiptModal';
 import { DevolucionReceiptModal } from './DevolucionReceiptModal';
 import { ManualEntryModal } from './ManualEntryModal';
@@ -1023,6 +1024,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
         (i.codigoBarras && i.codigoBarras.toLowerCase().includes(barcodeInput.toLowerCase().trim())) ||
         i.descripcion.toLowerCase().includes(barcodeInput.toLowerCase().trim()) ||
         i.proveedor.toLowerCase().includes(barcodeInput.toLowerCase().trim()) ||
+        matchesUbicacion(i.ubicacion, barcodeInput) ||
         (i.equivalencias && i.equivalencias.toLowerCase().includes(barcodeInput.toLowerCase().trim()))
       ).slice(0, 8)
     : [];
@@ -1408,7 +1410,8 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
                   </button>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2 mt-1">
+                <div className={`grid gap-2 mt-1 ${scannerMode === 'ingreso' ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                {scannerMode === 'ingreso' && (
                 <button
                   type="button"
                   onClick={() => setShowManualModal(true)}
@@ -1417,6 +1420,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
                   <Keyboard className="w-4 h-4 text-[#006bb0]" />
                   <span>Carga manual</span>
                 </button>
+                )}
                 <button
                   type="button"
                   onClick={() => setShowCameraScanner(prev => !prev)}
@@ -1563,7 +1567,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
                         }`}>
                           {item.stock} u.
                         </span>
-                        <span className="text-[10px] text-slate-500 block font-mono">Ubic: {item.ubicacion}</span>
+                        <span className="text-[10px] text-slate-500 block font-mono">Ubicación: {item.ubicacion}</span>
                       </div>
                     </button>
                   ))}
@@ -1652,7 +1656,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
                               <span className="font-mono font-black text-xs text-slate-900">{draft.item.codigo}</span>
                               <span className="text-[10px] px-1.5 py-0.2 rounded bg-[#e8f4fc] text-[#006bb0] font-bold uppercase">{draft.item.proveedor}</span>
                               <span className="text-[10px] px-1.5 py-0.2 rounded bg-[#f4f9fd] text-slate-700 font-mono font-semibold border border-[#badbf5]">
-                                Ubic: {draft.item.ubicacion || 'A'}
+                                Ubicación: {draft.item.ubicacion || 'A'}
                               </span>
                             </div>
                             <p className="text-xs font-medium text-slate-700 line-clamp-1 mt-0.5">{draft.item.descripcion}</p>
@@ -1747,7 +1751,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
                     <div className="h-48 flex flex-col items-center justify-center text-center p-6 border-2 border-dashed border-amber-300 rounded-xl bg-white">
                       <RotateCcw className="w-8 h-8 text-amber-400 mb-2" />
                       <p className="text-xs font-bold text-slate-500">Sin productos para devolución</p>
-                      <p className="text-[11px] text-slate-400 mt-1">Escanea el código del producto o usa Carga manual</p>
+                      <p className="text-[11px] text-slate-400 mt-1">Escanea o escribe el código del producto</p>
                     </div>
                   ) : (
                     groupDevolucionItems.map((draft, idx) => {
@@ -1764,7 +1768,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
                               <span className="font-mono font-black text-xs text-slate-900">{draft.item.codigo}</span>
                               <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-100 text-amber-900 font-bold uppercase">{draft.item.proveedor}</span>
                               <span className="text-[10px] px-1.5 py-0.2 rounded bg-[#f4f9fd] text-slate-700 font-mono font-semibold border border-[#badbf5]">
-                                Ubic: {draft.item.ubicacion || 'A'}
+                                Ubicación: {draft.item.ubicacion || 'A'}
                               </span>
                             </div>
                             <p className="text-xs font-medium text-slate-700 line-clamp-1 mt-0.5">{draft.item.descripcion}</p>
@@ -1843,7 +1847,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
                               <span className="font-mono font-black text-xs text-slate-900">{draft.codigo}</span>
                               <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800 font-bold uppercase">{draft.proveedor}</span>
                               <span className="text-[10px] px-1.5 py-0.2 rounded bg-[#f4f9fd] text-slate-700 font-mono font-semibold border border-[#badbf5]">
-                                Ubic: {draft.ubicacion}
+                                Ubicación: {draft.ubicacion}
                               </span>
                               <span className="text-[10px] px-1.5 py-0.2 rounded bg-sky-100 text-sky-800 font-bold">
                                 {CATEGORY_NAMES[draft.categoria]}
@@ -1938,21 +1942,17 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
 
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
+                    {scannerMode === 'ingreso' && (
                     <button
                       type="button"
                       onClick={() => setShowManualModal(true)}
-                      className={`px-4 py-2.5 rounded-xl border font-black text-xs transition-all flex items-center gap-1.5 cursor-pointer shadow-xs ${
-                        scannerMode === 'salida'
-                          ? 'border-sky-300 bg-sky-50 text-[#006bb0] hover:bg-sky-100 hover:border-sky-400'
-                          : scannerMode === 'devolucion'
-                          ? 'border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100 hover:border-amber-400'
-                          : 'border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 hover:border-emerald-400'
-                      }`}
+                      className="px-4 py-2.5 rounded-xl border border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 hover:border-emerald-400 font-black text-xs transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
                       title="Carga manual de productos sin lector de código de barras"
                     >
                       <Keyboard className="w-4 h-4" />
                       <span>Carga manual</span>
                     </button>
+                    )}
 
                     <button
                       type="button"

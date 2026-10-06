@@ -24,7 +24,7 @@ import {
   INITIAL_USERS 
 } from '../data/initialData';
 import { replaceYazWithYas, sanitizeYazObject } from '../utils/sanitizeUtils';
-import { createMovement, deleteInventoryItem, getInventory, saveInventoryItem } from '../lib/supabase';
+import { createMovement, createMovementsBulk, clearSupabaseAll, deleteInventoryItem, getInventory, saveInventoryItem, getGlobalUsers, saveGlobalUser, deleteGlobalUser, MovementInput } from '../lib/supabase';
 import { mergeSameProductPairs } from '../utils/productMerge';
 
 export type MainNavSection = ItemCategory | 'salidas_log' | 'ingresos_log' | 'gerencia_dashboard';
@@ -105,6 +105,7 @@ interface InventoryContextType {
     devolucionGroup?: DevolucionGroupRecord;
   };
   deleteDevolucionGroup: (groupId: string, subtractStock?: boolean) => { success: boolean; message: string };
+  deleteDevolucionItem: (groupId: string, codigo: string, subtractStock?: boolean) => { success: boolean; message: string };
   updateDevolucionGroupSignature: (groupId: string, firmaDigital: string, firmadoPor?: string) => void;
   updateDevolucionGroupPanoleroSignature: (groupId: string, firmaPanolero: string, firmadoPor?: string) => void;
   getNextDevolucionNumber: () => number;
@@ -119,26 +120,35 @@ interface InventoryContextType {
     categoria?: ItemCategory;
     precioUnitario?: number;
   }) => { success: boolean; message: string; ingreso?: IngresoRecord; newStock?: number };
+  deleteIngreso: (ingresoId: string, subtractStock?: boolean) => { success: boolean; message: string };
 
   // Excel Migration / Import & Export
+  // Se importan por LOTES: cada lote es una hoja del archivo con su categoría de destino.
   importExcelRows: (
-    rows: any[], 
-    targetCategory: ItemCategory, 
+    batches: { category: ItemCategory; rows: any[] }[],
     mode: 'merge' | 'replace'
-  ) => { added: number; updated: number; errors: string[] };
+  ) => Promise<{ added: number; updated: number; errors: string[] }>;
+
+  /**
+   * Importa el historial de SALIDAS e INGRESOS de la planilla. No toca el stock: el Excel
+   * ya trae el stock final contado en las hojas de inventario.
+   */
+  importMovimientosRows: (
+    batches: { kind: 'salidas' | 'ingresos'; rows: any[] }[]
+  ) => Promise<{ salidas: number; ingresos: number; skipped: number; errors: string[] }>;
   
   exportCategoryToExcel: (category?: ItemCategory | 'all' | 'salidas' | 'ingresos') => void;
   backupDatabase: () => void;
   
   // Auth
-  login: (username: string, password?: string) => boolean;
-  validateLogin: (username: string, password?: string) => { success: boolean; message: string; user?: UserAccount };
+  login: (username: string, password?: string) => Promise<boolean>;
+  validateLogin: (username: string, password?: string) => Promise<{ success: boolean; message: string; user?: UserAccount }>;
   registerUser: (userData: {
     username: string;
     nombre: string;
     rol: UserRole;
     password?: string;
-  }) => { success: boolean; message: string; user?: UserAccount };
+  }) => Promise<{ success: boolean; message: string; user?: UserAccount }>;
   hasGerente: boolean;
   logout: () => void;
   
@@ -154,7 +164,7 @@ interface InventoryContextType {
   totalUnits: number;
   totalSkus: number;
   resetToDefaults: () => void;
-  clearAllData: () => void;
+  clearAllData: () => Promise<{ ok: boolean; failed: string[] }>;
   restoreDatabase: (jsonContent: string) => Promise<{ success: boolean; message: string }>;
 }
 
@@ -166,14 +176,22 @@ const STORAGE_KEYS = {
   SALIDA_GROUPS: 'verdu_inventory_salida_groups_v18_exact_mv_cajas',
   DEVOLUCION_GROUPS: 'verdu_inventory_devolucion_groups_v1',
   INGRESOS: 'verdu_inventory_ingresos_v18_exact_mv_cajas',
-  USER: 'verdu_inventory_user_v2',
-  USERS: 'verdu_inventory_users_list_v2',
+  USER: 'verdu_inventory_user_v3',
+  USERS: 'verdu_inventory_users_list_v3',
   BACKUP_HISTORY: 'verdu_backup_history_v1',
-  SAVED_SIGNATURES: 'verdu_firmas_guardadas_v1'
+  SAVED_SIGNATURES: 'verdu_firmas_guardadas_v1',
+  LAST_ACTIVITY: 'verdu_inventory_last_activity_v1'
 };
+
+// Sesión de administración: si no hay actividad por más de 1 hora, se cierra la sesión.
+const ADMIN_INACTIVITY_MAX_MS = 60 * 60 * 1000;
 
 // Clean legacy cached demo data from previous versions & sanitize any Yaz occurrences
 try {
+  // Remove all accounts and active sessions from the previous storage version.
+  localStorage.removeItem('verdu_inventory_user_v2');
+  localStorage.removeItem('verdu_inventory_users_list_v2');
+
   const legacyPrefixes = [
     'verdu_inventory_items_',
     'verdu_inventory_salidas_',
@@ -350,12 +368,26 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           parsed.nombre = 'Marcelo';
           localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(parsed));
         }
+        // Sesión de administración: si no hubo actividad en la última 1 hora, se cierra.
+        if (parsed.rol === 'gerencia') {
+          const lastActivity = Number(localStorage.getItem(STORAGE_KEYS.LAST_ACTIVITY) || '0');
+          if (!isFinite(lastActivity) || lastActivity <= 0 || Date.now() - lastActivity >= ADMIN_INACTIVITY_MAX_MS) {
+            localStorage.removeItem(STORAGE_KEYS.USER);
+            localStorage.removeItem(STORAGE_KEYS.LAST_ACTIVITY);
+            return null;
+          }
+        }
         return parsed;
       }
       return null;
     } catch {
       return null;
     }
+  });
+
+  const [lastActivityAt, setLastActivityAt] = useState<number>(() => {
+    const v = Number(localStorage.getItem(STORAGE_KEYS.LAST_ACTIVITY) || '0');
+    return isFinite(v) && v > 0 ? v : Date.now();
   });
 
   const [backupHistory, setBackupHistory] = useState<BackupHistoryEntry[]>(() => {
@@ -387,6 +419,47 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     getInventory()
       .then(data => { if (active) setItems(data); })
       .catch(error => console.error('No se pudo cargar el inventario de Supabase:', error));
+    return () => { active = false; };
+  }, []);
+
+  // Global user accounts: the shared `usuarios` table is the source of truth.
+  // Local seeds/config are merged on top so existing per-browser accounts survive,
+  // and any account only present locally is pushed up to the shared table.
+  useEffect(() => {
+    let active = true;
+    getGlobalUsers()
+      .then(globalUsers => {
+        if (!active) return;
+        const mergedMap = new Map<string, UserAccount>();
+        for (const u of users) mergedMap.set(u.username.toLowerCase(), u);
+        for (const u of globalUsers) mergedMap.set(u.username.toLowerCase(), u);
+        const all = Array.from(mergedMap.values());
+        setUsers(all);
+        try {
+          localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(all));
+        } catch (e) {
+          console.error('Failed to save users to storage', e);
+        }
+
+        // Push user-created accounts up to the shared table, but never
+        // re-upload the bundled demo accounts (panol/ventas, etc.).
+        const seedNames = new Set(INITIAL_USERS.map(u => u.username.toLowerCase()));
+        const localNames = new Set(users.map(u => u.username.toLowerCase()));
+        for (const u of all) {
+          if (localNames.has(u.username.toLowerCase()) && !seedNames.has(u.username.toLowerCase())) {
+            void saveGlobalUser(u).catch(error => console.error('No se pudo sincronizar el usuario a Supabase:', error));
+          }
+        }
+
+        // Remove any previously auto-uploaded demo accounts from the shared table
+        const globalNames = new Set(globalUsers.map(u => u.username.toLowerCase()));
+        for (const seedName of seedNames) {
+          if (globalNames.has(seedName)) {
+            void deleteGlobalUser(seedName).catch(error => console.error('No se pudo limpiar el usuario de ejemplo de Supabase:', error));
+          }
+        }
+      })
+      .catch(error => console.error('No se pudieron cargar los usuarios globales de Supabase:', error));
     return () => { active = false; };
   }, []);
 
@@ -430,6 +503,59 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       console.error('Failed to save user', e);
     }
   }, [currentUser]);
+
+  // === Sesión de administración por inactividad (1 hora) ===
+  // Marca actividad ante cualquier interacción (clicks, teclado, táctil, scroll).
+  useEffect(() => {
+    const markActivity = () => {
+      const now = Date.now();
+      setLastActivityAt(prev => (now - prev >= 15000 ? now : prev));
+    };
+    const events = ['pointerdown', 'keydown', 'touchstart', 'scroll', 'wheel'];
+    events.forEach(ev => window.addEventListener(ev, markActivity, { passive: true }));
+    return () => events.forEach(ev => window.removeEventListener(ev, markActivity));
+  }, []);
+
+  // Persiste la última actividad con un throttling suave (cada 15s aprox).
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      try {
+        localStorage.setItem(STORAGE_KEYS.LAST_ACTIVITY, String(lastActivityAt));
+      } catch (e) {
+        console.error('Failed to save last activity', e);
+      }
+    }, 200);
+    return () => window.clearTimeout(t);
+  }, [lastActivityAt]);
+
+  // Verifica expiración periódicamente y al volver a la pestaña.
+  useEffect(() => {
+    const expireIfIdle = () => {
+      if (currentUser?.rol !== 'gerencia') return;
+      if (lastActivityAt > 0 && Date.now() - lastActivityAt >= ADMIN_INACTIVITY_MAX_MS) {
+        setCurrentUser(null);
+        setLastActivityAt(0);
+        try {
+          localStorage.removeItem(STORAGE_KEYS.USER);
+          localStorage.removeItem(STORAGE_KEYS.LAST_ACTIVITY);
+        } catch (e) {
+          console.error('Failed to clear expired session', e);
+        }
+      }
+    };
+    expireIfIdle();
+    const interval = window.setInterval(expireIfIdle, 30000);
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') expireIfIdle();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', expireIfIdle);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', expireIfIdle);
+    };
+  }, [currentUser, lastActivityAt]);
 
   useEffect(() => {
     try {
@@ -884,20 +1010,23 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           );
           if (idx !== -1) {
             const current = updated[idx];
-            if (itemEntry.origenStock === 'servicio') {
-              updated[idx] = {
-                ...current,
-                paraServicio: (current.paraServicio ?? 0) + itemEntry.cantidad,
-                precioTotal: (current.stock || 0) * (current.precio || 0)
-              };
-            } else {
+            const updatedItem = (() => {
+              if (itemEntry.origenStock === 'servicio') {
+                return {
+                  ...current,
+                  paraServicio: (current.paraServicio ?? 0) + itemEntry.cantidad,
+                  precioTotal: (current.stock || 0) * (current.precio || 0)
+                };
+              }
               const restoredStock = current.stock + itemEntry.cantidad;
-              updated[idx] = {
+              return {
                 ...current,
                 stock: restoredStock,
                 precioTotal: restoredStock * current.precio
               };
-            }
+            })();
+            updated[idx] = updatedItem;
+            void saveInventoryItem(updatedItem).catch(error => console.error('No se pudo actualizar el stock en Supabase:', error));
           }
         }
         return updated;
@@ -1013,13 +1142,15 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         );
         if (match) {
           const newStock = (item.stock || 0) + match.cantidad;
-          return {
+          const updatedItem = {
             ...item,
             stock: newStock,
             precioTotal: newStock * (item.precio || 0),
             fechaModificacion: formattedDate,
             usuarioModificacion: currentUser.nombre
           };
+          void saveInventoryItem(updatedItem).catch(error => console.error('No se pudo actualizar el stock en Supabase:', error));
+          return updatedItem;
         }
         return item;
       });
@@ -1089,11 +1220,13 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           if (idx !== -1) {
             const current = updated[idx];
             const newStock = Math.max(0, current.stock - itemEntry.cantidad);
-            updated[idx] = {
+            const updatedItem = {
               ...current,
               stock: newStock,
               precioTotal: newStock * current.precio
             };
+            updated[idx] = updatedItem;
+            void saveInventoryItem(updatedItem).catch(error => console.error('No se pudo actualizar el stock en Supabase:', error));
           }
         }
         return updated;
@@ -1102,6 +1235,56 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     setDevolucionGroups(prev => prev.filter(g => g.id !== groupId));
     return { success: true, message: `Devolución "${targetGroup.numeroDevolucionFormatted}" eliminada.` };
+  };
+
+  const deleteDevolucionItem = (groupId: string, codigo: string, subtractStock: boolean = true) => {
+    const targetGroup = devolucionGroups.find(g => g.id === groupId);
+    if (!targetGroup) return { success: false, message: 'Devolución no encontrada.' };
+
+    const codigoL = codigo.trim().toLowerCase();
+    const toRemove = targetGroup.items.filter(it => it.codigo.toLowerCase() === codigoL);
+    if (toRemove.length === 0) return { success: false, message: 'El producto no pertenece a esa devolución.' };
+
+    if (subtractStock) {
+      setItems(prevItems => {
+        const updated = [...prevItems];
+        let changed = false;
+        for (const itemEntry of toRemove) {
+          const idx = updated.findIndex(it =>
+            it.codigo.toLowerCase() === itemEntry.codigo.toLowerCase() ||
+            (it.codigoBarras && it.codigoBarras.toLowerCase() === itemEntry.codigo.toLowerCase())
+          );
+          if (idx !== -1) {
+            const current = updated[idx];
+            const newStock = Math.max(0, current.stock - itemEntry.cantidad);
+            const updatedItem = {
+              ...current,
+              stock: newStock,
+              precioTotal: newStock * current.precio
+            };
+            updated[idx] = updatedItem;
+            changed = true;
+            void saveInventoryItem(updatedItem).catch(error => console.error('No se pudo actualizar el stock en Supabase:', error));
+          }
+        }
+        return changed ? updated : prevItems;
+      });
+    }
+
+    const remainingItems = targetGroup.items.filter(it => !toRemove.includes(it));
+    if (remainingItems.length === 0) {
+      setDevolucionGroups(prev => prev.filter(g => g.id !== groupId));
+    } else {
+      const totalUnidades = remainingItems.reduce((sum, it) => sum + it.cantidad, 0);
+      const totalValor = remainingItems.reduce((sum, it) => sum + (it.precioUnitario || 0) * it.cantidad, 0);
+      setDevolucionGroups(prev => prev.map(g =>
+        g.id === groupId
+          ? { ...g, items: remainingItems, totalUnidades, totalValor }
+          : g
+      ));
+    }
+
+    return { success: true, message: `"${codigo}" eliminado del historial de devoluciones.` };
   };
 
   const updateDevolucionGroupSignature = (groupId: string, firmaDigital: string, firmadoPor?: string) => {
@@ -1164,20 +1347,23 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         if (idx !== -1) {
           const updated = [...prevItems];
           const current = updated[idx];
-          if (target.origenStock === 'servicio') {
-            updated[idx] = {
-              ...current,
-              paraServicio: (current.paraServicio ?? 0) + target.cantidad,
-              precioTotal: (current.stock || 0) * (current.precio || 0)
-            };
-          } else {
+          const updatedItem = (() => {
+            if (target.origenStock === 'servicio') {
+              return {
+                ...current,
+                paraServicio: (current.paraServicio ?? 0) + target.cantidad,
+                precioTotal: (current.stock || 0) * (current.precio || 0)
+              };
+            }
             const restoredStock = current.stock + target.cantidad;
-            updated[idx] = {
+            return {
               ...current,
               stock: restoredStock,
               precioTotal: restoredStock * current.precio
             };
-          }
+          })();
+          updated[idx] = updatedItem;
+          void saveInventoryItem(updatedItem).catch(error => console.error('No se pudo actualizar el stock en Supabase:', error));
           return updated;
         }
         return prevItems;
@@ -1310,159 +1496,330 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     };
   };
 
+  const deleteIngreso = (ingresoId: string, subtractStock: boolean = true) => {
+    const target = ingresos.find(i => i.id === ingresoId);
+    if (!target) return { success: false, message: 'Registro de ingreso no encontrado.' };
+
+    if (subtractStock) {
+      setItems(prevItems => {
+        const idx = prevItems.findIndex(it =>
+          it.codigo.toLowerCase() === target.codigo.toLowerCase() ||
+          (it.codigoBarras && it.codigoBarras.toLowerCase() === target.codigo.toLowerCase())
+        );
+        if (idx !== -1) {
+          const updated = [...prevItems];
+          const current = updated[idx];
+          const newStock = Math.max(0, current.stock - target.cantidad);
+          const updatedItem = {
+            ...current,
+            stock: newStock,
+            precioTotal: newStock * (current.precio || 0)
+          };
+          updated[idx] = updatedItem;
+          void saveInventoryItem(updatedItem).catch(error => console.error('No se pudo actualizar el stock en Supabase:', error));
+          return updated;
+        }
+        return prevItems;
+      });
+    }
+
+    setIngresos(prev => prev.filter(i => i.id !== ingresoId));
+    return { success: true, message: `Ingreso de "${target.codigo}" eliminado del historial.` };
+  };
+
   // Excel Importer from Array of parsed rows
-  const importExcelRows = (
-    rows: any[], 
-    targetCategory: ItemCategory, 
+  const importExcelRows = async (
+    batches: { category: ItemCategory; rows: any[] }[],
     mode: 'merge' | 'replace'
   ) => {
     let added = 0;
     let updated = 0;
     const errors: string[] = [];
 
-    if (!rows || rows.length === 0) {
+    const allRows = batches.flatMap(b => b.rows);
+    if (!allRows || allRows.length === 0) {
       return { added: 0, updated: 0, errors: ['El archivo no contiene filas válidas.'] };
     }
 
-    const parsedItems: InventoryItem[] = [];
-
-    rows.forEach((row, idx) => {
-      // Flexible column name matching (case-insensitive & accent-insensitive)
-      const getVal = (possibleKeys: string[]) => {
-        for (const k of Object.keys(row)) {
-          const cleanK = k.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
-          for (const target of possibleKeys) {
-            if (cleanK === target || cleanK.includes(target)) {
-              return row[k];
-            }
+    // Flexible column name matching (case-insensitive & accent-insensitive)
+    const getVal = (row: any, possibleKeys: string[]) => {
+      for (const k of Object.keys(row)) {
+        const cleanK = k.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+        for (const target of possibleKeys) {
+          if (cleanK === target || cleanK.includes(target)) {
+            return row[k];
           }
         }
-        return undefined;
-      };
+      }
+      return undefined;
+    };
 
-      // 1. Código: search typical names or take first column if missing
-      let rawCode = getVal(['codigo', 'cod', 'code', 'articulo', 'item', 'parte', 'nro de parte', 'numero', 'referencia']);
-      if (!rawCode) {
-        const keys = Object.keys(row);
-        if (keys.length > 0 && row[keys[0]] !== undefined && String(row[keys[0]]).trim() !== '') {
-          rawCode = row[keys[0]];
+    const parsedItems: InventoryItem[] = [];
+
+    batches.forEach((batch, batchIdx) => {
+      const targetCategory = batch.category;
+      batch.rows.forEach((row: any, idx: number) => {
+        // 1. Código: search typical names or take first column if missing
+        let rawCode = getVal(row, ['codigo', 'cod', 'code', 'articulo', 'item', 'parte', 'nro de parte', 'numero', 'referencia']);
+        if (!rawCode) {
+          const keys = Object.keys(row);
+          if (keys.length > 0 && row[keys[0]] !== undefined && String(row[keys[0]]).trim() !== '') {
+            rawCode = row[keys[0]];
+          }
         }
-      }
-      
-      if (!rawCode || String(rawCode).trim() === '') {
-        return; // Skip empty rows
-      }
 
-      const codigo = String(rawCode).trim().replace(/^´|^`/, '');
-      const proveedor = String(getVal(['proveedor', 'marca', 'supplier', 'brand', 'fabricante']) || 'SULLAIR').trim();
-      const descripcion = String(getVal(['descripcion', 'desc', 'detalle', 'nombre', 'denominacion', 'repuesto', 'concepto']) || '').trim() || codigo;
-      
-      const rawStock = getVal(['stock', 'cant', 'cantidad', 'qty', 'existencia', 'unidades', 'saldo']);
-      let stock = 0;
-      if (typeof rawStock === 'number') {
-        stock = Math.max(0, Math.floor(rawStock));
-      } else if (rawStock !== undefined && rawStock !== null) {
-        const cleanStock = String(rawStock).replace(/[^0-9.-]/g, '');
-        stock = Math.max(0, parseInt(cleanStock, 10) || 0);
-      }
+        if (!rawCode || String(rawCode).trim() === '') {
+          return; // Skip empty rows
+        }
 
-      const ubicacion = String(getVal(['ubicacion', 'ubi', 'estante', 'cajon', 'posicion', 'pasillo', 'letra', 'seccion']) || 'A').trim().toUpperCase();
-      
-      const rawPrecio = getVal(['precio', 'unitario', 'price', 'costo', 'valor', 'p.unit', 'p.unitario']);
-      let precio = 0;
-      if (typeof rawPrecio === 'number') {
-        precio = rawPrecio;
-      } else if (rawPrecio) {
-        const cleanPrice = String(rawPrecio).replace(/\$/g, '').replace(/,/g, '.').replace(/[^0-9.-]/g, '').trim();
-        precio = parseFloat(cleanPrice) || 0;
-      }
+        const codigo = String(rawCode).trim().replace(/^´|^`/, '');
+        const proveedor = String(getVal(row, ['proveedor', 'marca', 'supplier', 'brand', 'fabricante']) || 'SULLAIR').trim();
+        const descripcion = String(getVal(row, ['descripcion', 'desc', 'detalle', 'nombre', 'denominacion', 'repuesto', 'concepto']) || '').trim() || codigo;
 
-      const rawFecha = getVal(['fecha', 'f. de control', 'f. de registro', 'f.control', 'f.registro', 'f.ingreso', 'date', 'ultimo movimiento']);
-      const fechaRegistro = rawFecha ? String(rawFecha) : new Date().toISOString().split('T')[0];
+        const rawStock = getVal(row, ['stock', 'cant', 'cantidad', 'qty', 'existencia', 'unidades', 'saldo']);
+        let stock = 0;
+        if (typeof rawStock === 'number') {
+          stock = Math.max(0, Math.floor(rawStock));
+        } else if (rawStock !== undefined && rawStock !== null) {
+          const cleanStock = String(rawStock).replace(/[^0-9.-]/g, '');
+          stock = Math.max(0, parseInt(cleanStock, 10) || 0);
+        }
 
-      const pServicio = parseInt(String(getVal(['servicio', 'p/servicio', 'para servicio', 'p_servicio']) || '0'), 10) || 0;
-      const subcat = String(getVal(['subcategoria', 'subcat', 'tipo', 'modelo', 'linea', 'familia']) || '').trim();
-      
-      const rawPorEncargo = getVal(['encargo', 'por encargo', 'pedido', 'a pedido']);
-      const porEncargo = rawPorEncargo === true || String(rawPorEncargo).toLowerCase() === 'si' || String(rawPorEncargo).toLowerCase() === 'true';
+        const ubicacion = String(getVal(row, ['ubicacion', 'ubi', 'estante', 'cajon', 'posicion', 'pasillo', 'letra', 'seccion']) || 'A').trim().toUpperCase();
 
-      // Detect sheet or category hint if available
-      let itemCategory = targetCategory;
-      if (row._ORIGEN_HOJA) {
-        const hName = String(row._ORIGEN_HOJA).toLowerCase();
-        if (hName.includes('fluido') || hName.includes('cajon') || hName.includes('aceite')) itemCategory = 'cajones_fluidos';
-        else if (hName.includes('submic') || hName.includes('fxf') || hName.includes('scf')) itemCategory = 'submicronicos';
-        else if (hName.includes('rodamiento') || hName.includes('skf') || hName.includes('timken')) itemCategory = 'rodamientos';
-        else if (hName.includes('entrepiso') || hName.includes('fleetguard') || hName.includes('lanss')) itemCategory = 'entrepiso';
-        else if (hName.includes('mv') || hName.includes('repuesto mv')) itemCategory = 'repuestos_mv';
-        else if (hName.includes('caja')) itemCategory = 'cajas';
-      }
+        const rawPrecio = getVal(row, ['precio', 'unitario', 'price', 'costo', 'valor', 'p.unit', 'p.unitario']);
+        let precio = 0;
+        if (typeof rawPrecio === 'number') {
+          precio = rawPrecio;
+        } else if (rawPrecio) {
+          const cleanPrice = String(rawPrecio).replace(/\$/g, '').replace(/,/g, '.').replace(/[^0-9.-]/g, '').trim();
+          precio = parseFloat(cleanPrice) || 0;
+        }
 
-      parsedItems.push({
-        id: `imp-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`,
-        codigo: replaceYazWithYas(codigo),
-        proveedor: replaceYazWithYas(proveedor),
-        descripcion: replaceYazWithYas(descripcion),
-        stock,
-        stockMinimo: 1,
-        ubicacion: ubicacion || 'A',
-        categoria: itemCategory,
-        subcategoria: subcat ? replaceYazWithYas(subcat) : undefined,
-        fechaRegistro,
-        fechaUltimoMovimiento: fechaRegistro,
-        precio,
-        precioTotal: stock * precio,
-        paraServicio: pServicio || undefined,
-        porEncargo: porEncargo || undefined,
-        codigoBarras: ''
+        const rawFecha = getVal(row, ['fecha', 'f. de control', 'f. de registro', 'f.control', 'f.registro', 'f.ingreso', 'date', 'ultimo movimiento']);
+        const fechaRegistro = rawFecha ? String(rawFecha) : new Date().toISOString().split('T')[0];
+
+        const pServicio = parseInt(String(getVal(row, ['servicio', 'p/servicio', 'para servicio', 'p_servicio']) || '0'), 10) || 0;
+        const subcat = String(getVal(row, ['subcategoria', 'subcat', 'tipo', 'modelo', 'linea', 'familia']) || '').trim();
+
+        const rawPorEncargo = getVal(row, ['encargo', 'por encargo', 'pedido', 'a pedido']);
+        const porEncargo = rawPorEncargo === true || String(rawPorEncargo).toLowerCase() === 'si' || String(rawPorEncargo).toLowerCase() === 'true';
+        const equivalencias = String(getVal(row, ['equivalencias', 'equivalencia']) || '').trim();
+
+        parsedItems.push({
+          id: `imp-${Date.now()}-${batchIdx}-${idx}-${Math.random().toString(36).substring(2, 6)}`,
+          codigo: replaceYazWithYas(codigo),
+          proveedor: replaceYazWithYas(proveedor),
+          descripcion: replaceYazWithYas(descripcion),
+          stock,
+          stockMinimo: 1,
+          ubicacion: ubicacion || 'A',
+          equivalencias: equivalencias || undefined,
+          categoria: targetCategory,
+          subcategoria: subcat ? replaceYazWithYas(subcat) : undefined,
+          fechaRegistro,
+          fechaUltimoMovimiento: fechaRegistro,
+          precio,
+          precioTotal: stock * precio,
+          paraServicio: pServicio || undefined,
+          porEncargo: porEncargo || undefined,
+          codigoBarras: ''
+        });
       });
     });
 
-    if (mode === 'replace') {
-      // Variantes P/SERVICIO + venta del mismo código → un solo producto.
-      const mergedParsed = mergeSameProductPairs(parsedItems);
-      setItems(prev => {
-        const remaining = prev.filter(i => i.categoria !== targetCategory);
-        return [...remaining, ...mergedParsed];
-      });
-      added = mergedParsed.length;
-    } else {
-      // Merge: Update existing if found in items, or add new
-      // Variantes P/SERVICIO + venta del mismo código → un solo producto.
-      const mergedParsed = mergeSameProductPairs(parsedItems);
-      setItems(prev => {
-        const itemMap = new Map<string, InventoryItem>();
-        prev.forEach(item => itemMap.set(item.codigo.toLowerCase().trim(), item));
+    const mergedParsed = mergeSameProductPairs(parsedItems);
 
-        mergedParsed.forEach(newItem => {
-          const key = newItem.codigo.toLowerCase().trim();
-          if (itemMap.has(key)) {
-            const existing = itemMap.get(key)!;
-            itemMap.set(key, {
-              ...existing,
-              stock: newItem.stock,
-              paraServicio: newItem.paraServicio ?? existing.paraServicio,
-              precio: newItem.precio > 0 ? newItem.precio : existing.precio,
-              precioTotal: newItem.stock * (newItem.precio > 0 ? newItem.precio : existing.precio),
-              descripcion: newItem.descripcion && newItem.descripcion !== newItem.codigo ? newItem.descripcion : existing.descripcion,
-              proveedor: newItem.proveedor && newItem.proveedor !== 'SULLAIR' ? newItem.proveedor : existing.proveedor,
-              ubicacion: newItem.ubicacion || existing.ubicacion,
-              categoria: newItem.categoria || existing.categoria,
-              porEncargo: newItem.porEncargo !== undefined ? newItem.porEncargo : existing.porEncargo
-            });
-            updated++;
-          } else {
-            itemMap.set(key, newItem);
-            added++;
-          }
+    // Aplicar el modo elegido contra el inventario actual, emparejando SIEMPRE por CÓDIGO.
+    const itemMap = new Map<string, InventoryItem>();
+    items.forEach(item => itemMap.set(item.codigo.toLowerCase().trim(), item));
+
+    // Solo los productos realmente tocados por esta carga se persisten en la nube.
+    const touchedItems: InventoryItem[] = [];
+
+    mergedParsed.forEach(newItem => {
+      const key = newItem.codigo.toLowerCase().trim();
+      const existing = itemMap.get(key);
+
+      if (mode === 'replace') {
+        // Reemplazo POR CÓDIGO: pisa los datos de los códigos que vienen en la hoja.
+        // Los productos de la sección que NO trae la hoja quedan intactos (no se borran).
+        if (existing) {
+          itemMap.set(key, {
+            ...existing,
+            ...newItem,
+            id: existing.id,
+            stockMinimo: existing.stockMinimo ?? newItem.stockMinimo,
+            equivalencias: existing.equivalencias ?? newItem.equivalencias,
+            factura: existing.factura ?? newItem.factura,
+            notas: existing.notas ?? newItem.notas,
+            codigoBarras: existing.codigoBarras ?? newItem.codigoBarras,
+            porEncargo: existing.porEncargo ?? newItem.porEncargo,
+            // Si la hoja no trae columna de p/servicio, el valor llega como undefined:
+            // se conserva el stock de servicio ya cargado en lugar de dejarlo en 0.
+            paraServicio: newItem.paraServicio ?? existing.paraServicio,
+            precioTotal: newItem.stock * newItem.precio
+          });
+          updated++;
+        } else {
+          itemMap.set(key, { ...newItem, stockMinimo: newItem.stockMinimo ?? 1 });
+          added++;
+        }
+        touchedItems.push(itemMap.get(key)!);
+        return;
+      }
+
+      // Modo 'merge': suma stock y actualiza campos con lo que trae la hoja sin pisar el resto.
+      if (existing) {
+        const newStock = existing.stock + newItem.stock;
+        itemMap.set(key, {
+          ...existing,
+          stock: newStock,
+          paraServicio: (existing.paraServicio ?? 0) + (newItem.paraServicio ?? 0),
+          precio: newItem.precio > 0 ? newItem.precio : existing.precio,
+          precioTotal: newStock * (newItem.precio > 0 ? newItem.precio : existing.precio),
+          descripcion: newItem.descripcion && newItem.descripcion !== newItem.codigo ? newItem.descripcion : existing.descripcion,
+          proveedor: newItem.proveedor && newItem.proveedor !== 'SULLAIR' ? newItem.proveedor : existing.proveedor,
+          ubicacion: newItem.ubicacion || existing.ubicacion,
+          categoria: newItem.categoria || existing.categoria,
+          porEncargo: newItem.porEncargo !== undefined ? newItem.porEncargo : existing.porEncargo
         });
+        updated++;
+        touchedItems.push(itemMap.get(key)!);
+      } else {
+        itemMap.set(key, newItem);
+        added++;
+        touchedItems.push(newItem);
+      }
+    });
 
-        return mergeSameProductPairs(Array.from(itemMap.values()));
-      });
+    if (touchedItems.length > 0) {
+      setItems(mergeSameProductPairs(Array.from(itemMap.values())));
     }
 
     playBeep('success');
+
+    // Persistir en Supabase (fuente de verdad en la nube) los productos tocados por esta carga
+    const saveResults = await Promise.allSettled(
+      mergeSameProductPairs(touchedItems).map(item => saveInventoryItem(item))
+    );
+    for (const res of saveResults) {
+      if (res.status === 'rejected') {
+        errors.push('No se pudo guardar en la nube: ' + String((res.reason as any)?.message ?? res.reason));
+        console.error('Error al guardar producto importado en Supabase:', res.reason);
+      }
+    }
+
     return { added, updated, errors };
+  };
+
+  /**
+   * Carga el historial de SALIDAS e INGRESOS que viene en el Excel (hojas "Salida" e
+   * "Ingreso"). No modifica el stock de los productos: el Excel ya trae el stock final
+   * contado en las hojas de inventario. Los movimientos repetidos se detectan contra el
+   * historial ya cargado para no duplicarlos al reimportar la misma planilla.
+   */
+  const importMovimientosRows = async (
+    batches: { kind: 'salidas' | 'ingresos'; rows: any[] }[]
+  ) => {
+    const errors: string[] = [];
+    let skipped = 0;
+
+    const itemPorCodigo = new Map<string, InventoryItem>();
+    items.forEach(i => itemPorCodigo.set(i.codigo.toLowerCase().trim(), i));
+
+    const claveSalida = (r: any) =>
+      `${String(r.codigo).toLowerCase().trim()}|${r.fechaSalida}|${r.cantidad}|${r.nroRemito}|${r.cliente}`;
+    const claveIngreso = (r: any) =>
+      `${String(r.codigo).toLowerCase().trim()}|${r.fechaIngreso}|${r.cantidad}|${r.factura}`;
+
+    const yaCargadas = new Set<string>();
+    salidas.forEach(s => yaCargadas.add(claveSalida({
+      codigo: s.codigo, fechaSalida: s.fechaSalida, cantidad: s.cantidad,
+      nroRemito: s.nroRemito, cliente: s.cliente
+    })));
+    ingresos.forEach(g => yaCargadas.add(claveIngreso({
+      codigo: g.codigo, fechaIngreso: g.fechaIngreso, cantidad: g.cantidad, factura: g.factura
+    })));
+
+    const nuevasSalidas: SalidaRecord[] = [];
+    const nuevosIngresos: IngresoRecord[] = [];
+    const movimientosNube: MovementInput[] = [];
+
+    batches.forEach(batch => {
+      batch.rows.forEach((row: any, idx: number) => {
+        const codigo = replaceYazWithYas(String(row.codigo ?? '').trim());
+        const cantidad = Math.max(0, Math.trunc(Number(row.cantidad) || 0));
+        if (!codigo || cantidad <= 0) return;
+
+        const item = itemPorCodigo.get(codigo.toLowerCase());
+
+        if (batch.kind === 'salidas') {
+          const fechaSalida = String(row.fechaSalida || '').trim();
+          const nroRemito = replaceYazWithYas(String(row.nroRemito || '').trim()) || 'S/N';
+          const cliente = replaceYazWithYas(String(row.cliente || '').trim()) || 'Verdu y Cía (General)';
+          const retira = replaceYazWithYas(String(row.retira || '').trim());
+          const clave = claveSalida({ codigo, fechaSalida, cantidad, nroRemito, cliente });
+          if (yaCargadas.has(clave)) { skipped++; return; }
+          yaCargadas.add(clave);
+          nuevasSalidas.push({
+            id: `sal-imp-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`,
+            nroRemito,
+            codigo,
+            descripcion: replaceYazWithYas(String(row.descripcion || '').trim()) || item?.descripcion || codigo,
+            fechaSalida,
+            cliente,
+            retira,
+            cantidad,
+            precioUnitario: item?.precio,
+            categoria: item?.categoria,
+            usuarioRegistro: 'Importación Excel'
+          });
+          movimientosNube.push({
+            tipo: 'Salida', codigo, cantidad, fecha: fechaSalida,
+            comprobante: nroRemito, clienteProveedor: cliente, responsable: retira
+          });
+        } else {
+          const fechaIngreso = String(row.fechaIngreso || '').trim();
+          const factura = replaceYazWithYas(String(row.factura || '').trim());
+          const proveedor = replaceYazWithYas(String(row.proveedor || '').trim()) || item?.proveedor || '';
+          const clave = claveIngreso({ codigo, fechaIngreso, cantidad, factura });
+          if (yaCargadas.has(clave)) { skipped++; return; }
+          yaCargadas.add(clave);
+          nuevosIngresos.push({
+            id: `ing-imp-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`,
+            codigo,
+            proveedor,
+            descripcion: replaceYazWithYas(String(row.descripcion || '').trim()) || item?.descripcion || codigo,
+            cantidad,
+            fechaIngreso,
+            factura,
+            precioUnitario: item?.precio,
+            ubicacion: item?.ubicacion,
+            categoria: item?.categoria,
+            usuarioRegistro: 'Importación Excel'
+          });
+          movimientosNube.push({
+            tipo: 'Ingreso', codigo, cantidad, fecha: fechaIngreso,
+            comprobante: factura, clienteProveedor: proveedor
+          });
+        }
+      });
+    });
+
+    if (nuevasSalidas.length > 0) setSalidas(prev => [...nuevasSalidas, ...prev]);
+    if (nuevosIngresos.length > 0) setIngresos(prev => [...nuevosIngresos, ...prev]);
+
+    if (movimientosNube.length > 0) {
+      playBeep('success');
+      const bulk = await createMovementsBulk(movimientosNube);
+      bulk.errors.forEach(e => errors.push('No se pudo guardar el historial en la nube: ' + e));
+      if (bulk.inserted < movimientosNube.length) {
+        errors.push(`Se guardaron ${bulk.inserted} de ${movimientosNube.length} movimientos en la nube.`);
+      }
+    }
+
+    return { salidas: nuevasSalidas.length, ingresos: nuevosIngresos.length, skipped, errors };
   };
 
   // Export to Excel helper
@@ -1645,7 +2002,15 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     playBeep('success');
   };
 
-  const validateLogin = (username: string, password?: string): { success: boolean; message: string; user?: UserAccount } => {
+  const hasGlobalUsers = async (): Promise<UserAccount[]> => {
+    try {
+      return await getGlobalUsers();
+    } catch {
+      return [];
+    }
+  };
+
+  const validateLogin = async (username: string, password?: string): Promise<{ success: boolean; message: string; user?: UserAccount }> => {
     const cleanUsername = (username || '').trim().toLowerCase();
     if (!cleanUsername) {
       return { success: false, message: 'Por favor ingresa tu nombre de usuario.' };
@@ -1654,7 +2019,27 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       return { success: false, message: 'Por favor ingresa tu contraseña.' };
     }
 
-    const user = users.find(u => u.username.toLowerCase() === cleanUsername);
+    let user = users.find(u => u.username.toLowerCase() === cleanUsername);
+
+    // If not in the local cache, fetch the shared users table (other computers may have created it)
+    if (!user) {
+      const globalUsers = await hasGlobalUsers();
+      if (globalUsers.length > 0) {
+        const serverUser = globalUsers.find(u => u.username.toLowerCase() === cleanUsername);
+        if (serverUser) {
+          user = serverUser;
+          setUsers(prev => {
+            const merged = new Map<string, UserAccount>();
+            for (const u of prev) merged.set(u.username.toLowerCase(), u);
+            merged.set(serverUser.username.toLowerCase(), serverUser);
+            const all = Array.from(merged.values());
+            localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(all));
+            return all;
+          });
+        }
+      }
+    }
+
     if (!user) {
       return { 
         success: false, 
@@ -1670,25 +2055,28 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
 
     setCurrentUser(user);
+    const now = Date.now();
+    setLastActivityAt(now);
     try {
       localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(user));
+      localStorage.setItem(STORAGE_KEYS.LAST_ACTIVITY, String(now));
     } catch (e) {
       console.error('Error storing user in localStorage:', e);
     }
     return { success: true, message: 'Inicio de sesión exitoso.', user };
   };
 
-  const login = (username: string, password?: string): boolean => {
-    const res = validateLogin(username, password);
+  const login = async (username: string, password?: string): Promise<boolean> => {
+    const res = await validateLogin(username, password);
     return res.success;
   };
 
-  const registerUser = (userData: {
+  const registerUser = async (userData: {
     username: string;
     nombre: string;
     rol: UserRole;
     password?: string;
-  }): { success: boolean; message: string; user?: UserAccount } => {
+  }): Promise<{ success: boolean; message: string; user?: UserAccount }> => {
     const cleanUsername = (userData.username || '').trim().toLowerCase().replace(/\s+/g, '');
     const cleanNombre = (userData.nombre || '').trim();
     const cleanPass = userData.password || '';
@@ -1712,9 +2100,11 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       return { success: false, message: 'La contraseña debe contener al menos un carácter especial (ej: ! @ # $ % * - _).' };
     }
 
-    // Check if username already taken
-    const existingUser = users.find(u => u.username.toLowerCase() === cleanUsername);
-    if (existingUser) {
+    // Check if username already taken (local cache + shared table)
+    const localTaken = users.some(u => u.username.toLowerCase() === cleanUsername);
+    const globalUsers = await hasGlobalUsers();
+    const globalTaken = globalUsers.some(u => u.username.toLowerCase() === cleanUsername);
+    if (localTaken || globalTaken) {
       return { success: false, message: `El nombre de usuario "${cleanUsername}" ya existe. Por favor elige otro.` };
     }
 
@@ -1726,6 +2116,14 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       password: cleanPass,
     };
 
+    // Persist to the shared table first so the account works from any computer
+    try {
+      await saveGlobalUser(newUser);
+    } catch (e) {
+      console.error('No se pudo crear la cuenta en Supabase:', e);
+      return { success: false, message: 'No se pudo crear la cuenta en el servidor. Revisa tu conexión e inténtalo nuevamente.' };
+    }
+
     const updatedUsers = [...users, newUser];
     setUsers(updatedUsers);
     try {
@@ -1736,8 +2134,11 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     // Automatically log in with the new account
     setCurrentUser(newUser);
+    const now = Date.now();
+    setLastActivityAt(now);
     try {
       localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(newUser));
+      localStorage.setItem(STORAGE_KEYS.LAST_ACTIVITY, String(now));
     } catch (e) {
       console.error('Error storing user in localStorage:', e);
     }
@@ -1749,8 +2150,10 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const logout = () => {
     setCurrentUser(null);
+    setLastActivityAt(0);
     try {
       localStorage.removeItem(STORAGE_KEYS.USER);
+      localStorage.removeItem(STORAGE_KEYS.LAST_ACTIVITY);
     } catch (e) {
       console.error('Error removing user from localStorage:', e);
     }
@@ -1796,27 +2199,35 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const totalUnits = items.reduce((sum, item) => sum + (item.stock || 0), 0);
   const totalSkus = items.length;
 
-  const clearAllData = () => {
+  const clearAllData = async () => {
+    // Vacía únicamente los datos de inventario y operación: la sesión, los usuarios
+    // y las firmas guardadas se conservan para poder recargar el Excel sin quedarse
+    // afuera del panel de Administración.
     setItems([]);
     setSalidas([]);
     setSalidaGroups([]);
     setDevolucionGroups([]);
     setIngresos([]);
-    setUsers([]);
-    setCurrentUser(null);
-    setSavedSignatures([]);
     try {
-      localStorage.removeItem(STORAGE_KEYS.ITEMS);
-      localStorage.removeItem(STORAGE_KEYS.SALIDAS);
-      localStorage.removeItem(STORAGE_KEYS.SALIDA_GROUPS);
-      localStorage.removeItem(STORAGE_KEYS.DEVOLUCION_GROUPS);
-      localStorage.removeItem(STORAGE_KEYS.INGRESOS);
-      localStorage.removeItem(STORAGE_KEYS.USER);
-      localStorage.removeItem(STORAGE_KEYS.USERS);
-      localStorage.removeItem(STORAGE_KEYS.SAVED_SIGNATURES);
+      // Se guardan listas vacías (y no se borran las claves) porque los inicializadores
+      // sólo siembran los datos de demostración cuando la clave NO existe.
+      localStorage.setItem(STORAGE_KEYS.SALIDAS, '[]');
+      localStorage.setItem(STORAGE_KEYS.SALIDA_GROUPS, '[]');
+      localStorage.setItem(STORAGE_KEYS.DEVOLUCION_GROUPS, '[]');
+      localStorage.setItem(STORAGE_KEYS.INGRESOS, '[]');
     } catch (e) {
       console.error('Error clearing data:', e);
     }
+    // Vacía también la base de datos en la nube (repuestos, stock y movimientos)
+    let failed: string[] = [];
+    try {
+      const res = await clearSupabaseAll();
+      failed = res.failed;
+    } catch (error) {
+      failed = ['supabase'];
+      console.error('No se pudieron borrar los datos en Supabase:', error);
+    }
+    return { ok: failed.length === 0, failed };
   };
 
   const restoreDatabase = async (jsonContent: string): Promise<{ success: boolean; message: string }> => {
@@ -1826,7 +2237,9 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         return { success: false, message: 'El archivo no parece un respaldo válido de la base de datos.' };
       }
 
-      const backupItems = Array.isArray(parsed.colecciones.items) ? sanitizeYazObject(parsed.colecciones.items) as InventoryItem[] : [];
+      const backupItems = Array.isArray(parsed.colecciones.items)
+        ? mergeSameProductPairs(sanitizeYazObject(parsed.colecciones.items) as InventoryItem[])
+        : [];
       const backupSalidas = Array.isArray(parsed.colecciones.salidas) ? deduplicateSalidasList(sanitizeYazObject(parsed.colecciones.salidas) as SalidaRecord[]) : [];
       const backupSalidaGroups = Array.isArray(parsed.colecciones.salidaGroups) ? deduplicateSalidaGroupsList(sanitizeYazObject(parsed.colecciones.salidaGroups) as SalidaGroupRecord[]) : [];
       const backupDevolucionGroups = Array.isArray(parsed.colecciones.devolucionGroups) ? sanitizeYazObject(parsed.colecciones.devolucionGroups) as DevolucionGroupRecord[] : [];
@@ -1916,11 +2329,14 @@ backupHistory,
         cleanDuplicateSalidas,
         registerDevolucionGroup,
         deleteDevolucionGroup,
+        deleteDevolucionItem,
         updateDevolucionGroupSignature,
         updateDevolucionGroupPanoleroSignature,
         getNextDevolucionNumber,
         registerIngreso,
+        deleteIngreso,
         importExcelRows,
+        importMovimientosRows,
         exportCategoryToExcel,
         backupDatabase,
         login,

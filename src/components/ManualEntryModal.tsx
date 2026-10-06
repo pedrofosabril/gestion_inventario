@@ -14,7 +14,6 @@ import {
   Tag, 
   Sparkles, 
   Keyboard,
-  Boxes,
   Calculator,
   RotateCcw
 } from 'lucide-react';
@@ -61,7 +60,6 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
   onAddDevolucionItem,
   defaultProveedor = 'SULLAIR'
 }) => {
-  const [ingresoTab, setIngresoTab] = useState<'existente' | 'nuevo'>('existente');
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
   const [salidaQty, setSalidaQty] = useState<number>(1);
@@ -283,7 +281,7 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-base sm:text-lg font-black text-sky-950">
-                  {mode === 'salida' ? 'Carga Manual de Salida' : mode === 'devolucion' ? 'Carga Manual de Devolución' : 'Carga Manual de Entrada'}
+                  {mode === 'salida' ? 'Carga Manual de Salida' : mode === 'devolucion' ? 'Carga Manual de Devolución' : 'Registrar Producto Nuevo'}
                 </h3>
                 <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
                   mode === 'salida' ? 'bg-rose-100 text-rose-800' : mode === 'devolucion' ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'
@@ -296,7 +294,7 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
                   ? 'Busca y selecciona repuestos del inventario para cargar a la salida'
                   : mode === 'devolucion'
                   ? 'Busca y selecciona repuestos para reintegrar a pañol'
-                  : 'Ingresa repuestos al pañol buscando del catálogo o creando un nuevo ítem'}
+                  : 'Completá los datos para registrar el repuesto nuevo en el pañol'}
               </p>
             </div>
           </div>
@@ -312,43 +310,6 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
         </div>
 
         {/* Ingreso Mode Selector Tabs */}
-        {mode === 'ingreso' && (
-          <div className="flex border-b border-slate-200 bg-[#f8fbfe] px-4 pt-2 shrink-0">
-            <button
-              type="button"
-              onClick={() => {
-                setIngresoTab('existente');
-                setErrorMsg(null);
-                setSuccessMsg(null);
-              }}
-              className={`px-4 py-2.5 text-xs font-black rounded-t-xl transition-all border-b-2 flex items-center gap-2 cursor-pointer ${
-                ingresoTab === 'existente'
-                  ? 'border-emerald-600 text-emerald-900 bg-white shadow-2xs'
-                  : 'border-transparent text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <Boxes className="w-4 h-4 text-emerald-600" />
-              <span>Repuesto Existente</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setIngresoTab('nuevo');
-                setErrorMsg(null);
-                setSuccessMsg(null);
-              }}
-              className={`px-4 py-2.5 text-xs font-black rounded-t-xl transition-all border-b-2 flex items-center gap-2 cursor-pointer ${
-                ingresoTab === 'nuevo'
-                  ? 'border-emerald-600 text-emerald-900 bg-white shadow-2xs'
-                  : 'border-transparent text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <Sparkles className="w-4 h-4 text-amber-500" />
-              <span>Nuevo Repuesto a Crear</span>
-            </button>
-          </div>
-        )}
 
         {/* Modal Body */}
         <div className="p-4 sm:p-5 overflow-y-auto flex-1 space-y-4">
@@ -368,7 +329,7 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
             </div>
           )}
 
-          {(mode === 'salida' || ingresoTab === 'existente') && (
+          {mode !== 'ingreso' && (
             <div className="space-y-3">
               {/* Search Bar */}
               <div>
@@ -420,7 +381,7 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
                               {item.proveedor}
                             </span>
                             <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-100 text-slate-700 font-mono">
-                              Ubic: {item.ubicacion}
+                              Ubicación: {item.ubicacion}
                             </span>
                           </div>
                           <p className="text-xs text-slate-600 line-clamp-1 mt-0.5 font-medium">
@@ -736,7 +697,7 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
           )}
 
           {/* New Item Form (Ingreso Mode Only) */}
-          {mode === 'ingreso' && ingresoTab === 'nuevo' && (
+          {mode === 'ingreso' && (
             <form onSubmit={handleConfirmNewIngreso} className="space-y-3">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>

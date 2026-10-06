@@ -186,8 +186,8 @@ export interface ImportPreviewRow {
 }
 
 export const PARAMETRIZED_OPERATORS: string[] = [
-  'Yas',
   'Yasmin',
+  'David',
   'Valeria',
   'Matias',
   'Cristian',

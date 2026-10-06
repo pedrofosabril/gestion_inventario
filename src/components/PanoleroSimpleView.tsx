@@ -1,20 +1,22 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { 
-  ArrowUpRight, 
-  PackagePlus, 
+import {
+  ArrowUpRight,
+  PackagePlus,
   RotateCcw,
-  Search, 
-  MapPin, 
-  Boxes, 
-  ScanLine,
+  Search,
+  MapPin,
   X,
   History,
   Barcode,
   Camera
 } from 'lucide-react';
 import { useInventory } from '../context/InventoryContext';
-import { InventoryItem, SalidaRecord } from '../types';
+import { InventoryItem } from '../types';
 import { CameraBarcodeScanner } from './CameraBarcodeScanner';
+import { SalidasLogView } from './SalidasLogView';
+import { IngresosLogView } from './IngresosLogView';
+import { DevolucionesLogView } from './DevolucionesLogView';
+import { matchesUbicacion } from '../utils/locationSearch';
 
 interface PanoleroSimpleViewProps {
   onOpenScanner: (initialCode?: string, mode?: 'salida' | 'ingreso' | 'devolucion') => void;
@@ -25,9 +27,11 @@ interface PanoleroSimpleViewProps {
 export const PanoleroSimpleView: React.FC<PanoleroSimpleViewProps> = ({
   onOpenScanner
 }) => {
-  const { items, currentUser, salidas } = useInventory();
+  const { items, currentUser, salidas, ingresos, devolucionGroups } = useInventory();
+  const isVentas = currentUser?.rol === 'ventas';
   const [searchTerm, setSearchTerm] = useState<string>('');
-  const [showRecentSalidas, setShowRecentSalidas] = useState<boolean>(false);
+  const [showRecentMovimientos, setShowRecentMovimientos] = useState<boolean>(false);
+  const [movTab, setMovTab] = useState<'salida' | 'entrada' | 'devolucion'>('salida');
   const [showCameraScanner, setShowCameraScanner] = useState<boolean>(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -67,7 +71,7 @@ export const PanoleroSimpleView: React.FC<PanoleroSimpleViewProps> = ({
           itemBarcodeLower.includes(cleanTerm) ||
           (cleanTermAlphaNum && itemBarcodeAlphaNum.includes(cleanTermAlphaNum)) ||
           itemDescLower.includes(cleanTerm) ||
-          itemUbicLower.includes(cleanTerm) ||
+          matchesUbicacion(item.ubicacion, cleanTerm) ||
           itemProvLower.includes(cleanTerm) ||
           itemEquivLower.includes(cleanTerm)
         );
@@ -86,23 +90,11 @@ export const PanoleroSimpleView: React.FC<PanoleroSimpleViewProps> = ({
     searchInputRef.current?.focus();
   };
 
-  // Group / deduplicate recent salidas so each product appears only once in the summary list
-  const uniqueRecentSalidas: SalidaRecord[] = (() => {
-    const seen = new Set<string>();
-    const res: SalidaRecord[] = [];
-    for (const s of salidas) {
-      const k = s.codigo.trim().toLowerCase();
-      if (!seen.has(k)) {
-        seen.add(k);
-        res.push(s);
-      }
-    }
-    return res.slice(0, 8);
-  })();
-
   return (
+    // Contenedor estático: el perfil de pañol no cambia de ancho ni al abrir ni al
+    // cerrar el historial, para que la interfaz nunca "salte".
     <div className="max-w-4xl mx-auto py-4 sm:py-8 px-3 sm:px-6 font-['Plus_Jakarta_Sans',sans-serif]">
-      
+
       {/* Welcome Card tailored for Operator */}
       <div className="bg-white rounded-3xl p-5 sm:p-6 border border-[#b5dbf7] shadow-xs mb-6 text-center sm:text-left">
         <h1 className="text-xl sm:text-2xl font-black text-sky-950 tracking-tight">
@@ -211,28 +203,28 @@ export const PanoleroSimpleView: React.FC<PanoleroSimpleViewProps> = ({
           </div>
 
           <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => searchInputRef.current?.focus()}
-            className="px-5 py-3 bg-[#006bb0] hover:bg-[#005a94] text-white rounded-xl font-black text-sm flex items-center justify-center gap-2 shadow-xs cursor-pointer transition-all active:scale-95 shrink-0"
-          >
-            <Search className="w-4 h-4" />
-            <span>BUSCAR</span>
-          </button>
+            <button
+              type="button"
+              onClick={() => searchInputRef.current?.focus()}
+              className="px-5 py-3 bg-[#006bb0] hover:bg-[#005a94] text-white rounded-xl font-black text-sm flex items-center justify-center gap-2 shadow-xs cursor-pointer transition-all active:scale-95 shrink-0"
+            >
+              <Search className="w-4 h-4" />
+              <span>BUSCAR</span>
+            </button>
 
-          <button
-            type="button"
-            onClick={() => setShowCameraScanner(prev => !prev)}
-            className={`px-4 py-3 rounded-xl font-black text-sm flex items-center justify-center gap-2 shadow-xs cursor-pointer transition-all active:scale-95 shrink-0 ${
-              showCameraScanner
-                ? 'bg-sky-600 text-white border border-sky-700'
-                : 'bg-white text-[#006bb0] border border-[#9eccf0] hover:bg-sky-50'
-            }`}
-            title="Buscar escaneando con la cámara"
-          >
-            <Camera className="w-4 h-4" />
-            <span>{showCameraScanner ? 'CERRAR CÁMARA' : 'CÁMARA'}</span>
-          </button>
+            <button
+              type="button"
+              onClick={() => setShowCameraScanner(prev => !prev)}
+              className={`px-4 py-3 rounded-xl font-black text-sm flex items-center justify-center gap-2 shadow-xs cursor-pointer transition-all active:scale-95 shrink-0 ${
+                showCameraScanner
+                  ? 'bg-sky-600 text-white border border-sky-700'
+                  : 'bg-white text-[#006bb0] border border-[#9eccf0] hover:bg-sky-50'
+              }`}
+              title="Buscar escaneando con la cámara"
+            >
+              <Camera className="w-4 h-4" />
+              <span>{showCameraScanner ? 'CERRAR CÁMARA' : 'CÁMARA'}</span>
+            </button>
           </div>
         </div>
 
@@ -273,7 +265,7 @@ export const PanoleroSimpleView: React.FC<PanoleroSimpleViewProps> = ({
                         <span className="font-mono font-black text-xs sm:text-sm text-[#006bb0] bg-sky-100 px-2.5 py-1 rounded-lg border border-sky-200">
                           CÓDIGO: {item.codigo || 'S/C'}
                         </span>
-                        {item.codigoBarras && (
+                        {!isVentas && item.codigoBarras && (
                           <span className="font-mono font-bold text-xs text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-lg border border-indigo-200 flex items-center gap-1">
                             <Barcode className="w-3.5 h-3.5" />
                             {item.codigoBarras}
@@ -318,6 +310,17 @@ export const PanoleroSimpleView: React.FC<PanoleroSimpleViewProps> = ({
                         </span>
                       </div>
 
+                      {item.paraServicio != null && item.paraServicio > 0 && (
+                        <div className="bg-sky-50 border-2 border-sky-300 px-4 py-2 rounded-xl text-center min-w-[110px]">
+                          <span className="text-[10px] uppercase font-black text-sky-800 block">
+                            P/SERVICIO
+                          </span>
+                          <span className="text-lg sm:text-xl font-black text-sky-700">
+                            {item.paraServicio} u.
+                          </span>
+                        </div>
+                      )}
+
                       {/* Action buttons on the result item */}
                       <div className="flex items-center gap-2">
                         <button
@@ -350,7 +353,7 @@ export const PanoleroSimpleView: React.FC<PanoleroSimpleViewProps> = ({
       </div>
 
       {/* RECENT ACTIVITY ACCORDION */}
-      <div className="bg-white rounded-3xl p-5 sm:p-6 border-2 border-[#b5dbf7] shadow-sm">
+      <div className="max-w-4xl bg-white rounded-3xl p-5 sm:p-6 border-2 border-[#b5dbf7] shadow-sm">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
             <div className="w-10 h-10 rounded-xl bg-sky-100 text-[#006bb0] flex items-center justify-center border border-sky-200 shrink-0">
@@ -358,47 +361,65 @@ export const PanoleroSimpleView: React.FC<PanoleroSimpleViewProps> = ({
             </div>
             <div>
               <span id="historial" className="text-base sm:text-lg font-black text-sky-950 block">
-                Historial de Salidas
+                Historial de Movimiento
               </span>
               <span className="text-xs text-slate-500 font-medium">
-                {uniqueRecentSalidas.length} {uniqueRecentSalidas.length === 1 ? 'registro reciente' : 'registros recientes'}
+                {salidas.length} salidas · {ingresos.length} entradas · {devolucionGroups.length} {devolucionGroups.length === 1 ? 'devolución' : 'devoluciones'}
               </span>
             </div>
           </div>
 
           <button
             type="button"
-            onClick={() => setShowRecentSalidas(!showRecentSalidas)}
+            onClick={() => setShowRecentMovimientos(!showRecentMovimientos)}
             className={`px-4 py-2.5 rounded-xl font-bold text-xs transition-all shadow-xs flex items-center gap-2 cursor-pointer ${
-              showRecentSalidas
+              showRecentMovimientos
                 ? 'bg-slate-200 hover:bg-slate-300 text-slate-800 border border-slate-300'
                 : 'bg-[#006bb0] hover:bg-[#005590] text-white'
             }`}
           >
             <History className="w-4 h-4" />
-            <span>{showRecentSalidas ? 'Ocultar Historial' : 'Ver Historial'}</span>
+            <span>{showRecentMovimientos ? 'Ocultar Historial' : 'Ver Historial'}</span>
           </button>
         </div>
 
-        {showRecentSalidas && (
-          <div className="mt-4 pt-4 border-t border-slate-100 space-y-2.5">
-            {uniqueRecentSalidas.length === 0 ? (
-              <p className="text-xs text-slate-500 text-center py-3">No hay salidas registradas aún.</p>
-            ) : (
-              uniqueRecentSalidas.map(sal => (
-                <div key={sal.id} className="p-3.5 rounded-2xl bg-[#f8fbfe] border border-slate-200 flex items-center justify-between text-xs sm:text-sm">
-                  <div>
-                    <span className="font-bold text-slate-900">{sal.descripcion}</span>
-                    <div className="text-slate-500 text-xs mt-0.5">
-                      Código: <span className="font-mono font-bold text-slate-700">{sal.codigo}</span> · Retirado por: <strong className="text-slate-800">{sal.retira || 'Personal'}</strong> {sal.cliente ? `· Cliente: ${sal.cliente}` : ''}
-                    </div>
-                  </div>
-                  <span className="font-black text-rose-700 bg-rose-50 px-2.5 py-1 rounded-xl border border-rose-200 text-xs sm:text-sm shrink-0 ml-2">
-                    -{sal.cantidad} u.
-                  </span>
-                </div>
-              ))
-            )}
+        {showRecentMovimientos && (
+          <div className="mt-4 pt-4 border-t border-slate-100 h-[55vh] min-h-[380px] overflow-y-auto pr-1 table-scrollbar space-y-4">
+            {/* Horizontal tab buttons: Salida | Entrada | Devolución */}
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { key: 'salida' as const, titulo: 'Salida', color: 'rose', icono: <ArrowUpRight className="w-4 h-4" /> },
+                { key: 'entrada' as const, titulo: 'Entrada', color: 'emerald', icono: <PackagePlus className="w-4 h-4" /> },
+                { key: 'devolucion' as const, titulo: 'Devolución', color: 'amber', icono: <RotateCcw className="w-4 h-4" /> },
+              ].map(tab => {
+                const active = movTab === tab.key;
+                return (
+                  <button
+                    key={tab.key}
+                    type="button"
+                    onClick={() => setMovTab(tab.key)}
+                    className={`px-2 py-2.5 rounded-xl font-black text-xs sm:text-sm transition-all shadow-xs border cursor-pointer flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 ${
+                      active
+                        ? tab.color === 'rose'
+                          ? 'bg-rose-600 text-white border-rose-600'
+                          : tab.color === 'emerald'
+                          ? 'bg-emerald-600 text-white border-emerald-600'
+                          : 'bg-amber-600 text-white border-amber-600'
+                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                    }`}
+                  >
+                    {tab.icono}
+                    <span>{tab.titulo}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Mismo historial que Administración: se reutilizan los componentes tal cual.
+                Sin banner de título porque la pestaña de arriba ya dice qué movimiento es. */}
+            {movTab === 'salida' && <SalidasLogView onOpenScanner={onOpenScanner} paraPanol />}
+            {movTab === 'entrada' && <IngresosLogView onOpenScanner={onOpenScanner} paraPanol />}
+            {movTab === 'devolucion' && <DevolucionesLogView paraPanol />}
           </div>
         )}
       </div>

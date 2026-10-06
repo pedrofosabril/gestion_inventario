@@ -46,9 +46,11 @@ import { GerenciaDashboard } from './components/GerenciaDashboard';
 import { PanoleroSimpleView } from './components/PanoleroSimpleView';
 import { SalidasLogView } from './components/SalidasLogView';
 import { IngresosLogView } from './components/IngresosLogView';
+import { DevolucionesLogView } from './components/DevolucionesLogView';
 import { ItemCategory, InventoryItem } from './types';
 import { OfflineStatusBadge } from './components/OfflineStatusBanner';
 import { startTour, hasSeenTour } from './utils/tour';
+import { itemInCategory } from './utils/locationSearch';
 
 export const VENTAS_ALLOWED_CATEGORIES: ItemCategory[] = [
   'panol',
@@ -58,12 +60,13 @@ export const VENTAS_ALLOWED_CATEGORIES: ItemCategory[] = [
   'entrepiso'
 ];
 
-type ActiveView = ItemCategory | 'salidas' | 'ingresos' | 'gerencia';
+type ActiveView = ItemCategory | 'salidas' | 'ingresos' | 'devoluciones' | 'gerencia';
 
 const MainApp: React.FC = () => {
   const { 
     items, 
     salidas, 
+    devolucionGroups,
     currentUser, 
     logout,
     getLowStockItems, 
@@ -117,6 +120,7 @@ const MainApp: React.FC = () => {
         'cajas',
         'salidas',
         'ingresos',
+        'devoluciones',
         'gerencia',
       ];
       if (view && validViews.includes(view as ActiveView)) {
@@ -244,6 +248,7 @@ const MainApp: React.FC = () => {
   };
 
   const handleOpenBarcode = (item: InventoryItem) => {
+    if (isVentas) return;
     setBarcodeItem(item);
     setIsBarcodeOpen(true);
   };
@@ -294,17 +299,20 @@ const MainApp: React.FC = () => {
   };
 
   // Sections for Administración & Ventas navigation tabs
+  // Los productos con varias ubicaciones (ej. "A / entrepiso") cuentan en
+  // todas las secciones donde estánubicados.
   const ALL_SECTIONS: { id: ActiveView; label: string; icon: React.FC<{ className?: string }>; count?: number }[] = [
     ...(isGerencia ? [{ id: 'gerencia' as ActiveView, label: 'Administración', icon: ShieldCheck }] : []),
-    { id: 'panol', label: 'Pañol (General)', icon: Warehouse, count: items.filter(i => i.categoria === 'panol').length },
-    { id: 'cajones_fluidos', label: 'Cajones / Fluidos', icon: Droplet, count: items.filter(i => i.categoria === 'cajones_fluidos').length },
-    { id: 'submicronicos', label: 'Submicrónicos', icon: CircleDot, count: items.filter(i => i.categoria === 'submicronicos').length },
-    { id: 'rodamientos', label: 'Rodamientos', icon: Cog, count: items.filter(i => i.categoria === 'rodamientos').length },
-    { id: 'entrepiso', label: 'Entrepiso', icon: Building, count: items.filter(i => i.categoria === 'entrepiso').length },
-    { id: 'repuestos_mv', label: 'Repuestos MV', icon: Sliders, count: items.filter(i => i.categoria === 'repuestos_mv').length },
-    { id: 'cajas', label: 'Cajas Estantes', icon: Box, count: items.filter(i => i.categoria === 'cajas').length },
+    { id: 'panol', label: 'Pañol (General)', icon: Warehouse, count: items.filter(i => itemInCategory(i, 'panol')).length },
+    { id: 'cajones_fluidos', label: 'Cajones / Fluidos', icon: Droplet, count: items.filter(i => itemInCategory(i, 'cajones_fluidos')).length },
+    { id: 'submicronicos', label: 'Submicrónicos', icon: CircleDot, count: items.filter(i => itemInCategory(i, 'submicronicos')).length },
+    { id: 'rodamientos', label: 'Rodamientos', icon: Cog, count: items.filter(i => itemInCategory(i, 'rodamientos')).length },
+    { id: 'entrepiso', label: 'Entrepiso', icon: Building, count: items.filter(i => itemInCategory(i, 'entrepiso')).length },
+    { id: 'repuestos_mv', label: 'Repuestos MV', icon: Sliders, count: items.filter(i => itemInCategory(i, 'repuestos_mv')).length },
+    { id: 'cajas', label: 'Cajas Estantes', icon: Box, count: items.filter(i => itemInCategory(i, 'cajas')).length },
     { id: 'salidas', label: 'Historial Salidas', icon: History, count: salidas.length },
-    { id: 'ingresos', label: 'Historial Ingresos', icon: ArrowDownLeft }
+    { id: 'ingresos', label: 'Historial Ingresos', icon: ArrowDownLeft },
+    { id: 'devoluciones', label: 'Historial Devoluciones', icon: RotateCcw, count: devolucionGroups.length }
   ];
 
   // In Sales profile: only allowed product categories (NO salidas); Pañolero & Administración: all sections
@@ -377,7 +385,7 @@ const MainApp: React.FC = () => {
                             <div className="min-w-0 flex-1 pr-3">
                               <div className="flex items-center gap-2 flex-wrap">
                                 <span className="font-mono font-bold text-xs text-[#006bb0] group-hover:underline">{item.codigo}</span>
-                                {item.codigoBarras && item.codigoBarras.trim() !== '' && (
+                                {!isVentas && item.codigoBarras && item.codigoBarras.trim() !== '' && (
                                   <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-mono font-semibold border border-slate-200 flex items-center gap-1 shadow-2xs">
                                     <Barcode className="w-3 h-3 text-slate-500" />
                                     {item.codigoBarras}
@@ -387,7 +395,7 @@ const MainApp: React.FC = () => {
                                   {item.proveedor}
                                 </span>
                                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#d6ecfa] text-sky-900 font-bold">
-                                  Ubic: {item.ubicacion}
+                                  Ubicación: {item.ubicacion}
                                 </span>
                               </div>
                               <p className="text-xs text-slate-800 font-medium mt-1 line-clamp-2 leading-snug">
@@ -543,7 +551,7 @@ const MainApp: React.FC = () => {
                       <div className="min-w-0 flex-1 pr-2">
                         <div className="flex items-center gap-1.5 flex-wrap">
                           <span className="font-mono font-bold text-[#006bb0]">{item.codigo}</span>
-                          {item.codigoBarras && item.codigoBarras.trim() !== '' && (
+                          {!isVentas && item.codigoBarras && item.codigoBarras.trim() !== '' && (
                             <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-100 text-slate-700 font-mono font-semibold border border-slate-200 flex items-center gap-1">
                               <Barcode className="w-3 h-3 text-slate-500" />
                               {item.codigoBarras}
@@ -772,6 +780,8 @@ const MainApp: React.FC = () => {
           <SalidasLogView onOpenScanner={handleOpenScanner} />
         ) : activeView === 'ingresos' ? (
           <IngresosLogView onOpenScanner={handleOpenScanner} />
+        ) : activeView === 'devoluciones' ? (
+          <DevolucionesLogView />
         ) : (
           <InventoryTable
             category={activeView as ItemCategory | 'all'}
@@ -876,6 +886,7 @@ const MainApp: React.FC = () => {
         defaultMode={scannerDefaultMode}
       />
 
+      {!isVentas && (
       <BarcodeGeneratorModal
         isOpen={isBarcodeOpen}
         onClose={() => {
@@ -884,6 +895,7 @@ const MainApp: React.FC = () => {
         }}
         item={barcodeItem}
       />
+      )}
 
       <ProductDetailModal
         isOpen={isDetailModalOpen}

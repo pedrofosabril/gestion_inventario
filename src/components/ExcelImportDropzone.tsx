@@ -16,6 +16,7 @@ import * as XLSX from 'xlsx';
 import { useInventory } from '../context/InventoryContext';
 import { ItemCategory } from '../types';
 import { sanitizeYazObject } from '../utils/sanitizeUtils';
+import { parseSheet, SheetKind } from '../utils/excelImportLayouts';
 
 interface ExcelImportDropzoneProps {
   onSuccess?: () => void;
@@ -24,13 +25,34 @@ interface ExcelImportDropzoneProps {
   showButton?: boolean;
 }
 
+interface SheetBatch {
+  sheetName: string;
+  rows: any[];
+  category: ItemCategory;
+  kind: SheetKind;
+  notas: string[];
+  included: boolean;
+}
+
+const KIND_LABEL: Record<SheetKind, string> = {
+  productos: 'Productos',
+  salidas: 'Salidas (historial)',
+  ingresos: 'Ingresos (historial)'
+};
+
+const KIND_STYLE: Record<SheetKind, string> = {
+  productos: 'bg-emerald-100 text-emerald-800 border-emerald-300',
+  salidas: 'bg-amber-100 text-amber-800 border-amber-300',
+  ingresos: 'bg-sky-100 text-sky-800 border-sky-300'
+};
+
 export const ExcelImportDropzone: React.FC<ExcelImportDropzoneProps> = ({ 
   onSuccess,
   isOpen: externalIsOpen,
   onClose: externalOnClose,
   showButton = true
 }) => {
-  const { importExcelRows } = useInventory();
+  const { importExcelRows, importMovimientosRows } = useInventory();
 
   const [internalIsOpen, setInternalIsOpen] = useState<boolean>(false);
   const isModalOpen = externalIsOpen !== undefined ? externalIsOpen : internalIsOpen;
@@ -41,9 +63,9 @@ export const ExcelImportDropzone: React.FC<ExcelImportDropzoneProps> = ({
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [parsedRows, setParsedRows] = useState<any[]>([]);
   const [detectedSheets, setDetectedSheets] = useState<string[]>([]);
-  const [selectedCategory, setSelectedCategory] = useState<ItemCategory>('panol');
-  const [importMode, setImportMode] = useState<'merge' | 'replace'>('merge');
-  const [importResult, setImportResult] = useState<{ added: number; updated: number; totalValue: number } | null>(null);
+  const [sheetBatches, setSheetBatches] = useState<SheetBatch[]>([]);
+  const [importMode, setImportMode] = useState<'merge' | 'replace'>('replace');
+  const [importResult, setImportResult] = useState<{ added: number; updated: number; totalValue: number; salidas: number; ingresos: number; skipped: number } | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -121,24 +143,34 @@ export const ExcelImportDropzone: React.FC<ExcelImportDropzoneProps> = ({
     reader.onload = (evt) => {
       try {
         const buffer = evt.target?.result;
-        const workbook = XLSX.read(buffer, { type: 'binary', cellDates: true });
-        
+        const workbook = XLSX.read(buffer, { type: 'array', cellDates: true });
+
         const sheetNames = workbook.SheetNames;
         setDetectedSheets(sheetNames);
 
-        // Combine all sheets or the first sheet
         let allRows: any[] = [];
+        const batches: SheetBatch[] = [];
+
         sheetNames.forEach(sheetName => {
           const worksheet = workbook.Sheets[sheetName];
-          const sheetJson = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
-          sheetJson.forEach((row: any) => {
-            row._ORIGEN_HOJA = sheetName;
+          const dataRows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' }) as any[][];
+          const layout = parseSheet(sheetName, dataRows);
+          const rows = layout.rows.map((row: any) => ({ ...row, _ORIGEN_HOJA: sheetName }));
+          batches.push({
+            sheetName,
+            rows,
+            kind: layout.kind,
+            notas: layout.notas,
+            category: layout.category,
+            included: rows.length > 0
           });
-          allRows = [...allRows, ...sheetJson];
+          allRows = [...allRows, ...rows];
         });
 
+        setSheetBatches(batches);
+
         if (allRows.length === 0) {
-          setErrorMessage('La planilla de Excel está vacía o no se pudieron leer filas.');
+          setErrorMessage('La planilla de Excel está vacía o no se pudieron leer filas válidas.');
           setParsedRows([]);
         } else {
           setParsedRows(sanitizeYazObject(allRows));
@@ -156,37 +188,61 @@ export const ExcelImportDropzone: React.FC<ExcelImportDropzoneProps> = ({
       setIsProcessing(false);
     };
 
-    reader.readAsBinaryString(file);
+    reader.readAsArrayBuffer(file);
   };
 
-  const handleExecuteImport = () => {
-    if (parsedRows.length === 0) return;
+  const updateSheetBatch = (idx: number, fields: Partial<SheetBatch>) => {
+    setSheetBatches(prev => prev.map((sb, i) => (i === idx ? { ...sb, ...fields } : sb)));
+  };
+
+  const handleExecuteImport = async () => {
+    const includedBatches = sheetBatches.filter(sb => sb.included && sb.rows.length > 0);
+    if (includedBatches.length === 0) return;
+
+    setIsProcessing(true);
+    setErrorMessage(null);
 
     try {
-      const res = importExcelRows(parsedRows, selectedCategory, importMode);
-      
+      const productBatches = includedBatches.filter(sb => sb.kind === 'productos');
+      const movementBatches = includedBatches.filter(sb => sb.kind !== 'productos');
+
+      let res = { added: 0, updated: 0, errors: [] as string[] };
+      let movs = { salidas: 0, ingresos: 0, skipped: 0, errors: [] as string[] };
+
+      if (productBatches.length > 0) {
+        res = await importExcelRows(
+          productBatches.map(sb => ({ category: sb.category, rows: sb.rows })),
+          importMode
+        );
+      }
+      if (movementBatches.length > 0) {
+        movs = await importMovimientosRows(
+          movementBatches.map(sb => ({ kind: sb.kind as 'salidas' | 'ingresos', rows: sb.rows }))
+        );
+      }
+
+      const errores = [...res.errors, ...movs.errors];
+      if (errores.length > 0) {
+        setErrorMessage('Se cargó en la app, pero hubo errores al sincronizar con la nube: ' + errores.slice(0, 3).join(' | '));
+      }
+
       // Calculate total value loaded in this batch
       let batchValuation = 0;
-      parsedRows.forEach(row => {
-        const keys = Object.keys(row);
-        let s = 0;
-        let p = 0;
-        keys.forEach(k => {
-          const lk = k.toLowerCase();
-          if (lk.includes('stock') || lk.includes('cant')) {
-            s = parseFloat(String(row[k]).replace(/[^0-9.-]/g, '')) || 0;
-          }
-          if (lk.includes('precio') || lk.includes('unit') || lk.includes('valor')) {
-            p = parseFloat(String(row[k]).replace(/\$/g, '').replace(/,/g, '.').replace(/[^0-9.-]/g, '')) || 0;
-          }
+      productBatches.forEach(sb => {
+        sb.rows.forEach(row => {
+          const stock = Number(row.stock) || 0;
+          const precio = Number(row.precio) || 0;
+          batchValuation += stock * precio;
         });
-        batchValuation += (s * p);
       });
 
       setImportResult({
         added: res.added,
         updated: res.updated,
-        totalValue: batchValuation
+        totalValue: batchValuation,
+        salidas: movs.salidas,
+        ingresos: movs.ingresos,
+        skipped: movs.skipped
       });
 
       if (onSuccess) {
@@ -194,6 +250,8 @@ export const ExcelImportDropzone: React.FC<ExcelImportDropzoneProps> = ({
       }
     } catch (err: any) {
       setErrorMessage(`Error durante la importación: ${err.message || 'Error desconocido'}`);
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -202,6 +260,7 @@ export const ExcelImportDropzone: React.FC<ExcelImportDropzoneProps> = ({
     setFileSize(null);
     setParsedRows([]);
     setDetectedSheets([]);
+    setSheetBatches([]);
     setImportResult(null);
     setErrorMessage(null);
     if (fileInputRef.current) {
@@ -217,8 +276,7 @@ export const ExcelImportDropzone: React.FC<ExcelImportDropzoneProps> = ({
         'DESCRIPCIÓN': 'Elemento Separador de Aceite 250034-112',
         'STOCK': 15,
         'PRECIO UNITARIO': 48500.00,
-        'UBICACIÓN': 'A-12',
-        'CATEGORÍA': 'Pañol General'
+        'UBICACIÓN': 'A-12'
       },
       {
         'CÓDIGO': 'ROD-SKF-6205',
@@ -226,8 +284,7 @@ export const ExcelImportDropzone: React.FC<ExcelImportDropzoneProps> = ({
         'DESCRIPCIÓN': 'Rodamiento Rígido de Bolas 6205-2RS1/C3',
         'STOCK': 24,
         'PRECIO UNITARIO': 12350.50,
-        'UBICACIÓN': 'B-04',
-        'CATEGORÍA': 'Rodamientos'
+        'UBICACIÓN': 'B-04'
       },
       {
         'CÓDIGO': 'ACEITE-AW46',
@@ -235,8 +292,7 @@ export const ExcelImportDropzone: React.FC<ExcelImportDropzoneProps> = ({
         'DESCRIPCIÓN': 'Fluido Hidráulico Tellus S2 MX 46 (Balde 20L)',
         'STOCK': 8,
         'PRECIO UNITARIO': 89200.00,
-        'UBICACIÓN': 'C-01',
-        'CATEGORÍA': 'Cajones / Fluidos'
+        'UBICACIÓN': 'C-01'
       }
     ];
 
@@ -245,6 +301,8 @@ export const ExcelImportDropzone: React.FC<ExcelImportDropzoneProps> = ({
     XLSX.utils.book_append_sheet(wb, ws, 'PLANTILLA_PRODUCTOS');
     XLSX.writeFile(wb, 'Plantilla_Carga_Productos_Verdu.xlsx');
   };
+
+  const totalIncludedRows = sheetBatches.filter(sb => sb.included).reduce((sum, sb) => sum + sb.rows.length, 0);
 
   return (
     <>
@@ -256,7 +314,7 @@ export const ExcelImportDropzone: React.FC<ExcelImportDropzoneProps> = ({
           className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer active:scale-[0.99]"
         >
           <FileSpreadsheet className="w-4 h-4" />
-          <span>Carga Automática de Productos desde Excel</span>
+          <span>Carga Automática desde Excel</span>
         </button>
       )}
 
@@ -277,7 +335,7 @@ export const ExcelImportDropzone: React.FC<ExcelImportDropzoneProps> = ({
                   <FileSpreadsheet className="w-5 h-5" />
                 </div>
                 <h3 className="text-base font-black text-sky-950 tracking-tight">
-                  Carga Automática de Productos desde Excel
+                  Carga Automática desde Excel
                 </h3>
               </div>
 
@@ -385,63 +443,121 @@ export const ExcelImportDropzone: React.FC<ExcelImportDropzoneProps> = ({
                   </button>
                 </div>
 
-                {/* Import Options */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-xs font-bold text-slate-700 block mb-1.5">
-                      Categoría / Sección de destino:
-                    </label>
-                    <select
-                      value={selectedCategory}
-                      onChange={e => setSelectedCategory(e.target.value as ItemCategory)}
-                      className="w-full px-3 py-2 rounded-xl text-xs font-bold bg-white border border-[#b8ddf5] text-sky-950 focus:outline-none focus:ring-2 focus:ring-[#006bb0]"
-                    >
-                      {CATEGORY_OPTIONS.map(cat => (
-                        <option key={cat.id} value={cat.id}>
-                          {cat.label}
-                        </option>
-                      ))}
-                    </select>
+                {/* Hoja por categoría */}
+                <div>
+<div className="flex items-center justify-between mb-1.5">
+                      <label className="text-xs font-bold text-slate-700">
+                        Hojas del archivo y su categoría de destino:
+                      </label>
+                      <span className="text-[10px] text-slate-500 font-normal">
+                        {totalIncludedRows} filas seleccionadas
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-slate-500 mb-2 leading-tight">
+                      Las hojas <span className="font-semibold">Ingreso</span> y <span className="font-semibold">Salida</span> se cargan
+                      como historial (cliente, remito y fecha). No suman ni restan stock, porque el Excel ya trae el stock final.
+                    </p>
+                    {sheetBatches.length === 0 ? (
+                      <p className="text-xs text-slate-500 bg-white border border-slate-200 rounded-xl p-3">
+                        No se detectaron hojas con datos.
+                      </p>
+                    ) : (
+                      <div className="flex flex-col gap-2">
+                        {sheetBatches.map((sb, idx) => (
+                          <div
+                            key={idx}
+                            className={`flex flex-col sm:flex-row sm:items-center gap-2 p-2.5 rounded-xl border transition-all ${
+                              sb.included
+                                ? 'bg-white border-emerald-300'
+                                : 'bg-slate-50 border-slate-200 opacity-60'
+                            }`}
+                          >
+                            <label className="flex items-center gap-2 min-w-0 flex-1 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={sb.included}
+                                onChange={() => updateSheetBatch(idx, { included: !sb.included })}
+                                className="w-4 h-4 rounded border-emerald-400 text-emerald-700 focus:ring-emerald-500 cursor-pointer shrink-0"
+                              />
+                              <span className="min-w-0">
+                                <span className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="font-mono text-xs font-bold text-sky-950 truncate">
+                                    {sb.sheetName}
+                                  </span>
+                                  <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded-full border ${KIND_STYLE[sb.kind]}`}>
+                                    {KIND_LABEL[sb.kind]}
+                                  </span>
+                                </span>
+                                <span className="block text-[10px] text-slate-500">
+                                  {sb.rows.length} filas válidas
+                                  {sb.notas.length > 0 ? ` · ${sb.notas[0]}` : ''}
+                                </span>
+                              </span>
+                            </label>
+                            {sb.kind === 'productos' ? (
+                              <select
+                                value={sb.category}
+                                onChange={e => updateSheetBatch(idx, { category: e.target.value as ItemCategory })}
+                                disabled={!sb.included}
+                                className="w-full sm:w-52 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-white border border-[#b8ddf5] text-sky-950 focus:outline-none focus:ring-2 focus:ring-[#006bb0] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                              >
+                                {CATEGORY_OPTIONS.map(cat => (
+                                  <option key={cat.id} value={cat.id}>
+                                    {cat.label}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              <span className="text-[10px] text-slate-500 italic sm:w-52 sm:text-right">
+                                Se suma al historial
+                              </span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
-                  <div>
+                {/* Import Options */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="sm:col-span-2">
                     <label className="text-xs font-bold text-slate-700 block mb-1.5">
                       Método de Carga:
                     </label>
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setImportMode('merge')}
-                        className={`p-2.5 rounded-xl border text-left text-xs transition-all cursor-pointer ${
-                          importMode === 'merge'
-                            ? 'border-emerald-500 bg-emerald-50 text-emerald-950 font-bold shadow-2xs'
-                            : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-                        }`}
-                      >
-                        <div className="flex items-center gap-1.5">
-                          <RefreshCw className="w-3 h-3 text-emerald-600" />
-                          <span>Actualizar</span>
-                        </div>
-                        <p className="text-[10px] text-slate-500 font-normal mt-1 leading-tight">
-                          Suma y actualiza ítems.
-                        </p>
-                      </button>
-
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       <button
                         type="button"
                         onClick={() => setImportMode('replace')}
-                        className={`p-2.5 rounded-xl border text-left text-xs transition-all cursor-pointer ${
+                        className={`p-3 rounded-xl border text-left text-xs transition-all cursor-pointer ${
                           importMode === 'replace'
                             ? 'border-amber-500 bg-amber-50 text-amber-950 font-bold shadow-2xs'
                             : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
                         }`}
                       >
                         <div className="flex items-center gap-1.5">
-                          <Layers className="w-3 h-3 text-amber-600" />
-                          <span>Reemplazar</span>
+                          <Layers className="w-3.5 h-3.5 text-amber-600" />
+                          <span>Reemplazar por código (recomendado)</span>
                         </div>
                         <p className="text-[10px] text-slate-500 font-normal mt-1 leading-tight">
-                          Sobrescribe la sección.
+                          Pisa los datos de cada código que trae la hoja. Los productos de la sección que NO vienen en la hoja NO se tocan.
+                        </p>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setImportMode('merge')}
+                        className={`p-3 rounded-xl border text-left text-xs transition-all cursor-pointer ${
+                          importMode === 'merge'
+                            ? 'border-emerald-500 bg-emerald-50 text-emerald-950 font-bold shadow-2xs'
+                            : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                        }`}
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <RefreshCw className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>Actualizar (suma stock)</span>
+                        </div>
+                        <p className="text-[10px] text-slate-500 font-normal mt-1 leading-tight">
+                          Suma la cantidad a los códigos existentes y crea los que no existan.
                         </p>
                       </button>
                     </div>
@@ -492,11 +608,11 @@ export const ExcelImportDropzone: React.FC<ExcelImportDropzoneProps> = ({
                   <button
                     type="button"
                     onClick={handleExecuteImport}
-                    disabled={isProcessing || parsedRows.length === 0}
+                    disabled={isProcessing || totalIncludedRows === 0}
                     className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black shadow-xs flex items-center gap-2 transition-all cursor-pointer disabled:opacity-50"
                   >
                     <Sparkles className="w-4 h-4" />
-                    <span>CARGAR {parsedRows.length} PRODUCTOS AUTOMÁTICAMENTE</span>
+                    <span>CARGAR {totalIncludedRows} FILAS AUTOMÁTICAMENTE</span>
                   </button>
                 </div>
               </div>
@@ -511,10 +627,10 @@ export const ExcelImportDropzone: React.FC<ExcelImportDropzoneProps> = ({
                   </div>
                   <div>
                     <h4 className="text-base font-black text-emerald-950">
-                      ¡Carga Automática de Excel Completada con Éxito!
+                      ¡Carga Automática de Excel Completada!
                     </h4>
                     <p className="text-xs text-emerald-900/80 mt-0.5">
-                      El inventario ha sido actualizado en tiempo real.
+                      El inventario y el historial de movimientos quedaron actualizados en tiempo real.
                     </p>
                   </div>
                 </div>
@@ -535,6 +651,23 @@ export const ExcelImportDropzone: React.FC<ExcelImportDropzoneProps> = ({
                     </span>
                   </div>
                 </div>
+
+                {(importResult.salidas > 0 || importResult.ingresos > 0) && (
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="bg-white p-3 rounded-xl border border-amber-200">
+                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Salidas al Historial</span>
+                      <span className="text-lg font-black text-amber-700 font-mono">+{importResult.salidas}</span>
+                    </div>
+                    <div className="bg-white p-3 rounded-xl border border-sky-200">
+                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Ingresos al Historial</span>
+                      <span className="text-lg font-black text-sky-700 font-mono">+{importResult.ingresos}</span>
+                    </div>
+                    <div className="bg-white p-3 rounded-xl border border-slate-200">
+                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Ya-existentes (omitidos)</span>
+                      <span className="text-lg font-black text-slate-600 font-mono">{importResult.skipped}</span>
+                    </div>
+                  </div>
+                )}
 
                 <div className="flex justify-end gap-2 pt-1">
                   <button
@@ -560,4 +693,3 @@ export const ExcelImportDropzone: React.FC<ExcelImportDropzoneProps> = ({
     </>
   );
 };
-

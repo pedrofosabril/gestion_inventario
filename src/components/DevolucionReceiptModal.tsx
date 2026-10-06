@@ -18,6 +18,7 @@ import {
 import { DevolucionGroupRecord } from '../types';
 import { useInventory } from '../context/InventoryContext';
 import { generateDevolucionPDF } from '../utils/devolucionPdfGenerator';
+import { formatDisplayDate } from '../utils/dateUtils';
 import { SignaturePad } from './SignaturePad';
 import { SavedSignaturePicker } from './SavedSignaturePicker';
 
@@ -72,9 +73,9 @@ export const DevolucionReceiptModal: React.FC<DevolucionReceiptModalProps> = ({
     }
   };
 
-  const handleDelete = () => {
+  const handleDelete = (revertStock: boolean) => {
     if (!currentDevolucionGroup) return;
-    deleteDevolucionGroup(currentDevolucionGroup.id, true);
+    deleteDevolucionGroup(currentDevolucionGroup.id, revertStock);
     setConfirmDelete(false);
     onDeleted?.();
     onClose();
@@ -125,7 +126,7 @@ export const DevolucionReceiptModal: React.FC<DevolucionReceiptModalProps> = ({
                   Devolución a Pañol
                 </span>
                 <span className="text-xs text-amber-100 font-medium">
-                  {currentDevolucionGroup.fechaDevolucion} • {currentDevolucionGroup.horaDevolucion} hs
+                  {formatDisplayDate(currentDevolucionGroup.fechaDevolucion)} • {currentDevolucionGroup.horaDevolucion} hs
                 </span>
               </div>
               <h2 className="text-xl sm:text-2xl font-black tracking-tight mt-0.5">
@@ -203,7 +204,7 @@ export const DevolucionReceiptModal: React.FC<DevolucionReceiptModalProps> = ({
               <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">Artículos Devueltos</span>
               <span className="text-xs font-semibold text-slate-500">{currentDevolucionGroup.items.length} ítems en lote</span>
             </div>
-            <div className="divide-y divide-slate-100 overflow-x-auto">
+            <div className="divide-y divide-slate-100 overflow-x-auto table-scrollbar">
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
                   <tr className="bg-slate-100/60 text-slate-500 font-bold border-b border-slate-200">
@@ -318,7 +319,7 @@ export const DevolucionReceiptModal: React.FC<DevolucionReceiptModalProps> = ({
             <div className="bg-rose-50 border border-rose-200 p-4 rounded-2xl flex items-center justify-between gap-3 animate-in fade-in">
               <div className="flex items-center gap-2.5 text-rose-800 text-xs">
                 <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0" />
-                <span>¿Deseas anular esta devolución? El stock de los productos devueltos se descontará del inventario.</span>
+                <span>¿Anular esta devolución y revertir el stock, o solo borrar el comprobante?</span>
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 <button
@@ -330,10 +331,19 @@ export const DevolucionReceiptModal: React.FC<DevolucionReceiptModalProps> = ({
                 </button>
                 <button
                   type="button"
-                  onClick={handleDelete}
-                  className="px-3 py-1.5 text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white rounded-lg transition-colors cursor-pointer"
+                  onClick={() => handleDelete(false)}
+                  className="px-3 py-1.5 text-xs font-bold bg-slate-700 hover:bg-slate-800 text-white rounded-lg transition-colors cursor-pointer"
+                  title="Borrar solo el comprobante y dejar el stock como está"
                 >
-                  Confirmar anulación
+                  Solo borrar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDelete(true)}
+                  className="px-3 py-1.5 text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white rounded-lg transition-colors cursor-pointer"
+                  title="Anular la devolución y descontar el stock"
+                >
+                  Revertir stock
                 </button>
               </div>
             </div>
@@ -378,7 +388,7 @@ export const DevolucionReceiptModal: React.FC<DevolucionReceiptModalProps> = ({
 
       {/* Signature Overlay - Empleado que Devuelve */}
       {isSigning && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 bg-black/60 backdrop-blur-xs animate-in fade-in">
+        <div className="fixed inset-0 z-[60] flex items-stretch justify-center p-3 bg-black/60 backdrop-blur-xs animate-in fade-in">
           <SignaturePad
             title="Firma del Empleado que Devuelve"
             subtitle={`Empleado: ${currentDevolucionGroup.empleadoDevuelve}`}
@@ -391,7 +401,7 @@ export const DevolucionReceiptModal: React.FC<DevolucionReceiptModalProps> = ({
 
       {/* Signature Overlay - Pañolero / Emisor */}
       {isSigningPanolero && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 bg-black/60 backdrop-blur-xs animate-in fade-in">
+        <div className="fixed inset-0 z-[60] flex items-stretch justify-center p-3 bg-black/60 backdrop-blur-xs animate-in fade-in">
           <SignaturePad
             title="Firma Pañolero / Emisor"
             subtitle={panoleroName}
