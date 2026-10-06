@@ -136,7 +136,7 @@ export const generateSalidaPDF = (rawSalidaGroup: SalidaGroupRecord) => {
   // Consolidate Items
   const consolidatedItems: SalidaItemEntry[] = Array.from(
     (salidaGroup.items || []).reduce((map, item) => {
-      const k = (item.codigo || '').trim().toLowerCase();
+      const k = `${(item.codigo || '').trim().toLowerCase()}\u0000${item.origenStock || ''}`;
       if (!k) return map;
       if (map.has(k)) {
         const existing = map.get(k)!;
@@ -154,7 +154,7 @@ export const generateSalidaPDF = (rawSalidaGroup: SalidaGroupRecord) => {
 
   const tableRows = consolidatedItems.map((item, idx) => [
     (idx + 1).toString(),
-    item.codigo,
+    item.origenStock === 'servicio' ? `${item.codigo} (P/SERVICIO)` : item.codigo,
     item.descripcion,
     item.proveedor || '-',
     item.ubicacion || 'A',

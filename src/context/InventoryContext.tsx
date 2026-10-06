@@ -12,6 +12,7 @@ import {
   UserAccount, 
   UserRole,
   ItemCategory,
+  SalidaStockOrigen,
   BackupHistoryEntry,
   SavedSignature
 } from '../types';
@@ -67,6 +68,7 @@ interface InventoryContextType {
     items: {
       codigo: string;
       cantidad: number;
+      origenStock?: SalidaStockOrigen;
     }[];
     retira: string;
     esRemitoInterno: boolean;
@@ -267,6 +269,10 @@ const deduplicateSalidasList = (records: SalidaRecord[]): SalidaRecord[] => {
   }
   return uniqueRecords;
 };
+
+// Cuántas unidades hay disponibles de un producto según el stock elegido.
+const origenDisponible = (item: InventoryItem | undefined, origen: SalidaStockOrigen | undefined): number =>
+  origen === 'servicio' ? (item?.paraServicio ?? 0) : (item?.stock ?? 0);
 
 export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [items, setItems] = useState<InventoryItem[]>([]);
@@ -668,7 +674,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     nroRemito = '',
     notas = ''
   }: {
-    items: { codigo: string; cantidad: number }[];
+    items: { codigo: string; cantidad: number; origenStock?: SalidaStockOrigen }[];
     retira: string;
     esRemitoInterno: boolean;
     cliente?: string;
@@ -685,22 +691,24 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       ? (cliente.trim() || 'Taller Interno / Flota Propia') 
       : (cliente.trim() || 'Cliente Externo'));
 
-    // Consolidate requested items by canonical product code so no product appears twice in the same dispatch
-    const aggregatedMap = new Map<string, number>();
+    // Consolidate requested items by canonical product code + stock origin
+    // so the same product can be dispatched from normal and P/SERVICIO stock
+    // in the same salida without mixing amounts.
+    const aggregatedMap = new Map<string, { codigo: string; cantidad: number; origenStock: SalidaStockOrigen }>();
     for (const req of requestedItems) {
       const clean = req.codigo.trim();
       if (clean && req.cantidad > 0) {
         const found = findItemByCode(clean);
         const canonCode = found ? found.codigo : clean;
-        const currentQty = aggregatedMap.get(canonCode) || 0;
-        aggregatedMap.set(canonCode, currentQty + req.cantidad);
+        const origen: SalidaStockOrigen = req.origenStock === 'servicio' ? 'servicio' : 'normal';
+        const key = `${canonCode}\u0000${origen}`;
+        const current = aggregatedMap.get(key) || { codigo: canonCode, cantidad: 0, origenStock: origen };
+        current.cantidad += req.cantidad;
+        aggregatedMap.set(key, current);
       }
     }
 
-    const consolidatedRequestedItems = Array.from(aggregatedMap.entries()).map(([codigo, cantidad]) => ({
-      codigo,
-      cantidad
-    }));
+    const consolidatedRequestedItems = Array.from(aggregatedMap.values());
 
     // Validation pass
     for (const req of consolidatedRequestedItems) {
@@ -713,11 +721,14 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         playBeep('error');
         return { success: false, message: `No se encontró el producto con código "${req.codigo}" en pañol.` };
       }
-      if (found.stock < req.cantidad) {
+      const disponible = origenDisponible(found, req.origenStock);
+      if (disponible < req.cantidad) {
+        const origenLabel = req.origenStock === 'servicio' ? 'P/SERVICIO' : 'normal';
+        const otroDisponible = origenDisponible(found, req.origenStock === 'servicio' ? 'normal' : 'servicio');
         playBeep('warning');
         return { 
           success: false, 
-          message: `Stock insuficiente para "${found.codigo} - ${found.descripcion}". En pañol: ${found.stock} u. Solicitado: ${req.cantidad} u.` 
+          message: `Stock insuficiente para "${found.codigo} - ${found.descripcion}" en stock ${origenLabel}: ${disponible} u. Solicitado: ${req.cantidad} u.${otroDisponible > 0 ? ` Disponible en el otro stock: ${otroDisponible} u.` : ''}` 
         };
       }
     }
@@ -733,22 +744,26 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const dispatchedEntries: SalidaItemEntry[] = [];
     const newSalidaRecords: SalidaRecord[] = [];
 
-    // Deduct stock for all items deterministically
+    // Deduct stock for all items deterministically (normal or P/SERVICIO per line)
     setItems(prevItems => {
       return prevItems.map(item => {
-        const match = consolidatedRequestedItems.find(req => 
+        const matches = consolidatedRequestedItems.filter(req => 
           item.codigo.toLowerCase() === req.codigo.trim().toLowerCase() ||
           (item.codigoBarras && item.codigoBarras.toLowerCase() === req.codigo.trim().toLowerCase())
         );
-        if (match) {
-          const newStock = Math.max(0, item.stock - match.cantidad);
-          return {
-            ...item,
-            stock: newStock,
-            precioTotal: newStock * item.precio
-          };
+        if (matches.length === 0) return item;
+
+        const updated = { ...item };
+        for (const match of matches) {
+          if (match.origenStock === 'servicio') {
+            updated.paraServicio = Math.max(0, (updated.paraServicio ?? 0) - match.cantidad);
+            if (updated.paraServicio <= 0) delete updated.paraServicio;
+          } else {
+            updated.stock = Math.max(0, updated.stock - match.cantidad);
+          }
         }
-        return item;
+        updated.precioTotal = (updated.stock || 0) * (updated.precio || 0);
+        return updated;
       });
     });
 
@@ -756,7 +771,12 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     for (const req of consolidatedRequestedItems) {
       const item = findItemByCode(req.codigo);
       if (item) {
-        const newStock = Math.max(0, item.stock - req.cantidad);
+        const origen = req.origenStock;
+        const dispOrigen = origenDisponible(item, origen);
+        const remOrigen = Math.max(0, dispOrigen - req.cantidad);
+        const newStock = origen === 'servicio' ? item.stock : remOrigen;
+        const newParaServicio = origen === 'servicio' ? remOrigen : (item.paraServicio ?? 0);
+
         const entry: SalidaItemEntry = {
           id: `item-entry-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
           codigo: item.codigo,
@@ -764,18 +784,20 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           proveedor: item.proveedor,
           ubicacion: item.ubicacion,
           cantidad: req.cantidad,
-          stockDisponible: item.stock,
-          stockRemanente: newStock,
+          stockDisponible: dispOrigen,
+          stockRemanente: remOrigen,
           precioUnitario: item.precio,
           precioTotal: req.cantidad * item.precio,
-          categoria: item.categoria
+          categoria: item.categoria,
+          origenStock: origen
         };
         dispatchedEntries.push(entry);
 
         void saveInventoryItem({
           ...item,
           stock: newStock,
-          precioTotal: newStock * item.precio
+          paraServicio: newParaServicio || undefined,
+          precioTotal: newStock * (item.precio || 0)
         }).catch(error => console.error('No se pudo actualizar el stock en Supabase:', error));
         void createMovement({
           tipo: 'Salida', codigo: item.codigo, cantidad: req.cantidad,
@@ -797,6 +819,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           cantidad: req.cantidad,
           precioUnitario: item.precio,
           categoria: item.categoria,
+          origenStock: origen,
           esTaller: esRemitoInterno,
           esRemitoInterno,
           notas,
@@ -861,12 +884,20 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           );
           if (idx !== -1) {
             const current = updated[idx];
-            const restoredStock = current.stock + itemEntry.cantidad;
-            updated[idx] = {
-              ...current,
-              stock: restoredStock,
-              precioTotal: restoredStock * current.precio
-            };
+            if (itemEntry.origenStock === 'servicio') {
+              updated[idx] = {
+                ...current,
+                paraServicio: (current.paraServicio ?? 0) + itemEntry.cantidad,
+                precioTotal: (current.stock || 0) * (current.precio || 0)
+              };
+            } else {
+              const restoredStock = current.stock + itemEntry.cantidad;
+              updated[idx] = {
+                ...current,
+                stock: restoredStock,
+                precioTotal: restoredStock * current.precio
+              };
+            }
           }
         }
         return updated;
@@ -1133,12 +1164,20 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         if (idx !== -1) {
           const updated = [...prevItems];
           const current = updated[idx];
-          const restoredStock = current.stock + target.cantidad;
-          updated[idx] = {
-            ...current,
-            stock: restoredStock,
-            precioTotal: restoredStock * current.precio
-          };
+          if (target.origenStock === 'servicio') {
+            updated[idx] = {
+              ...current,
+              paraServicio: (current.paraServicio ?? 0) + target.cantidad,
+              precioTotal: (current.stock || 0) * (current.precio || 0)
+            };
+          } else {
+            const restoredStock = current.stock + target.cantidad;
+            updated[idx] = {
+              ...current,
+              stock: restoredStock,
+              precioTotal: restoredStock * current.precio
+            };
+          }
           return updated;
         }
         return prevItems;

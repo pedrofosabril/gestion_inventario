@@ -18,14 +18,14 @@ import {
   Calculator,
   RotateCcw
 } from 'lucide-react';
-import { InventoryItem, ItemCategory, PARAMETRIZED_SUPPLIERS } from '../types';
+import { InventoryItem, ItemCategory, SalidaStockOrigen, PARAMETRIZED_SUPPLIERS } from '../types';
 
 interface ManualEntryModalProps {
   isOpen: boolean;
   onClose: () => void;
   mode: 'salida' | 'ingreso' | 'devolucion';
   availableItems: InventoryItem[];
-  onAddSalidaItem: (item: InventoryItem, qty: number) => void;
+  onAddSalidaItem: (item: InventoryItem, qty: number, origenStock?: SalidaStockOrigen) => void;
   onAddExistingIngresoItem: (item: InventoryItem, qty: number, precio?: number) => void;
   onAddNewIngresoItem: (newItem: {
     codigo: string;
@@ -65,6 +65,7 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
   const [salidaQty, setSalidaQty] = useState<number>(1);
+  const [salidaOrigen, setSalidaOrigen] = useState<SalidaStockOrigen>('normal');
   const [ingresoQty, setIngresoQty] = useState<number>(1);
   const [ingresoPrecio, setIngresoPrecio] = useState<number>(0);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -86,6 +87,7 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
       setSearchTerm('');
       setSelectedItem(null);
       setSalidaQty(1);
+      setSalidaOrigen('normal');
       setIngresoQty(1);
       setIngresoPrecio(0);
       setSuccessMsg(null);
@@ -100,6 +102,21 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
       setTimeout(() => searchInputRef.current?.focus(), 150);
     }
   }, [isOpen, mode, defaultProveedor]);
+
+  // Al elegir producto para salida, prefijar el origen según disponibilidad
+  useEffect(() => {
+    if (selectedItem) {
+      setSalidaOrigen(selectedItem.stock > 0 ? 'normal' : 'servicio');
+      setSalidaQty(1);
+    }
+  }, [selectedItem]);
+
+  // Unidades disponibles del origen elegido del producto seleccionado
+  const salidaCap = selectedItem
+    ? salidaOrigen === 'servicio'
+      ? (selectedItem.paraServicio ?? 0)
+      : selectedItem.stock
+    : 0;
 
   if (!isOpen) return null;
 
@@ -135,7 +152,7 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
     setErrorMsg(null);
     setSuccessMsg(null);
     if (mode === 'salida') {
-      setSalidaQty(item.stock > 0 ? 1 : 0);
+      setSalidaQty(1);
     } else if (mode === 'devolucion') {
       setSalidaQty(1);
     } else {
@@ -173,7 +190,7 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
       setErrorMsg('Debes seleccionar un producto.');
       return;
     }
-    if (selectedItem.stock <= 0) {
+    if (selectedItem.stock <= 0 && (selectedItem.paraServicio ?? 0) <= 0) {
       setErrorMsg(`El producto ${selectedItem.codigo} no tiene stock disponible.`);
       return;
     }
@@ -181,13 +198,13 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
       setErrorMsg('La cantidad a retirar debe ser al menos 1.');
       return;
     }
-    if (salidaQty > selectedItem.stock) {
-      setErrorMsg(`No puedes retirar más de ${selectedItem.stock} unidades de este producto.`);
+    if (salidaQty > salidaCap) {
+      setErrorMsg(`No puedes retirar más de ${salidaCap} unidades de stock ${salidaOrigen === 'servicio' ? 'P/SERVICIO' : 'normal'} de este producto.`);
       return;
     }
 
-    onAddSalidaItem(selectedItem, salidaQty);
-    setSuccessMsg(`✓ Se agregaron ${salidaQty} u. de "${selectedItem.codigo}" a la lista de salida.`);
+    onAddSalidaItem(selectedItem, salidaQty, salidaOrigen);
+    setSuccessMsg(`✓ Se agregaron ${salidaQty} u. de "${selectedItem.codigo}" a la lista de salida (${salidaOrigen === 'servicio' ? 'P/SERVICIO' : 'normal'}).`);
     setErrorMsg(null);
     setSelectedItem(null);
     setSearchTerm('');
@@ -543,14 +560,14 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
                             <input
                               type="number"
                               min="1"
-                              max={selectedItem.stock}
+                              max={salidaCap}
                               value={salidaQty}
-                              onChange={e => setSalidaQty(Math.max(1, Math.min(selectedItem.stock, parseInt(e.target.value) || 1)))}
+                              onChange={e => setSalidaQty(Math.max(1, Math.min(salidaCap, parseInt(e.target.value) || 1)))}
                               className="w-16 text-center font-mono font-black text-sm text-slate-900 focus:outline-none"
                             />
                             <button
                               type="button"
-                              onClick={() => setSalidaQty(prev => Math.min(selectedItem.stock, prev + 1))}
+                              onClick={() => setSalidaQty(prev => Math.min(salidaCap, prev + 1))}
                               className="w-10 h-10 flex items-center justify-center hover:bg-sky-50 text-slate-700 transition-colors cursor-pointer"
                             >
                               <Plus className="w-4 h-4" />
@@ -565,7 +582,7 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
                             >
                               1 u.
                             </button>
-                            {selectedItem.stock >= 5 && (
+                            {salidaCap >= 5 && (
                               <button
                                 type="button"
                                 onClick={() => setSalidaQty(5)}
@@ -574,17 +591,45 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
                                 5 u.
                               </button>
                             )}
-                            {selectedItem.stock > 0 && (
+                            {salidaCap > 0 && (
                               <button
                                 type="button"
-                                onClick={() => setSalidaQty(selectedItem.stock)}
+                                onClick={() => setSalidaQty(salidaCap)}
                                 className="px-2.5 py-1.5 text-xs font-bold rounded-lg border border-[#badbf5] bg-sky-50 text-[#006bb0] hover:bg-sky-100 cursor-pointer"
                               >
-                                Todo ({selectedItem.stock})
+                                Todo ({salidaCap})
                               </button>
                             )}
                           </div>
                         </div>
+
+                        {(selectedItem.paraServicio ?? 0) > 0 && (
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-[11px] font-bold text-slate-500 uppercase">Desde:</span>
+                            <button
+                              type="button"
+                              onClick={() => { setSalidaOrigen('normal'); setSalidaQty(1); }}
+                              className={`px-2.5 py-1.5 text-xs font-bold rounded-lg border cursor-pointer ${
+                                salidaOrigen === 'normal'
+                                  ? 'border-[#006bb0] bg-[#006bb0] text-white'
+                                  : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-600'
+                              }`}
+                            >
+                              Normal ({selectedItem.stock} u.)
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => { setSalidaOrigen('servicio'); setSalidaQty(1); }}
+                              className={`px-2.5 py-1.5 text-xs font-bold rounded-lg border cursor-pointer ${
+                                salidaOrigen === 'servicio'
+                                  ? 'border-[#006bb0] bg-[#006bb0] text-white'
+                                  : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-600'
+                              }`}
+                            >
+                              P/SERVICIO ({selectedItem.paraServicio ?? 0} u.)
+                            </button>
+                          </div>
+                        )}
                       </div>
 
                       <div className="flex items-center justify-end gap-2 pt-2">
@@ -597,9 +642,9 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
                         </button>
                         <button
                           type="submit"
-                          disabled={selectedItem.stock <= 0}
+                          disabled={salidaCap <= 0}
                           className={`px-5 py-2.5 rounded-xl text-white font-black text-xs shadow-xs transition-all flex items-center gap-2 ${
-                            selectedItem.stock > 0
+                            salidaCap > 0
                               ? 'bg-rose-600 hover:bg-rose-700 cursor-pointer'
                               : 'bg-slate-300 text-slate-500 cursor-not-allowed'
                           }`}
