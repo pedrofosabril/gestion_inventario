@@ -28,6 +28,7 @@ export const PanoleroSimpleView: React.FC<PanoleroSimpleViewProps> = ({
   onOpenScanner
 }) => {
   const { items, currentUser, salidas, ingresos, devolucionGroups } = useInventory();
+  const isVentas = currentUser?.rol === 'ventas';
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [showRecentMovimientos, setShowRecentMovimientos] = useState<boolean>(false);
   const [movTab, setMovTab] = useState<'salida' | 'entrada' | 'devolucion'>('salida');
