@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   X, 
   Package, 
@@ -51,6 +51,18 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   const isGerencia = currentUser?.rol === 'gerencia';
   const isVentas = currentUser?.rol === 'ventas';
   const [copiedCode, setCopiedCode] = useState<boolean>(false);
+
+  // Keep the page behind the product detail fixed while the modal is open.
+  useEffect(() => {
+    if (!isOpen || !item) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isOpen, item]);
 
   if (!isOpen || !item) return null;
 
