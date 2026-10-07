@@ -206,7 +206,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
                   className="text-[11px] text-sky-700 hover:text-sky-900 p-0.5 rounded hover:bg-sky-50 transition-colors"
                   title="¿Olvidaste tu contraseña?"
                 >
-                  <HelpCircle className="w-4 h-4 flex-shrink-0" />
+                  <HelpCircle className="w-3.5 h-3.5" />
                 </button>
               )}
             </div>
