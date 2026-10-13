@@ -25,7 +25,7 @@ interface ManualEntryModalProps {
   mode: 'salida' | 'ingreso' | 'devolucion';
   availableItems: InventoryItem[];
   onAddSalidaItem: (item: InventoryItem, qty: number, origenStock?: SalidaStockOrigen) => void;
-  onAddExistingIngresoItem: (item: InventoryItem, qty: number, precio?: number) => void;
+  onAddExistingIngresoItem: (item: InventoryItem, qty: number, precio?: number, origenStock?: SalidaStockOrigen) => void;
   onAddNewIngresoItem: (newItem: {
     codigo: string;
     descripcion: string;
@@ -35,7 +35,7 @@ interface ManualEntryModalProps {
     cantidad: number;
     precioUnitario: number;
   }) => void;
-  onAddDevolucionItem?: (item: InventoryItem, qty: number) => void;
+  onAddDevolucionItem?: (item: InventoryItem, qty: number, origenStock?: SalidaStockOrigen) => void;
   defaultProveedor?: string;
 }
 
@@ -66,6 +66,7 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
   const [salidaOrigen, setSalidaOrigen] = useState<SalidaStockOrigen>('normal');
   const [ingresoQty, setIngresoQty] = useState<number>(1);
   const [ingresoPrecio, setIngresoPrecio] = useState<number>(0);
+  const [ingresoOrigen, setIngresoOrigen] = useState<SalidaStockOrigen>('normal');
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -88,6 +89,7 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
       setSalidaOrigen('normal');
       setIngresoQty(1);
       setIngresoPrecio(0);
+      setIngresoOrigen('normal');
       setSuccessMsg(null);
       setErrorMsg(null);
       setNewCodigo('');
@@ -171,11 +173,11 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
     }
 
     if (onAddDevolucionItem) {
-      onAddDevolucionItem(selectedItem, salidaQty);
+      onAddDevolucionItem(selectedItem, salidaQty, salidaOrigen);
     } else {
       onAddSalidaItem(selectedItem, salidaQty);
     }
-    setSuccessMsg(`✓ Se agregaron ${salidaQty} u. de "${selectedItem.codigo}" a la lista de devolución.`);
+    setSuccessMsg(`✓ Se agregaron ${salidaQty} u. de "${selectedItem.codigo}" a la lista de devolución (${salidaOrigen === 'servicio' ? 'P/SERVICIO' : 'normal'}).`);
     setErrorMsg(null);
     setSelectedItem(null);
     setSearchTerm('');
@@ -220,8 +222,8 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
       return;
     }
 
-    onAddExistingIngresoItem(selectedItem, ingresoQty, ingresoPrecio > 0 ? ingresoPrecio : undefined);
-    setSuccessMsg(`✓ Se agregaron ${ingresoQty} u. de "${selectedItem.codigo}" al lote de entrada.`);
+    onAddExistingIngresoItem(selectedItem, ingresoQty, ingresoPrecio > 0 ? ingresoPrecio : undefined, ingresoOrigen);
+    setSuccessMsg(`✓ Se agregaron ${ingresoQty} u. de "${selectedItem.codigo}" al lote de entrada (${ingresoOrigen === 'servicio' ? 'P/SERVICIO' : 'normal'}).`);
     setErrorMsg(null);
     setSelectedItem(null);
     setSearchTerm('');
@@ -486,6 +488,34 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
                         </div>
                       </div>
 
+                      {(selectedItem.paraServicio ?? 0) > 0 && (
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-[11px] font-bold text-slate-500 uppercase">Se suma a:</span>
+                          <button
+                            type="button"
+                            onClick={() => setSalidaOrigen('normal')}
+                            className={`px-3 py-1.5 text-xs font-bold rounded-lg border cursor-pointer transition-colors ${
+                              salidaOrigen === 'normal'
+                                ? 'bg-amber-600 text-white border-amber-600 shadow-2xs'
+                                : 'border-amber-300 bg-white hover:bg-amber-50 text-slate-700'
+                            }`}
+                          >
+                            Normal ({selectedItem.stock} u.)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setSalidaOrigen('servicio')}
+                            className={`px-3 py-1.5 text-xs font-bold rounded-lg border cursor-pointer transition-colors ${
+                              salidaOrigen === 'servicio'
+                                ? 'bg-amber-600 text-white border-amber-600 shadow-2xs'
+                                : 'border-amber-300 bg-white hover:bg-amber-50 text-slate-700'
+                            }`}
+                          >
+                            P/SERVICIO ({selectedItem.paraServicio ?? 0} u.)
+                          </button>
+                        </div>
+                      )}
+
                       <div className="flex items-center justify-end gap-2 pt-2">
                         <button
                           type="button"
@@ -661,6 +691,34 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
                           />
                         </div>
                       </div>
+
+                      {(selectedItem.paraServicio ?? 0) > 0 && (
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-[11px] font-bold text-slate-500 uppercase">Se suma a:</span>
+                          <button
+                            type="button"
+                            onClick={() => setIngresoOrigen('normal')}
+                            className={`px-3 py-1.5 text-xs font-bold rounded-lg border cursor-pointer transition-colors ${
+                              ingresoOrigen === 'normal'
+                                ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs'
+                                : 'border-emerald-300 bg-white hover:bg-emerald-50 text-slate-700'
+                            }`}
+                          >
+                            Normal ({selectedItem.stock} u.)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setIngresoOrigen('servicio')}
+                            className={`px-3 py-1.5 text-xs font-bold rounded-lg border cursor-pointer transition-colors ${
+                              ingresoOrigen === 'servicio'
+                                ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs'
+                                : 'border-emerald-300 bg-white hover:bg-emerald-50 text-slate-700'
+                            }`}
+                          >
+                            P/SERVICIO ({selectedItem.paraServicio ?? 0} u.)
+                          </button>
+                        </div>
+                      )}
 
                       {/* Live Valuation Calculation */}
                       <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between text-xs">

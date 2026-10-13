@@ -64,6 +64,7 @@ interface GroupDevolucionDraft {
   item: InventoryItem;
   cantidad: number;
   motivo?: string;
+  origenStock: SalidaStockOrigen;
 }
 
 interface GroupIngresoDraft {
@@ -76,6 +77,8 @@ interface GroupIngresoDraft {
   precioUnitario: number;
   isNewItem: boolean;
   currentStock: number;
+  paraServicio?: number;
+  origenStock: SalidaStockOrigen;
 }
 
 // Sound synthesizer for realistic barcode gun feedback
@@ -247,7 +250,15 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
   const [groupDevolucionItems, setGroupDevolucionItems] = useState<GroupDevolucionDraft[]>(() => {
     try {
       const saved = sessionStorage.getItem('verdu_scanner_devolucion_draft_v1');
-      if (saved) return JSON.parse(saved);
+      if (saved) {
+        const parsed: GroupDevolucionDraft[] = JSON.parse(saved);
+        return (parsed || [])
+          .filter(g => g && g.item && g.cantidad > 0)
+          .map(g => ({
+            ...g,
+            origenStock: (g.origenStock === 'servicio' ? 'servicio' : 'normal') as SalidaStockOrigen
+          }));
+      }
     } catch {}
     return [];
   });
@@ -267,7 +278,15 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
   const [groupIngresoItems, setGroupIngresoItems] = useState<GroupIngresoDraft[]>(() => {
     try {
       const saved = sessionStorage.getItem('verdu_scanner_ingreso_draft_v1');
-      if (saved) return JSON.parse(saved);
+      if (saved) {
+        const parsed: GroupIngresoDraft[] = JSON.parse(saved);
+        return (parsed || [])
+          .filter(g => g && g.codigo && g.cantidad > 0)
+          .map(g => ({
+            ...g,
+            origenStock: (g.origenStock === 'servicio' ? 'servicio' : 'normal') as SalidaStockOrigen
+          }));
+      }
     } catch {}
     return [];
   });
@@ -582,7 +601,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
     }
 
     setGroupDevolucionItems(prev => {
-      const existingIdx = prev.findIndex(g => g.item.codigo.toLowerCase() === foundItem.codigo.toLowerCase());
+      const existingIdx = prev.findIndex(g => g.item.codigo.toLowerCase() === foundItem.codigo.toLowerCase() && g.origenStock === (foundItem.stock > 0 ? 'normal' : 'servicio'));
       if (existingIdx !== -1) {
         const updated = [...prev];
         updated[existingIdx] = {
@@ -593,12 +612,14 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
         setSuccessToast(`+1 u. de ${foundItem.codigo} agregada a la devolución (Total: ${updated[existingIdx].cantidad} u.)`);
         return updated;
       } else {
+        const origenDefault: SalidaStockOrigen = foundItem.stock > 0 ? 'normal' : 'servicio';
         if (soundEnabled) playScannerBeep('scan');
         setSuccessToast(`Producto ${foundItem.codigo} agregado al remito de devolución.`);
         return [{
           item: foundItem,
           cantidad: 1,
-          motivo: motivoDevolucion
+          motivo: motivoDevolucion,
+          origenStock: origenDefault
         }, ...prev];
       }
     });
@@ -624,6 +645,17 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
     if (soundEnabled) playScannerBeep('warning');
   };
 
+  const handleChangeDevolucionOrigen = (index: number, origen: SalidaStockOrigen) => {
+    setGroupDevolucionItems(prev => {
+      const updated = [...prev];
+      const target = updated[index];
+      if (!target) return prev;
+      updated[index] = { ...target, origenStock: origen };
+      if (soundEnabled) playScannerBeep('scan');
+      return updated;
+    });
+  };
+
   const handleFinalizeDevolucion = () => {
     if (groupDevolucionItems.length === 0) {
       setErrorMessage('Debes escanear o cargar al menos 1 producto para la devolución.');
@@ -641,7 +673,8 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
       items: groupDevolucionItems.map(g => ({
         codigo: g.item.codigo,
         cantidad: g.cantidad,
-        motivo: g.motivo || motivoDevolucion
+        motivo: g.motivo || motivoDevolucion,
+        origenStock: g.origenStock
       })),
       empleadoDevuelve: empleadoDevuelve.trim(),
       motivo: motivoDevolucion.trim() || 'Devolución pañol',
@@ -690,12 +723,14 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
     setTimeout(() => inputRef.current?.focus(), 100);
   };
 
-  const handleManualAddDevolucionItem = (item: InventoryItem, qty: number) => {
+  const handleManualAddDevolucionItem = (item: InventoryItem, qty: number, origenStock?: SalidaStockOrigen) => {
     setErrorMessage(null);
     setSuccessToast(null);
 
+    const origen: SalidaStockOrigen = origenStock ?? (item.stock > 0 ? 'normal' : 'servicio');
+
     setGroupDevolucionItems(prev => {
-      const existingIdx = prev.findIndex(g => g.item.id === item.id);
+      const existingIdx = prev.findIndex(g => g.item.id === item.id && g.origenStock === origen);
       if (existingIdx !== -1) {
         const updated = [...prev];
         updated[existingIdx] = {
@@ -704,12 +739,12 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
         };
         return updated;
       } else {
-        return [{ item, cantidad: qty, motivo: motivoDevolucion }, ...prev];
+        return [{ item, cantidad: qty, motivo: motivoDevolucion, origenStock: origen }, ...prev];
       }
     });
 
     if (soundEnabled) playScannerBeep('scan');
-    setSuccessToast(`Agregado a la devolución: ${qty} u. de ${item.codigo}`);
+    setSuccessToast(`Agregado a la devolución: ${qty} u. de ${item.codigo} (${ORIGEN_LABEL[origen]})`);
   };
 
   // ==================== INGRESO ACTIONS ====================
@@ -744,7 +779,9 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
             cantidad: 1,
             precioUnitario: foundItem.precio || 0,
             isNewItem: false,
-            currentStock: foundItem.stock
+            currentStock: foundItem.stock,
+            paraServicio: foundItem.paraServicio ?? 0,
+            origenStock: 'normal'
           }, ...prev];
         }
       });
@@ -782,7 +819,9 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
       cantidad: Math.max(1, newQtyInput),
       precioUnitario: Math.max(0, newPriceInput),
       isNewItem: true,
-      currentStock: 0
+      currentStock: 0,
+      paraServicio: 0,
+      origenStock: 'normal'
     };
 
     setGroupIngresoItems(prev => [newItemDraft, ...prev]);
@@ -801,6 +840,17 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
         ...updated[index],
         cantidad: Math.max(1, newQty)
       };
+      return updated;
+    });
+  };
+
+  const handleChangeIngresoOrigen = (index: number, origen: SalidaStockOrigen) => {
+    setGroupIngresoItems(prev => {
+      const updated = [...prev];
+      const target = updated[index];
+      if (!target) return prev;
+      updated[index] = { ...target, origenStock: origen };
+      if (soundEnabled) playScannerBeep('scan');
       return updated;
     });
   };
@@ -831,7 +881,8 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
         factura: invoiceNum,
         ubicacion: item.ubicacion,
         categoria: item.categoria,
-        precioUnitario: item.precioUnitario
+        precioUnitario: item.precioUnitario,
+        origenStock: item.origenStock
       });
     });
 
@@ -916,12 +967,14 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
     setSuccessToast(`Agregado a la salida: ${qty} u. de ${item.codigo} (${ORIGEN_LABEL[origen]})`);
   };
 
-  const handleManualAddExistingIngresoItem = (item: InventoryItem, qty: number, precio?: number) => {
+  const handleManualAddExistingIngresoItem = (item: InventoryItem, qty: number, precio?: number, origenStock?: SalidaStockOrigen) => {
     setErrorMessage(null);
     setSuccessToast(null);
 
+    const origen: SalidaStockOrigen = origenStock ?? (item.stock > 0 ? 'normal' : 'servicio');
+
     setGroupIngresoItems(prev => {
-      const existingIdx = prev.findIndex(g => g.codigo.toLowerCase() === item.codigo.toLowerCase());
+      const existingIdx = prev.findIndex(g => g.codigo.toLowerCase() === item.codigo.toLowerCase() && g.origenStock === origen);
       if (existingIdx !== -1) {
         const updated = [...prev];
         updated[existingIdx] = {
@@ -940,13 +993,15 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
           cantidad: qty,
           precioUnitario: precio !== undefined ? precio : (item.precio || 0),
           isNewItem: false,
-          currentStock: item.stock
+          currentStock: item.stock,
+          paraServicio: item.paraServicio ?? 0,
+          origenStock: origen
         }, ...prev];
       }
     });
 
     if (soundEnabled) playScannerBeep('scan');
-    setSuccessToast(`Agregado al ingreso: ${qty} u. de ${item.codigo}`);
+    setSuccessToast(`Agregado al ingreso: ${qty} u. de ${item.codigo} (${ORIGEN_LABEL[origen]})`);
   };
 
   const handleManualAddNewIngresoItem = (newItem: {
@@ -970,7 +1025,9 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
       cantidad: Math.max(1, newItem.cantidad),
       precioUnitario: Math.max(0, newItem.precioUnitario),
       isNewItem: true,
-      currentStock: 0
+      currentStock: 0,
+      paraServicio: 0,
+      origenStock: 'normal'
     };
 
     setGroupIngresoItems(prev => [newItemDraft, ...prev]);
@@ -1756,11 +1813,13 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
                   ) : (
                     groupDevolucionItems.map((draft, idx) => {
                       const finalStock = draft.item.stock + draft.cantidad;
+                      const finalServicio = (draft.item.paraServicio ?? 0) + draft.cantidad;
                       const subtotal = draft.cantidad * (draft.item.precio || 0);
+                      const hasDualStock = (draft.item.paraServicio ?? 0) > 0;
 
                       return (
                         <div 
-                          key={draft.item.id || idx}
+                          key={`${draft.item.id || draft.item.codigo}-${draft.origenStock}`}
                           className="bg-white rounded-xl p-3 border border-amber-300 shadow-2xs hover:border-amber-500 transition-all flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"
                         >
                           <div className="min-w-0 flex-1">
@@ -1773,9 +1832,39 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
                             </div>
                             <p className="text-xs font-medium text-slate-700 line-clamp-1 mt-0.5">{draft.item.descripcion}</p>
                             <div className="flex items-center gap-3 text-[11px] text-slate-500 mt-1">
-                              <span>Stock actual: <strong className="text-slate-700">{draft.item.stock} u.</strong></span>
-                              <span className="text-amber-700 font-bold">Stock final: {finalStock} u. (+{draft.cantidad} u.)</span>
+                              <span>Stock {hasDualStock ? 'Normal' : 'actual'}: <strong className="text-slate-700">{draft.item.stock} u.</strong></span>
+                              {hasDualStock && <span>P/SERVICIO: <strong className="text-slate-700">{draft.item.paraServicio ?? 0} u.</strong></span>}
+                              <span className="text-amber-700 font-bold">
+                                Quedarán en {ORIGEN_LABEL[draft.origenStock]}: {draft.origenStock === 'servicio' ? finalServicio : finalStock} u. (+{draft.cantidad} u.)
+                              </span>
                             </div>
+                            {hasDualStock && (
+                              <div className="flex items-center gap-1 mt-2">
+                                <span className="text-[10px] text-slate-400 font-bold uppercase">Se suma a:</span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleChangeDevolucionOrigen(idx, 'normal')}
+                                  className={`text-[10px] px-2 py-1 rounded-md font-bold transition-colors cursor-pointer ${
+                                    draft.origenStock === 'normal'
+                                      ? 'bg-amber-600 text-white shadow-2xs'
+                                      : 'bg-[#f4f9fd] text-slate-600 border border-[#fcd9a8] hover:bg-amber-50'
+                                  }`}
+                                >
+                                  Normal ({draft.item.stock} u.)
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleChangeDevolucionOrigen(idx, 'servicio')}
+                                  className={`text-[10px] px-2 py-1 rounded-md font-bold transition-colors cursor-pointer ${
+                                    draft.origenStock === 'servicio'
+                                      ? 'bg-amber-600 text-white shadow-2xs'
+                                      : 'bg-[#f4f9fd] text-slate-600 border border-[#fcd9a8] hover:bg-amber-50'
+                                  }`}
+                                >
+                                  P/SERVICIO ({draft.item.paraServicio ?? 0} u.)
+                                </button>
+                              </div>
+                            )}
                           </div>
 
                           <div className="flex items-center gap-3 self-end sm:self-center shrink-0">
@@ -1835,7 +1924,9 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
                   ) : (
                     groupIngresoItems.map((draft, idx) => {
                       const finalStock = draft.currentStock + draft.cantidad;
+                      const finalServicio = (draft.paraServicio ?? 0) + draft.cantidad;
                       const subtotal = draft.cantidad * draft.precioUnitario;
+                      const hasDualStock = (draft.paraServicio ?? 0) > 0 && !draft.isNewItem;
 
                       return (
                         <div 
@@ -1860,9 +1951,39 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
                             </div>
                             <p className="text-xs font-medium text-slate-700 line-clamp-1 mt-0.5">{draft.descripcion}</p>
                             <div className="flex items-center gap-3 text-[11px] text-slate-500 mt-1">
-                              <span>Stock actual: <strong className="text-slate-700">{draft.currentStock} u.</strong></span>
-                              <span className="text-emerald-700 font-bold">Stock final: {finalStock} u. (+{draft.cantidad} u.)</span>
+                              <span>Stock {hasDualStock ? 'Normal' : 'actual'}: <strong className="text-slate-700">{draft.currentStock} u.</strong></span>
+                              {hasDualStock && <span>P/SERVICIO: <strong className="text-slate-700">{draft.paraServicio ?? 0} u.</strong></span>}
+                              <span className="text-emerald-700 font-bold">
+                                Quedarán en {ORIGEN_LABEL[draft.origenStock]}: {draft.origenStock === 'servicio' ? finalServicio : finalStock} u. (+{draft.cantidad} u.)
+                              </span>
                             </div>
+                            {hasDualStock && (
+                              <div className="flex items-center gap-1 mt-2">
+                                <span className="text-[10px] text-slate-400 font-bold uppercase">Se suma a:</span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleChangeIngresoOrigen(idx, 'normal')}
+                                  className={`text-[10px] px-2 py-1 rounded-md font-bold transition-colors cursor-pointer ${
+                                    draft.origenStock === 'normal'
+                                      ? 'bg-emerald-600 text-white shadow-2xs'
+                                      : 'bg-[#f4f9fd] text-slate-600 border border-emerald-200 hover:bg-emerald-50'
+                                  }`}
+                                >
+                                  Normal ({draft.currentStock} u.)
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleChangeIngresoOrigen(idx, 'servicio')}
+                                  className={`text-[10px] px-2 py-1 rounded-md font-bold transition-colors cursor-pointer ${
+                                    draft.origenStock === 'servicio'
+                                      ? 'bg-emerald-600 text-white shadow-2xs'
+                                      : 'bg-[#f4f9fd] text-slate-600 border border-emerald-200 hover:bg-emerald-50'
+                                  }`}
+                                >
+                                  P/SERVICIO ({draft.paraServicio ?? 0} u.)
+                                </button>
+                              </div>
+                            )}
                           </div>
 
                           <div className="flex items-center gap-3 self-end sm:self-center shrink-0">
