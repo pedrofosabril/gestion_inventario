@@ -133,6 +133,7 @@ export interface IngresoRecord {
   descripcion: string;
   cantidad: number;
   fechaIngreso: string;
+  horaIngreso?: string;
   factura: string;
   precioUnitario?: number;
   ubicacion?: string;

@@ -416,8 +416,12 @@ export const SalidasLogView: React.FC<SalidasLogViewProps> = ({ onOpenScanner, p
                     <div className="flex items-center gap-1.5 text-xs text-slate-600 font-medium">
                       <Calendar className="w-3.5 h-3.5 text-sky-600" />
                       <span>{formatDisplayDate(group.fechaSalida)}</span>
-                      <Clock className="w-3.5 h-3.5 text-sky-600 ml-1" />
-                      <span>{group.horaSalida} hs</span>
+                      {group.horaSalida && (
+                        <>
+                          <Clock className="w-3.5 h-3.5 text-sky-600 ml-1" />
+                          <span>{group.horaSalida} hs</span>
+                        </>
+                      )}
                     </div>
                   </div>
 

@@ -283,9 +283,12 @@ export type MovementInput = {
 };
 
 export async function createMovement(input: MovementInput): Promise<void> {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const localDateTime = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
   const { error } = await supabase.from('movimientos').insert({
     id_movimiento: crypto.randomUUID(), tipo_movimiento: input.tipo, codigo: input.codigo,
-    cantidad: input.cantidad, fecha: input.fecha || new Date().toISOString().slice(0, 10),
+    cantidad: input.cantidad, fecha: input.fecha || localDateTime,
     comprobante: input.comprobante ?? '', cliente_proveedor: input.clienteProveedor ?? '',
     retira_responsable: input.responsable ?? ''
   });

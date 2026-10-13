@@ -171,9 +171,13 @@ export const SalidaReceiptModal: React.FC<SalidaReceiptModalProps> = ({
               <div className="text-xs font-bold text-slate-600 mt-0.5 flex items-center sm:justify-end gap-1">
                 <Calendar className="w-3.5 h-3.5 text-sky-600" />
                 <span>{formatDisplayDate(salidaGroup.fechaSalida)}</span>
-                <span className="text-slate-300">•</span>
-                <Clock className="w-3.5 h-3.5 text-sky-600" />
-                <span>{salidaGroup.horaSalida} hs</span>
+                {salidaGroup.horaSalida && (
+                  <>
+                    <span className="text-slate-300">•</span>
+                    <Clock className="w-3.5 h-3.5 text-sky-600" />
+                    <span>{salidaGroup.horaSalida} hs</span>
+                  </>
+                )}
               </div>
             </div>
           </div>

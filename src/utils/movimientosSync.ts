@@ -20,6 +20,13 @@ const stableHash = (s: string): string => {
 
 const dateKey = (fecha?: string | null): string => norm(fecha).slice(0, 10);
 
+const splitFecha = (fecha?: string | null): { date: string; time: string } => {
+  const raw = norm(fecha);
+  const date = raw.slice(0, 10);
+  const t = raw.length > 10 ? raw.slice(11, 16) : '';
+  return { date, time: /^\d{2}:\d{2}$/.test(t) ? t : '' };
+};
+
 const esRemitoReal = (r: MovimientoRow): boolean => {
   const c = norm(r.comprobante).toUpperCase();
   return c !== '' && c !== 'S/N';
@@ -119,8 +126,8 @@ export function mergeRemoteMovements(
       nroRemito: norm(row.comprobante) || 'S/N',
       codigo: norm(row.codigo),
       descripcion: item?.descripcion || norm(row.codigo),
-      fechaSalida: dateKey(row.fecha),
-      horaSalida: '',
+      fechaSalida: splitFecha(row.fecha).date,
+      horaSalida: splitFecha(row.fecha).time,
       cliente: norm(row.cliente_proveedor) || 'Verdu y Cía (General)',
       retira: norm(row.retira_responsable),
       cantidad: row.cantidad ?? 0,
@@ -152,7 +159,7 @@ export function mergeRemoteMovements(
       numeroSalida: 0,
       numeroSalidaFormatted: '',
       fechaSalida: dateKey(groupRows[0].fecha),
-      horaSalida: '',
+      horaSalida: splitFecha(groupRows[0].fecha).time,
       retira: norm(groupRows[0].retira_responsable),
       esRemitoInterno: isInt,
       cliente: norm(groupRows[0].cliente_proveedor) || (isInt ? 'Taller Interno / Flota Propia' : 'Cliente Externo'),
@@ -198,7 +205,7 @@ export function mergeRemoteMovements(
       numeroDevolucion: 0,
       numeroDevolucionFormatted: '',
       fechaDevolucion: dateKey(groupRows[0].fecha),
-      horaDevolucion: '',
+      horaDevolucion: splitFecha(groupRows[0].fecha).time,
       empleadoDevuelve: norm(groupRows[0].retira_responsable) || 'Pañol',
       motivo: '',
       notas: '',
@@ -237,7 +244,8 @@ export function mergeRemoteMovements(
       codigo: norm(row.codigo),
       descripcion: item?.descripcion || norm(row.codigo),
       cantidad: row.cantidad ?? 0,
-      fechaIngreso: dateKey(row.fecha),
+      fechaIngreso: splitFecha(row.fecha).date,
+      horaIngreso: splitFecha(row.fecha).time,
       proveedor: norm(row.cliente_proveedor) || 'Proveedor',
       factura: norm(row.comprobante),
       precioUnitario: item?.precio ?? 0,

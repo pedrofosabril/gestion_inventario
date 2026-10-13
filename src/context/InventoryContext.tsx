@@ -788,6 +788,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     const now = new Date();
     const formattedDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const formattedTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
     const salidaRecord: SalidaRecord = {
       id: `sal-${Date.now()}`,
@@ -795,6 +796,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       codigo: item.codigo,
       descripcion: replaceYazWithYas(item.descripcion),
       fechaSalida: formattedDate,
+      horaSalida: formattedTime,
       cliente: replaceYazWithYas(cliente.trim() || 'Verdu y Cía (General)'),
       retira: replaceYazWithYas(retira.trim() || currentUser?.nombre || ''),
       cantidad,
@@ -1525,6 +1527,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const existing = findItemByCode(codigo);
     const now = new Date();
     const formattedDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const formattedTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
     let updatedStock = cantidad;
 
     if (existing) {
@@ -1570,6 +1573,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       descripcion: replaceYazWithYas(descripcion.trim() || (existing ? existing.descripcion : 'Producto Ingresado')),
       cantidad,
       fechaIngreso: formattedDate,
+      horaIngreso: formattedTime,
       factura: replaceYazWithYas(factura.trim() || 'S/F'),
       precioUnitario: precioUnitario || (existing ? existing.precio : 0),
       ubicacion: ubicacion || (existing ? existing.ubicacion : 'A'),

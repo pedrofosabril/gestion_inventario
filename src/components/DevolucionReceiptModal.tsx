@@ -126,7 +126,7 @@ export const DevolucionReceiptModal: React.FC<DevolucionReceiptModalProps> = ({
                   Devolución a Pañol
                 </span>
                 <span className="text-xs text-amber-100 font-medium">
-                  {formatDisplayDate(currentDevolucionGroup.fechaDevolucion)} • {currentDevolucionGroup.horaDevolucion} hs
+                  {formatDisplayDate(currentDevolucionGroup.fechaDevolucion)}{currentDevolucionGroup.horaDevolucion ? ` • ${currentDevolucionGroup.horaDevolucion} hs` : ''}
                 </span>
               </div>
               <h2 className="text-xl sm:text-2xl font-black tracking-tight mt-0.5">

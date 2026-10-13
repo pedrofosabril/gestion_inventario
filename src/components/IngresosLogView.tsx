@@ -300,6 +300,7 @@ export const IngresosLogView: React.FC<IngresosLogViewProps> = ({ onOpenScanner,
                     {/* Fecha */}
                     <td className="px-2 py-2.5 font-mono text-slate-600 whitespace-nowrap">
                       {formatDisplayDate(ingreso.fechaIngreso)}
+                      {ingreso.horaIngreso && <span className="text-slate-400"> · {ingreso.horaIngreso} hs</span>}
                     </td>
 
                     {/* Ubicación */}
