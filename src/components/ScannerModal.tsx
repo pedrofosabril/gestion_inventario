@@ -1850,7 +1850,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
                                       : 'bg-[#f4f9fd] text-slate-600 border border-[#fcd9a8] hover:bg-amber-50'
                                   }`}
                                 >
-                                  Normal ({draft.item.stock} u.)
+                                  Original ({draft.item.stock} u.)
                                 </button>
                                 <button
                                   type="button"
@@ -1969,7 +1969,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
                                       : 'bg-[#f4f9fd] text-slate-600 border border-emerald-200 hover:bg-emerald-50'
                                   }`}
                                 >
-                                  Normal ({draft.currentStock} u.)
+                                  Original ({draft.currentStock} u.)
                                 </button>
                                 <button
                                   type="button"

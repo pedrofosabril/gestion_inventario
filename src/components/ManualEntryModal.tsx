@@ -500,7 +500,7 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
                                 : 'border-amber-300 bg-white hover:bg-amber-50 text-slate-700'
                             }`}
                           >
-                            Normal ({selectedItem.stock} u.)
+                            Original ({selectedItem.stock} u.)
                           </button>
                           <button
                             type="button"
@@ -704,7 +704,7 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
                                 : 'border-emerald-300 bg-white hover:bg-emerald-50 text-slate-700'
                             }`}
                           >
-                            Normal ({selectedItem.stock} u.)
+                            Original ({selectedItem.stock} u.)
                           </button>
                           <button
                             type="button"
