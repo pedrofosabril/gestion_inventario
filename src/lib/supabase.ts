@@ -360,3 +360,19 @@ export async function deleteGlobalUser(username: string): Promise<void> {
   const { error } = await supabase.from('usuarios').delete().eq('username', username);
   if (error) throw error;
 }
+
+export type MovimientoRow = {
+  id_movimiento: string;
+  tipo_movimiento?: string | null;
+  codigo?: string | null;
+  cantidad?: number | null;
+  fecha?: string | null;
+  comprobante?: string | null;
+  cliente_proveedor?: string | null;
+  retira_responsable?: string | null;
+};
+
+/** Lee todos los movimientos registrados en Supabase (compartidos entre dispositivos). */
+export async function getMovimientos(): Promise<MovimientoRow[]> {
+  return fetchAllRows<MovimientoRow>('movimientos', '*');
+}
