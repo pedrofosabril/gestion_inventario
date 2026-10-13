@@ -200,8 +200,13 @@ export const DevolucionesLogView: React.FC<DevolucionesLogViewProps> = ({ paraPa
                     </thead>
                     <tbody className="divide-y divide-[#e2effa]">
                       {group.items.map((item, index) => (
-                        <tr key={`${group.id}-${item.codigo}-${index}`}>
-                          <td className="p-2 font-mono font-bold text-[#006bb0]">{item.codigo}</td>
+                        <tr key={`${group.id}-${item.codigo}-${item.origenStock || 'normal'}-${index}`}>
+                          <td className="p-2 font-mono font-bold text-[#006bb0]">
+                            {item.codigo}
+                            {item.origenStock === 'servicio' && (
+                              <span className="ml-1.5 text-[9px] px-1.5 py-0.5 rounded bg-amber-600 text-white font-black uppercase align-middle">P/SERVICIO</span>
+                            )}
+                          </td>
                           <td className="p-2 text-slate-700">{item.descripcion}</td>
                           <td className="p-2 font-mono text-slate-600">{item.ubicacion || 'PAÑOL'}</td>
                           <td className="p-2 text-right font-mono font-black text-amber-700">+{item.cantidad} u.</td>

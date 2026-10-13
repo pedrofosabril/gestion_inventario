@@ -217,9 +217,16 @@ export const DevolucionReceiptModal: React.FC<DevolucionReceiptModalProps> = ({
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {currentDevolucionGroup.items.map((item, idx) => (
-                    <tr key={idx} className="hover:bg-amber-50/40 transition-colors">
+                    <tr key={`${item.codigo}-${item.origenStock || 'normal'}-${idx}`} className="hover:bg-amber-50/40 transition-colors">
                       <td className="py-2 px-3 text-center text-slate-400 font-medium">{idx + 1}</td>
-                      <td className="py-2 px-3 font-bold text-slate-900 font-mono">{item.codigo}</td>
+                      <td className="py-2 px-3">
+                        <span className="font-bold text-slate-900 font-mono">{item.codigo}</span>
+                        {item.origenStock === 'servicio' && (
+                          <span className="ml-1.5 text-[9px] px-1.5 py-0.5 rounded bg-amber-600 text-white font-black uppercase align-middle">
+                            P/SERVICIO
+                          </span>
+                        )}
+                      </td>
                       <td className="py-2 px-3 text-slate-700 max-w-xs">{item.descripcion}</td>
                       <td className="py-2 px-3 text-slate-500">
                         <span className="inline-flex items-center gap-1 bg-slate-100 px-2 py-0.5 rounded text-[11px]">

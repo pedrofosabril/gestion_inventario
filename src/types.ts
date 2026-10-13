@@ -79,6 +79,7 @@ export interface DevolucionItemEntry {
   precioUnitario?: number;
   ubicacion?: string;
   motivo?: string;
+  origenStock?: SalidaStockOrigen;
 }
 
 export interface DevolucionGroupRecord {
@@ -136,6 +137,7 @@ export interface IngresoRecord {
   precioUnitario?: number;
   ubicacion?: string;
   categoria?: ItemCategory;
+  origenStock?: SalidaStockOrigen;
   usuarioRegistro?: string;
 }
 
