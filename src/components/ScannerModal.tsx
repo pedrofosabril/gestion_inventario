@@ -1737,7 +1737,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
                                       : 'bg-[#f4f9fd] text-slate-600 border border-[#badbf5] hover:bg-[#e8f4fc]'
                                   }`}
                                 >
-                                  Original ({draft.item.stock} u.)
+                                  Original{draft.item.stock > 0 ? ` (${draft.item.stock} u.)` : ''}
                                 </button>
                                 <button
                                   type="button"
@@ -1748,7 +1748,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
                                       : 'bg-[#f4f9fd] text-slate-600 border border-[#badbf5] hover:bg-[#e8f4fc]'
                                   }`}
                                 >
-                                  P/SERVICIO ({stockServicio} u.)
+                                  P/SERVICIO{stockServicio > 0 ? ` (${stockServicio} u.)` : ''}
                                 </button>
                               </div>
                             )}
@@ -1832,7 +1832,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
                             </div>
                             <p className="text-xs font-medium text-slate-700 line-clamp-1 mt-0.5">{draft.item.descripcion}</p>
                             <div className="flex items-center gap-3 text-[11px] text-slate-500 mt-1">
-                              <span>Stock {hasDualStock ? 'Normal' : 'actual'}: <strong className="text-slate-700">{draft.item.stock} u.</strong></span>
+                              <span>Stock {hasDualStock ? 'Original' : 'actual'}: <strong className="text-slate-700">{draft.item.stock} u.</strong></span>
                               {hasDualStock && <span>P/SERVICIO: <strong className="text-slate-700">{draft.item.paraServicio ?? 0} u.</strong></span>}
                               <span className="text-amber-700 font-bold">
                                 Quedarán en {ORIGEN_LABEL[draft.origenStock]}: {draft.origenStock === 'servicio' ? finalServicio : finalStock} u. (+{draft.cantidad} u.)
@@ -1850,7 +1850,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
                                       : 'bg-[#f4f9fd] text-slate-600 border border-[#fcd9a8] hover:bg-amber-50'
                                   }`}
                                 >
-                                  Original ({draft.item.stock} u.)
+                                  Original{draft.item.stock > 0 ? ` (${draft.item.stock} u.)` : ''}
                                 </button>
                                 <button
                                   type="button"
@@ -1861,7 +1861,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
                                       : 'bg-[#f4f9fd] text-slate-600 border border-[#fcd9a8] hover:bg-amber-50'
                                   }`}
                                 >
-                                  P/SERVICIO ({draft.item.paraServicio ?? 0} u.)
+                                  P/SERVICIO{(draft.item.paraServicio ?? 0) > 0 ? ` (${draft.item.paraServicio ?? 0} u.)` : ''}
                                 </button>
                               </div>
                             )}
@@ -1951,7 +1951,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
                             </div>
                             <p className="text-xs font-medium text-slate-700 line-clamp-1 mt-0.5">{draft.descripcion}</p>
                             <div className="flex items-center gap-3 text-[11px] text-slate-500 mt-1">
-                              <span>Stock {hasDualStock ? 'Normal' : 'actual'}: <strong className="text-slate-700">{draft.currentStock} u.</strong></span>
+                              <span>Stock {hasDualStock ? 'Original' : 'actual'}: <strong className="text-slate-700">{draft.currentStock} u.</strong></span>
                               {hasDualStock && <span>P/SERVICIO: <strong className="text-slate-700">{draft.paraServicio ?? 0} u.</strong></span>}
                               <span className="text-emerald-700 font-bold">
                                 Quedarán en {ORIGEN_LABEL[draft.origenStock]}: {draft.origenStock === 'servicio' ? finalServicio : finalStock} u. (+{draft.cantidad} u.)
@@ -1969,7 +1969,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
                                       : 'bg-[#f4f9fd] text-slate-600 border border-emerald-200 hover:bg-emerald-50'
                                   }`}
                                 >
-                                  Original ({draft.currentStock} u.)
+                                  Original{draft.currentStock > 0 ? ` (${draft.currentStock} u.)` : ''}
                                 </button>
                                 <button
                                   type="button"
@@ -1980,7 +1980,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
                                       : 'bg-[#f4f9fd] text-slate-600 border border-emerald-200 hover:bg-emerald-50'
                                   }`}
                                 >
-                                  P/SERVICIO ({draft.paraServicio ?? 0} u.)
+                                  P/SERVICIO{(draft.paraServicio ?? 0) > 0 ? ` (${draft.paraServicio ?? 0} u.)` : ''}
                                 </button>
                               </div>
                             )}

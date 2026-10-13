@@ -177,7 +177,7 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
     } else {
       onAddSalidaItem(selectedItem, salidaQty);
     }
-    setSuccessMsg(`✓ Se agregaron ${salidaQty} u. de "${selectedItem.codigo}" a la lista de devolución (${salidaOrigen === 'servicio' ? 'P/SERVICIO' : 'normal'}).`);
+    setSuccessMsg(`✓ Se agregaron ${salidaQty} u. de "${selectedItem.codigo}" a la lista de devolución (${salidaOrigen === 'servicio' ? 'P/SERVICIO' : 'original'}).`);
     setErrorMsg(null);
     setSelectedItem(null);
     setSearchTerm('');
@@ -223,7 +223,7 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
     }
 
     onAddExistingIngresoItem(selectedItem, ingresoQty, ingresoPrecio > 0 ? ingresoPrecio : undefined, ingresoOrigen);
-    setSuccessMsg(`✓ Se agregaron ${ingresoQty} u. de "${selectedItem.codigo}" al lote de entrada (${ingresoOrigen === 'servicio' ? 'P/SERVICIO' : 'normal'}).`);
+    setSuccessMsg(`✓ Se agregaron ${ingresoQty} u. de "${selectedItem.codigo}" al lote de entrada (${ingresoOrigen === 'servicio' ? 'P/SERVICIO' : 'original'}).`);
     setErrorMsg(null);
     setSelectedItem(null);
     setSearchTerm('');
@@ -500,7 +500,7 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
                                 : 'border-amber-300 bg-white hover:bg-amber-50 text-slate-700'
                             }`}
                           >
-                            Original ({selectedItem.stock} u.)
+                            Original{selectedItem.stock > 0 ? ` (${selectedItem.stock} u.)` : ''}
                           </button>
                           <button
                             type="button"
@@ -511,7 +511,7 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
                                 : 'border-amber-300 bg-white hover:bg-amber-50 text-slate-700'
                             }`}
                           >
-                            P/SERVICIO ({selectedItem.paraServicio ?? 0} u.)
+                            P/SERVICIO{(selectedItem.paraServicio ?? 0) > 0 ? ` (${selectedItem.paraServicio ?? 0} u.)` : ''}
                           </button>
                         </div>
                       )}
@@ -606,7 +606,7 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
                                   : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-600'
                               }`}
                             >
-                              Original ({selectedItem.stock} u.)
+                              Original{selectedItem.stock > 0 ? ` (${selectedItem.stock} u.)` : ''}
                             </button>
                             <button
                               type="button"
@@ -617,7 +617,7 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
                                   : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-600'
                               }`}
                             >
-                              P/SERVICIO ({selectedItem.paraServicio ?? 0} u.)
+                              P/SERVICIO{(selectedItem.paraServicio ?? 0) > 0 ? ` (${selectedItem.paraServicio ?? 0} u.)` : ''}
                             </button>
                           </div>
                         )}
@@ -704,7 +704,7 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
                                 : 'border-emerald-300 bg-white hover:bg-emerald-50 text-slate-700'
                             }`}
                           >
-                            Original ({selectedItem.stock} u.)
+                            Original{selectedItem.stock > 0 ? ` (${selectedItem.stock} u.)` : ''}
                           </button>
                           <button
                             type="button"
@@ -715,7 +715,7 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
                                 : 'border-emerald-300 bg-white hover:bg-emerald-50 text-slate-700'
                             }`}
                           >
-                            P/SERVICIO ({selectedItem.paraServicio ?? 0} u.)
+                            P/SERVICIO{(selectedItem.paraServicio ?? 0) > 0 ? ` (${selectedItem.paraServicio ?? 0} u.)` : ''}
                           </button>
                         </div>
                       )}
