@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import * as XLSX from 'xlsx';
 import confetti from 'canvas-confetti';
 import { 
@@ -23,8 +23,9 @@ import {
   INITIAL_USERS 
 } from '../data/initialData';
 import { replaceYazWithYas, sanitizeYazObject } from '../utils/sanitizeUtils';
-import { createMovement, deleteInventoryItem, getInventory, saveInventoryItem } from '../lib/supabase';
+import { createMovement, deleteInventoryItem, getInventory, getMovimientos, saveInventoryItem } from '../lib/supabase';
 import { mergeSameProductPairs } from '../utils/productMerge';
+import { mergeRemoteMovements } from '../utils/movimientosSync';
 
 export type MainNavSection = ItemCategory | 'salidas_log' | 'ingresos_log' | 'gerencia_dashboard';
 
@@ -396,13 +397,57 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   // Supabase is the source of truth for the inventory. Test data and browser
   // storage are deliberately not used as a fallback.
+  const [inventoryReady, setInventoryReady] = useState(false);
+  const movimientosSyncedRef = useRef(false);
+
   useEffect(() => {
     let active = true;
     getInventory()
-      .then(data => { if (active) setItems(data); })
+      .then(data => { if (active) { setItems(data); setInventoryReady(true); } })
       .catch(error => console.error('No se pudo cargar el inventario de Supabase:', error));
     return () => { active = false; };
   }, []);
+
+  // Los movimientos (salidas, ingresos, devoluciones) se guardan en Supabase y se
+  // comparten entre dispositivos. Acá se leen y se fusionan con el historial local.
+  const latestStateRef = useRef({ items, salidas, salidaGroups, ingresos, devolucionGroups });
+  latestStateRef.current = { items, salidas, salidaGroups, ingresos, devolucionGroups };
+
+  useEffect(() => {
+    if (!inventoryReady || movimientosSyncedRef.current) return;
+    movimientosSyncedRef.current = true;
+
+    const syncMovimientos = async () => {
+      try {
+        const rows = await getMovimientos();
+        if (!rows || rows.length === 0) return;
+        const current = latestStateRef.current;
+        const merged = mergeRemoteMovements(rows, current.items, {
+          salidas: current.salidas,
+          salidaGroups: current.salidaGroups,
+          ingresos: current.ingresos,
+          devolucionGroups: current.devolucionGroups
+        });
+        if (merged.salidas.length > current.salidas.length) setSalidas(merged.salidas);
+        if (merged.salidaGroups.length > current.salidaGroups.length) setSalidaGroups(merged.salidaGroups);
+        if (merged.ingresos.length > current.ingresos.length) setIngresos(merged.ingresos);
+        if (merged.devolucionGroups.length > current.devolucionGroups.length) setDevolucionGroups(merged.devolucionGroups);
+      } catch (error) {
+        console.error('No se pudieron sincronizar los movimientos de Supabase:', error);
+      }
+    };
+
+    void syncMovimientos();
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void syncMovimientos();
+    }, 60000);
+    const onFocus = () => void syncMovimientos();
+    window.addEventListener('focus', onFocus);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [inventoryReady]);
 
   // Persist state
   useEffect(() => {
@@ -1102,6 +1147,18 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     };
 
     setDevolucionGroups(prev => [newGroup, ...prev]);
+
+    for (const entry of newGroup.items) {
+      void createMovement({
+        tipo: 'Devolucion',
+        codigo: entry.codigo,
+        cantidad: entry.cantidad,
+        comprobante: `DEV-${newGroup.numeroDevolucion}`,
+        clienteProveedor: newGroup.empleadoDevuelve,
+        responsable: newGroup.usuarioRegistro
+      }).catch(error => console.error('No se pudo registrar la devolución en Supabase:', error));
+    }
+
     playBeep('success');
 
     try {
