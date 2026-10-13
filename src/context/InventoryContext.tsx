@@ -96,6 +96,7 @@ interface InventoryContextType {
       codigo: string;
       cantidad: number;
       motivo?: string;
+      origenStock?: SalidaStockOrigen;
     }[];
     empleadoDevuelve: string;
     motivo?: string;
@@ -120,6 +121,7 @@ interface InventoryContextType {
     ubicacion?: string;
     categoria?: ItemCategory;
     precioUnitario?: number;
+    origenStock?: SalidaStockOrigen;
   }) => { success: boolean; message: string; ingreso?: IngresoRecord; newStock?: number };
   deleteIngreso: (ingresoId: string, subtractStock?: boolean) => { success: boolean; message: string };
 
@@ -1123,7 +1125,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     motivo = 'Devolución pañol',
     notas = ''
   }: {
-    items: { codigo: string; cantidad: number; motivo?: string }[];
+    items: { codigo: string; cantidad: number; motivo?: string; origenStock?: SalidaStockOrigen }[];
     empleadoDevuelve: string;
     motivo?: string;
     notas?: string;
@@ -1139,26 +1141,26 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       return { success: false, message: 'Debe ingresar el empleado que devuelve el material.' };
     }
 
-    // Consolidate requested items by canonical product code
-    const aggregatedMap = new Map<string, { cantidad: number; motivo?: string }>();
+    // Consolidate requested items by canonical product code + stock origin
+    const aggregatedMap = new Map<string, { codigo: string; cantidad: number; motivo?: string; origenStock: SalidaStockOrigen }>();
     for (const req of requestedItems) {
       const clean = req.codigo.trim();
       if (clean && req.cantidad > 0) {
         const found = findItemByCode(clean);
         const canonCode = found ? found.codigo : clean;
-        const current = aggregatedMap.get(canonCode) || { cantidad: 0, motivo: req.motivo || motivo };
-        aggregatedMap.set(canonCode, {
+        const origen: SalidaStockOrigen = req.origenStock === 'servicio' ? 'servicio' : 'normal';
+        const key = `${canonCode}\u0000${origen}`;
+        const current = aggregatedMap.get(key) || { codigo: canonCode, cantidad: 0, motivo: req.motivo || motivo, origenStock: origen };
+        aggregatedMap.set(key, {
           cantidad: current.cantidad + req.cantidad,
-          motivo: req.motivo || current.motivo
+          motivo: req.motivo || current.motivo,
+          codigo: canonCode,
+          origenStock: origen
         });
       }
     }
 
-    const consolidatedItems = Array.from(aggregatedMap.entries()).map(([codigo, val]) => ({
-      codigo,
-      cantidad: val.cantidad,
-      motivo: val.motivo
-    }));
+    const consolidatedItems = Array.from(aggregatedMap.values());
 
     if (consolidatedItems.length === 0) {
       playBeep('error');
@@ -1176,26 +1178,31 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     let totalUnidades = 0;
     let totalValor = 0;
 
-    // Increase stock for all returned items in inventory
+    // Increase stock for all returned items (normal or P/SERVICIO per line)
     setItems(prevItems => {
       return prevItems.map(item => {
-        const match = consolidatedItems.find(req => 
+        const matches = consolidatedItems.filter(req => 
           item.codigo.toLowerCase() === req.codigo.trim().toLowerCase() ||
           (item.codigoBarras && item.codigoBarras.toLowerCase() === req.codigo.trim().toLowerCase())
         );
-        if (match) {
-          const newStock = (item.stock || 0) + match.cantidad;
-          const updatedItem = {
-            ...item,
-            stock: newStock,
-            precioTotal: newStock * (item.precio || 0),
-            fechaModificacion: formattedDate,
-            usuarioModificacion: currentUser.nombre
-          };
-          void saveInventoryItem(updatedItem).catch(error => console.error('No se pudo actualizar el stock en Supabase:', error));
-          return updatedItem;
+        if (matches.length === 0) return item;
+
+        const updated = { ...item };
+        for (const match of matches) {
+          if (match.origenStock === 'servicio') {
+            updated.paraServicio = (updated.paraServicio ?? 0) + match.cantidad;
+          } else {
+            updated.stock = (updated.stock || 0) + match.cantidad;
+          }
         }
-        return item;
+        const updatedItem = {
+          ...updated,
+          precioTotal: (updated.stock || 0) * (item.precio || 0),
+          fechaModificacion: formattedDate,
+          usuarioModificacion: currentUser.nombre
+        };
+        void saveInventoryItem(updatedItem).catch(error => console.error('No se pudo actualizar el stock en Supabase:', error));
+        return updatedItem;
       });
     });
 
@@ -1210,7 +1217,8 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         cantidad: req.cantidad,
         precioUnitario: precioUnit,
         ubicacion: item?.ubicacion || 'PAÑOL',
-        motivo: req.motivo || motivo
+        motivo: req.motivo || motivo,
+        origenStock: req.origenStock
       });
     }
 
@@ -1274,12 +1282,22 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           );
           if (idx !== -1) {
             const current = updated[idx];
-            const newStock = Math.max(0, current.stock - itemEntry.cantidad);
-            const updatedItem = {
-              ...current,
-              stock: newStock,
-              precioTotal: newStock * current.precio
-            };
+            let updatedItem;
+            if (itemEntry.origenStock === 'servicio') {
+              const newParaServicio = Math.max(0, (current.paraServicio ?? 0) - itemEntry.cantidad);
+              updatedItem = {
+                ...current,
+                paraServicio: newParaServicio || undefined,
+                precioTotal: (current.stock || 0) * (current.precio || 0)
+              };
+            } else {
+              const newStock = Math.max(0, current.stock - itemEntry.cantidad);
+              updatedItem = {
+                ...current,
+                stock: newStock,
+                precioTotal: newStock * (current.precio || 0)
+              };
+            }
             updated[idx] = updatedItem;
             void saveInventoryItem(updatedItem).catch(error => console.error('No se pudo actualizar el stock en Supabase:', error));
           }
@@ -1311,12 +1329,22 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           );
           if (idx !== -1) {
             const current = updated[idx];
-            const newStock = Math.max(0, current.stock - itemEntry.cantidad);
-            const updatedItem = {
-              ...current,
-              stock: newStock,
-              precioTotal: newStock * current.precio
-            };
+            let updatedItem;
+            if (itemEntry.origenStock === 'servicio') {
+              const newParaServicio = Math.max(0, (current.paraServicio ?? 0) - itemEntry.cantidad);
+              updatedItem = {
+                ...current,
+                paraServicio: newParaServicio || undefined,
+                precioTotal: (current.stock || 0) * (current.precio || 0)
+              };
+            } else {
+              const newStock = Math.max(0, current.stock - itemEntry.cantidad);
+              updatedItem = {
+                ...current,
+                stock: newStock,
+                precioTotal: newStock * (current.precio || 0)
+              };
+            }
             updated[idx] = updatedItem;
             changed = true;
             void saveInventoryItem(updatedItem).catch(error => console.error('No se pudo actualizar el stock en Supabase:', error));
@@ -1475,7 +1503,8 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     factura,
     ubicacion = 'A',
     categoria = 'panol',
-    precioUnitario
+    precioUnitario,
+    origenStock
   }: {
     codigo: string;
     proveedor: string;
@@ -1485,33 +1514,46 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     ubicacion?: string;
     categoria?: ItemCategory;
     precioUnitario?: number;
+    origenStock?: SalidaStockOrigen;
   }) => {
     if (!codigo || cantidad <= 0) {
       playBeep('error');
       return { success: false, message: 'Código y cantidad válida son requeridos.' };
     }
 
+    const origen: SalidaStockOrigen = origenStock === 'servicio' ? 'servicio' : 'normal';
     const existing = findItemByCode(codigo);
     const now = new Date();
     const formattedDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     let updatedStock = cantidad;
 
     if (existing) {
-      updatedStock = existing.stock + cantidad;
-      updateItem(existing.id, {
-        stock: updatedStock,
-        precio: precioUnitario !== undefined ? precioUnitario : existing.precio,
-        precioTotal: updatedStock * (precioUnitario !== undefined ? precioUnitario : existing.precio),
-        ubicacion: ubicacion || existing.ubicacion,
-        proveedor: proveedor || existing.proveedor
-      });
+      if (origen === 'servicio') {
+        updatedStock = (existing.paraServicio ?? 0) + cantidad;
+        updateItem(existing.id, {
+          paraServicio: updatedStock || undefined,
+          precio: precioUnitario !== undefined ? precioUnitario : existing.precio,
+          ubicacion: ubicacion || existing.ubicacion,
+          proveedor: proveedor || existing.proveedor
+        });
+      } else {
+        updatedStock = existing.stock + cantidad;
+        updateItem(existing.id, {
+          stock: updatedStock,
+          precio: precioUnitario !== undefined ? precioUnitario : existing.precio,
+          precioTotal: updatedStock * (precioUnitario !== undefined ? precioUnitario : existing.precio),
+          ubicacion: ubicacion || existing.ubicacion,
+          proveedor: proveedor || existing.proveedor
+        });
+      }
     } else {
       const p = precioUnitario || 0;
       addItem({
         codigo: codigo.trim(),
         proveedor: proveedor.trim() || 'SULLAIR',
         descripcion: descripcion.trim() || 'Nuevo Producto Ingresado',
-        stock: cantidad,
+        stock: origen === 'servicio' ? 0 : cantidad,
+        paraServicio: origen === 'servicio' ? cantidad : undefined,
         stockMinimo: 1,
         ubicacion: ubicacion.trim() || 'A',
         categoria,
@@ -1532,6 +1574,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       precioUnitario: precioUnitario || (existing ? existing.precio : 0),
       ubicacion: ubicacion || (existing ? existing.ubicacion : 'A'),
       categoria: existing ? existing.categoria : categoria,
+      origenStock: origen,
       usuarioRegistro: replaceYazWithYas(currentUser?.nombre || '')
     };
 
@@ -1564,14 +1607,25 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         if (idx !== -1) {
           const updated = [...prevItems];
           const current = updated[idx];
-          const newStock = Math.max(0, current.stock - target.cantidad);
-          const updatedItem = {
-            ...current,
-            stock: newStock,
-            precioTotal: newStock * (current.precio || 0)
-          };
-          updated[idx] = updatedItem;
-          void saveInventoryItem(updatedItem).catch(error => console.error('No se pudo actualizar el stock en Supabase:', error));
+          if (target.origenStock === 'servicio') {
+            const newParaServicio = Math.max(0, (current.paraServicio ?? 0) - target.cantidad);
+            const updatedItem = {
+              ...current,
+              paraServicio: newParaServicio || undefined,
+              precioTotal: (current.stock || 0) * (current.precio || 0)
+            };
+            updated[idx] = updatedItem;
+            void saveInventoryItem(updatedItem).catch(error => console.error('No se pudo actualizar el stock en Supabase:', error));
+          } else {
+            const newStock = Math.max(0, current.stock - target.cantidad);
+            const updatedItem = {
+              ...current,
+              stock: newStock,
+              precioTotal: newStock * (current.precio || 0)
+            };
+            updated[idx] = updatedItem;
+            void saveInventoryItem(updatedItem).catch(error => console.error('No se pudo actualizar el stock en Supabase:', error));
+          }
           return updated;
         }
         return prevItems;

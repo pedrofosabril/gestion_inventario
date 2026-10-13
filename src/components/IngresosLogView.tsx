@@ -276,7 +276,12 @@ export const IngresosLogView: React.FC<IngresosLogViewProps> = ({ onOpenScanner,
 
                     {/* Código */}
                     <td className="px-2 py-2.5 font-mono font-bold text-emerald-700 truncate" title={ingreso.codigo}>
-                      {ingreso.codigo}
+                      <span className="flex items-center gap-1.5">
+                        <span className="truncate">{ingreso.codigo}</span>
+                        {ingreso.origenStock === 'servicio' && (
+                          <span className="shrink-0 text-[9px] px-1.5 py-0.5 rounded bg-emerald-600 text-white font-black uppercase">P/SERVICIO</span>
+                        )}
+                      </span>
                     </td>
 
                     {/* Proveedor */}
