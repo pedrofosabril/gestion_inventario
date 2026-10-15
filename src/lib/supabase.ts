@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { InventoryItem, ItemCategory, UserAccount, UserRole } from '../types';
+import { InventoryItem, ItemCategory, SavedSignature, UserAccount, UserRole } from '../types';
 import { CATEGORY_MAP, type CategoryEntry } from '../data/categoryMap';
 import { isSullairProveedor } from '../utils/barcodeUtils';
 import { mergeSameProductPairs } from '../utils/productMerge';
@@ -323,6 +323,53 @@ export async function createMovementsBulk(
   }
 
   return { inserted, errors };
+}
+
+type FirmaRow = {
+  id: string;
+  nombre: string | null;
+  data_url: string;
+  fecha_creacion: string | null;
+};
+
+/**
+ * Lee las firmas guardadas en la tabla `firmas` (compartidas entre todas las
+ * computadoras). Devuelve `null` cuando la tabla todavía no existe o no se pudo
+ * leer (migración pendiente), para que la app siga funcionando con las firmas
+ * locales de `localStorage`.
+ */
+export async function getSavedSignaturesCloud(): Promise<SavedSignature[] | null> {
+  try {
+    const rows = await fetchAllRows<FirmaRow>('firmas', 'id, nombre, data_url, fecha_creacion');
+    return (rows ?? [])
+      .map(row => ({
+        id: row.id,
+        nombre: row.nombre ?? '',
+        dataUrl: row.data_url ?? '',
+        fechaCreacion: row.fecha_creacion ?? ''
+      }))
+      .filter(signature => signature.dataUrl !== '');
+  } catch (error) {
+    console.warn('No se pudieron leer las firmas de Supabase (¿migración pendiente?):', error);
+    return null;
+  }
+}
+
+/** Sube (o actualiza) una firma a la nube para que la vean todos los equipos. */
+export async function saveSavedSignatureCloud(signature: SavedSignature): Promise<void> {
+  const { error } = await supabase.from('firmas').upsert({
+    id: signature.id,
+    nombre: signature.nombre,
+    data_url: signature.dataUrl,
+    fecha_creacion: signature.fechaCreacion,
+  }, { onConflict: 'id' });
+  if (error) throw error;
+}
+
+/** Borra una firma de la nube (y por lo tanto de todos los equipos). */
+export async function deleteSavedSignatureCloud(id: string): Promise<void> {
+  const { error } = await supabase.from('firmas').delete().eq('id', id);
+  if (error) throw error;
 }
 
 type GlobalUserRow = {

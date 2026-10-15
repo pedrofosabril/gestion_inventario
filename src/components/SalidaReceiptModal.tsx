@@ -350,16 +350,8 @@ export const SalidaReceiptModal: React.FC<SalidaReceiptModalProps> = ({
                     alt="Firma del pañolero/emisor" 
                     className="h-12 max-w-[180px] object-contain"
                   />
+                  {/* Firma cerrada: no se puede modificar desde el comprobante. */}
                   <div className="w-48 border-b border-slate-400 mb-1"></div>
-                  {!isVentas && (
-                    <button
-                      type="button"
-                      onClick={() => setShowPanoleroPicker(true)}
-                      className="print:hidden text-[10px] text-sky-600 hover:text-sky-800 underline font-semibold cursor-pointer mb-1"
-                    >
-                      Cambiar firma
-                    </button>
-                  )}
                 </div>
               ) : (
                 <div className="flex flex-col items-center mb-1.5">
@@ -390,16 +382,8 @@ export const SalidaReceiptModal: React.FC<SalidaReceiptModalProps> = ({
                     alt="Firma digital" 
                     className="h-12 max-w-[180px] object-contain"
                   />
+                  {/* Firma cerrada: no se puede modificar desde el comprobante. */}
                   <div className="w-48 border-b border-slate-400 mb-1"></div>
-                  {!isVentas && (
-                    <button
-                      type="button"
-                      onClick={() => setIsSigning(true)}
-                      className="print:hidden text-[10px] text-sky-600 hover:text-sky-800 underline font-semibold cursor-pointer mb-1"
-                    >
-                      Volver a firmar
-                    </button>
-                  )}
                 </div>
               ) : (
                 <div className="flex flex-col items-center mb-1.5">

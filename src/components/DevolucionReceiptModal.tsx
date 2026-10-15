@@ -262,14 +262,8 @@ export const DevolucionReceiptModal: React.FC<DevolucionReceiptModalProps> = ({
                     alt="Firma pañolero/emisor" 
                     className="h-12 max-w-[180px] object-contain"
                   />
+                  {/* Firma cerrada: no se puede modificar desde el comprobante. */}
                   <div className="w-48 border-b border-slate-400 mb-1"></div>
-                  <button
-                    type="button"
-                    onClick={() => setShowPanoleroPicker(true)}
-                    className="text-[10px] text-amber-700 hover:text-amber-900 underline font-semibold cursor-pointer mb-1"
-                  >
-                    Cambiar firma
-                  </button>
                 </div>
               ) : (
                 <button
@@ -299,14 +293,8 @@ export const DevolucionReceiptModal: React.FC<DevolucionReceiptModalProps> = ({
                     alt="Firma digital" 
                     className="h-12 max-w-[180px] object-contain"
                   />
+                  {/* Firma cerrada: no se puede modificar desde el comprobante. */}
                   <div className="w-48 border-b border-slate-400 mb-1"></div>
-                  <button
-                    type="button"
-                    onClick={() => setIsSigning(true)}
-                    className="text-[10px] text-amber-700 hover:text-amber-900 underline font-semibold cursor-pointer mb-1"
-                  >
-                    Volver a firmar
-                  </button>
                 </div>
               ) : (
                 <button

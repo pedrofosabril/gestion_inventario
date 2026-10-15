@@ -24,7 +24,8 @@ import {
   INITIAL_USERS 
 } from '../data/initialData';
 import { replaceYazWithYas, sanitizeYazObject } from '../utils/sanitizeUtils';
-import { createMovement, createMovementsBulk, clearSupabaseAll, deleteInventoryItem, getInventory, saveInventoryItem, getGlobalUsers, saveGlobalUser, deleteGlobalUser, MovementInput } from '../lib/supabase';
+import { normalizeCodigo } from '../utils/codeUtils';
+import { createMovement, createMovementsBulk, clearSupabaseAll, deleteInventoryItem, getInventory, saveInventoryItem, getGlobalUsers, saveGlobalUser, deleteGlobalUser, getSavedSignaturesCloud, saveSavedSignatureCloud, deleteSavedSignatureCloud, MovementInput } from '../lib/supabase';
 import { mergeSameProductPairs } from '../utils/productMerge';
 
 export type MainNavSection = ItemCategory | 'salidas_log' | 'ingresos_log' | 'gerencia_dashboard';
@@ -462,6 +463,49 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         }
       })
       .catch(error => console.error('No se pudieron cargar los usuarios globales de Supabase:', error));
+    return () => { active = false; };
+  }, []);
+
+  // Firmas guardadas: la tabla `firmas` es la fuente compartida entre todas las
+  // computadoras. Al montar se mergean con las locales: las que todavía no están
+  // en la nube se suben, y las que otro equipo borró se dan de baja acá también.
+  useEffect(() => {
+    let active = true;
+    getSavedSignaturesCloud()
+      .then(cloudSignatures => {
+        // null = nube no disponible (migración pendiente o sin conexión):
+        // en ese caso seguimos solo con las firmas locales.
+        if (!active || !cloudSignatures) return;
+
+        const nube: SavedSignature[] = cloudSignatures.map(s => ({ ...s, sincronizada: true }));
+        const idsNube = new Set(nube.map(s => s.id));
+        const urlsNube = new Set(nube.map(s => s.dataUrl));
+
+        // Firmas creadas en este equipo que todavía no se subieron. Las que
+        // están marcadas como sincronizadas pero ya no están en la nube fueron
+        // borradas desde otro equipo: se eliminan también en este.
+        const pendientes = savedSignatures.filter(s =>
+          !idsNube.has(s.id) && !urlsNube.has(s.dataUrl) && !s.sincronizada
+        );
+
+        setSavedSignatures(prev => {
+          const fusion = [...nube, ...pendientes];
+          const ids = new Set(fusion.map(s => s.id));
+          const urls = new Set(fusion.map(s => s.dataUrl));
+          // Conserva firmas nuevas guardadas mientras se sincronizaba.
+          const nuevas = prev.filter(s => !ids.has(s.id) && !urls.has(s.dataUrl));
+          return [...fusion, ...nuevas];
+        });
+
+        pendientes.forEach(signature => {
+          void saveSavedSignatureCloud(signature)
+            .then(() => setSavedSignatures(prev =>
+              prev.map(s => s.id === signature.id ? { ...s, sincronizada: true } : s)
+            ))
+            .catch(error => console.warn('No se pudo subir la firma a Supabase:', error));
+        });
+      })
+      .catch(error => console.warn('No se pudieron cargar las firmas de Supabase:', error));
     return () => { active = false; };
   }, []);
 
@@ -1044,6 +1088,8 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const firmaFecha = new Date().toLocaleString('es-AR');
     setSalidaGroups(prev => prev.map(g => {
       if (g.id === groupId) {
+        // Si el comprobante ya está firmado, la firma no se puede modificar.
+        if (g.firmaDigital) return g;
         return {
           ...g,
           firmaDigital,
@@ -1059,6 +1105,8 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const firmaPanoleroFecha = new Date().toLocaleString('es-AR');
     setSalidaGroups(prev => prev.map(g => {
       if (g.id === groupId) {
+        // Si el comprobante ya está firmado, la firma no se puede modificar.
+        if (g.firmaPanolero) return g;
         return {
           ...g,
           firmaPanolero,
@@ -1319,6 +1367,8 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const firmaFecha = new Date().toLocaleString('es-AR');
     setDevolucionGroups(prev => prev.map(g => {
       if (g.id === groupId) {
+        // Si el comprobante ya está firmado, la firma no se puede modificar.
+        if (g.firmaDigital) return g;
         return {
           ...g,
           firmaDigital,
@@ -1334,6 +1384,8 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const firmaPanoleroFecha = new Date().toLocaleString('es-AR');
     setDevolucionGroups(prev => prev.map(g => {
       if (g.id === groupId) {
+        // Si el comprobante ya está firmado, la firma no se puede modificar.
+        if (g.firmaPanolero) return g;
         return {
           ...g,
           firmaPanolero,
@@ -1356,10 +1408,19 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       fechaCreacion: new Date().toLocaleString('es-AR')
     };
     setSavedSignatures(prev => [newSignature, ...prev]);
+    // Se sube a la nube para que aparezca en todos los perfiles y equipos.
+    void saveSavedSignatureCloud(newSignature)
+      .then(() => setSavedSignatures(prev =>
+        prev.map(s => s.id === newSignature.id ? { ...s, sincronizada: true } : s)
+      ))
+      .catch(error => console.warn('No se pudo sincronizar la firma con Supabase:', error));
   };
 
   const deleteSavedSignature = (id: string) => {
     setSavedSignatures(prev => prev.filter(s => s.id !== id));
+    // Se borra también de la nube para que desaparezca en todos los equipos.
+    void deleteSavedSignatureCloud(id)
+      .catch(error => console.warn('No se pudo borrar la firma de Supabase:', error));
   };
 
   const deleteSalida = (salidaId: string, restoreStock: boolean = true) => {
@@ -1626,7 +1687,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           return; // Skip empty rows
         }
 
-        const codigo = String(rawCode).trim().replace(/^´|^`/, '');
+        const codigo = normalizeCodigo(rawCode);
         const proveedor = String(getVal(row, ['proveedor', 'marca', 'supplier', 'brand', 'fabricante']) || 'SULLAIR').trim();
         const descripcion = String(getVal(row, ['descripcion', 'desc', 'detalle', 'nombre', 'denominacion', 'repuesto', 'concepto']) || '').trim() || codigo;
 
@@ -1783,9 +1844,9 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     items.forEach(i => itemPorCodigo.set(i.codigo.toLowerCase().trim(), i));
 
     const claveSalida = (r: any) =>
-      `${String(r.codigo).toLowerCase().trim()}|${r.fechaSalida}|${r.cantidad}|${r.nroRemito}|${r.cliente}`;
+      `${normalizeCodigo(r.codigo).toLowerCase()}|${r.fechaSalida}|${r.cantidad}|${r.nroRemito}|${r.cliente}`;
     const claveIngreso = (r: any) =>
-      `${String(r.codigo).toLowerCase().trim()}|${r.fechaIngreso}|${r.cantidad}|${r.factura}`;
+      `${normalizeCodigo(r.codigo).toLowerCase()}|${r.fechaIngreso}|${r.cantidad}|${r.factura}`;
 
     const yaCargadas = new Set<string>();
     salidas.forEach(s => yaCargadas.add(claveSalida({
@@ -1802,7 +1863,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     batches.forEach(batch => {
       batch.rows.forEach((row: any, idx: number) => {
-        const codigo = replaceYazWithYas(String(row.codigo ?? '').trim());
+        const codigo = replaceYazWithYas(normalizeCodigo(row.codigo));
         const cantidad = Math.max(0, Math.trunc(Number(row.cantidad) || 0));
         if (!codigo || cantidad <= 0) return;
 

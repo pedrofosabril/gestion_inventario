@@ -156,6 +156,7 @@ export interface SavedSignature {
   nombre: string;      // Pañolero / emisor dueño de la firma
   dataUrl: string;     // PNG data URL
   fechaCreacion: string; // Formatted local (ex: "14/09/2026 15:30:22")
+  sincronizada?: boolean; // true cuando ya se conoce en la nube (Supabase)
 }
 
 export interface BackupHistoryEntry {
