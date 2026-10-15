@@ -21,7 +21,9 @@ export const SavedSignaturePicker: React.FC<SavedSignaturePickerProps> = ({
   onDelete,
   onClose,
 }) => {
-  const signatures = savedSignatures.filter(s => s.nombre === ownerName);
+  // Se muestran TODAS las firmas guardadas (compartidas en la nube entre
+  // perfiles y equipos), no solo las del usuario de la sesión.
+  const signatures = savedSignatures;
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 bg-black/60 backdrop-blur-xs animate-in fade-in">
@@ -34,7 +36,9 @@ export const SavedSignaturePicker: React.FC<SavedSignaturePickerProps> = ({
             </div>
             <div>
               <h3 className="text-base font-bold text-white">Firmas guardadas</h3>
-              <p className="text-xs text-white/80 font-medium">{ownerName}</p>
+              <p className="text-xs text-white/80 font-medium">
+                Compartidas entre todos los perfiles · {signatures.length}
+              </p>
             </div>
           </div>
           <button
@@ -50,7 +54,7 @@ export const SavedSignaturePicker: React.FC<SavedSignaturePickerProps> = ({
         <div className="p-5 bg-slate-50 flex-1 overflow-y-auto">
           {signatures.length === 0 && (
             <p className="text-center text-sm text-slate-500 py-8">
-              No hay firmas guardadas para este usuario.
+              Todavía no hay firmas guardadas{ownerName ? `, ${ownerName}` : ''}.
             </p>
           )}
 

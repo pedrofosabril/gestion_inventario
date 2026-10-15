@@ -372,25 +372,8 @@ export const SalidaReceiptModal: React.FC<SalidaReceiptModalProps> = ({
                     alt="Firma del pañolero/emisor" 
                     className="h-12 max-w-[180px] object-contain"
                   />
+                  {/* Firma cerrada: no se puede modificar desde el comprobante. */}
                   <div className="w-48 border-b border-slate-400 mb-1"></div>
-                  {!isVentas && (
-                    <div className="print:hidden flex items-center gap-2 mb-1">
-                      <button
-                        type="button"
-                        onClick={() => setShowPanoleroPicker(true)}
-                        className="text-[10px] text-sky-600 hover:text-sky-800 underline font-semibold cursor-pointer"
-                      >
-                        Cambiar firma
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleClearPanoleroSignature}
-                        className="text-[10px] text-rose-600 hover:text-rose-800 underline font-semibold cursor-pointer"
-                      >
-                        Quitar firma
-                      </button>
-                    </div>
-                  )}
                 </div>
               ) : (
                 <div className="flex flex-col items-center mb-1.5">
@@ -421,25 +404,8 @@ export const SalidaReceiptModal: React.FC<SalidaReceiptModalProps> = ({
                     alt="Firma digital" 
                     className="h-12 max-w-[180px] object-contain"
                   />
+                  {/* Firma cerrada: no se puede modificar desde el comprobante. */}
                   <div className="w-48 border-b border-slate-400 mb-1"></div>
-                  {!isVentas && (
-                    <div className="print:hidden flex items-center gap-2 mb-1">
-                      <button
-                        type="button"
-                        onClick={() => setShowRetiraPicker(true)}
-                        className="text-[10px] text-sky-600 hover:text-sky-800 underline font-semibold cursor-pointer"
-                      >
-                        Cambiar firma
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleClearSignature}
-                        className="text-[10px] text-rose-600 hover:text-rose-800 underline font-semibold cursor-pointer"
-                      >
-                        Quitar firma
-                      </button>
-                    </div>
-                  )}
                 </div>
               ) : (
                 <div className="flex flex-col items-center mb-1.5">

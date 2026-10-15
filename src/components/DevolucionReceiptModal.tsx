@@ -281,23 +281,8 @@ export const DevolucionReceiptModal: React.FC<DevolucionReceiptModalProps> = ({
                     alt="Firma pañolero/emisor" 
                     className="h-12 max-w-[180px] object-contain"
                   />
+                  {/* Firma cerrada: no se puede modificar desde el comprobante. */}
                   <div className="w-48 border-b border-slate-400 mb-1"></div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <button
-                      type="button"
-                      onClick={() => setShowPanoleroPicker(true)}
-                      className="text-[10px] text-amber-700 hover:text-amber-900 underline font-semibold cursor-pointer"
-                    >
-                      Cambiar firma
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleClearPanoleroSignature}
-                      className="text-[10px] text-rose-600 hover:text-rose-800 underline font-semibold cursor-pointer"
-                    >
-                      Quitar firma
-                    </button>
-                  </div>
                 </div>
               ) : (
                 <button
@@ -327,23 +312,8 @@ export const DevolucionReceiptModal: React.FC<DevolucionReceiptModalProps> = ({
                     alt="Firma digital" 
                     className="h-12 max-w-[180px] object-contain"
                   />
+                  {/* Firma cerrada: no se puede modificar desde el comprobante. */}
                   <div className="w-48 border-b border-slate-400 mb-1"></div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <button
-                      type="button"
-                      onClick={() => setShowDevuelvePicker(true)}
-                      className="text-[10px] text-amber-700 hover:text-amber-900 underline font-semibold cursor-pointer"
-                    >
-                      Cambiar firma
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleClearDevolucionSignature}
-                      className="text-[10px] text-rose-600 hover:text-rose-800 underline font-semibold cursor-pointer"
-                    >
-                      Quitar firma
-                    </button>
-                  </div>
                 </div>
               ) : (
                 <button

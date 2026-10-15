@@ -1,4 +1,5 @@
 import { ItemCategory } from '../types';
+import { normalizeCodigo } from './codeUtils';
 
 export type SheetKind = 'productos' | 'salidas' | 'ingresos';
 
@@ -215,7 +216,7 @@ function mapProductRow(row: unknown[], block: Block): Record<string, unknown> | 
   };
 
   if (block.tipoColumn) {
-    const codigo = String(firstValue(row, 0, 0) ?? '').trim();
+    const codigo = normalizeCodigo(firstValue(row, 0, 0));
     if (!codigo) return null;
     return {
       codigo,
@@ -228,9 +229,7 @@ function mapProductRow(row: unknown[], block: Block): Record<string, unknown> | 
     };
   }
 
-  const codigo = String(get(['codigo', 'cod', 'code', 'articulo', 'parte', 'referencia', 'numero']) ?? '')
-    .trim()
-    .replace(/^[´`º]/, '');
+  const codigo = normalizeCodigo(get(['codigo', 'cod', 'code', 'articulo', 'parte', 'referencia', 'numero']));
   if (!codigo) return null;
 
   const stock = Math.max(0, Math.trunc(toNumber(get(['stock', 'cant', 'cantidad', 'qty', 'existencia', 'saldo']))));
@@ -272,7 +271,7 @@ function mapSalidaRow(row: unknown[], block: Block): Record<string, unknown> | n
     }
     return undefined;
   };
-  const codigo = String(get(['codigo', 'cod', 'code', 'articulo', 'parte']) ?? '').trim();
+  const codigo = normalizeCodigo(get(['codigo', 'cod', 'code', 'articulo', 'parte']));
   const cantidad = Math.trunc(toNumber(get(['cant', 'cantidad', 'qty'])));
   if (!codigo || cantidad <= 0) return null;
   return {
@@ -297,7 +296,7 @@ function mapIngresoRow(row: unknown[], block: Block): Record<string, unknown> | 
     }
     return undefined;
   };
-  const codigo = String(get(['codigo', 'cod', 'code', 'articulo', 'parte']) ?? '').trim();
+  const codigo = normalizeCodigo(get(['codigo', 'cod', 'code', 'articulo', 'parte']));
   const cantidad = Math.trunc(toNumber(get(['cant', 'cantidad', 'qty'])));
   if (!codigo || cantidad <= 0) return null;
   return {
