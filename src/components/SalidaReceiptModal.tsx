@@ -89,6 +89,16 @@ export const SalidaReceiptModal: React.FC<SalidaReceiptModalProps> = ({
     setShowRetiraPicker(false);
   };
 
+  const handleClearSignature = () => {
+    if (!currentSalidaGroup) return;
+    updateSalidaGroupSignature(currentSalidaGroup.id, '', currentSalidaGroup.retira);
+  };
+
+  const handleClearPanoleroSignature = () => {
+    if (!currentSalidaGroup) return;
+    updateSalidaGroupPanoleroSignature(currentSalidaGroup.id, '', panoleroName);
+  };
+
   const panoleroName = currentUser?.nombre || currentSalidaGroup.usuarioRegistro || 'Pañolero';
 
   const handleSavePanoleroSignature = (dataUrl: string) => {
@@ -364,13 +374,22 @@ export const SalidaReceiptModal: React.FC<SalidaReceiptModalProps> = ({
                   />
                   <div className="w-48 border-b border-slate-400 mb-1"></div>
                   {!isVentas && (
-                    <button
-                      type="button"
-                      onClick={() => setShowPanoleroPicker(true)}
-                      className="print:hidden text-[10px] text-sky-600 hover:text-sky-800 underline font-semibold cursor-pointer mb-1"
-                    >
-                      Cambiar firma
-                    </button>
+                    <div className="print:hidden flex items-center gap-2 mb-1">
+                      <button
+                        type="button"
+                        onClick={() => setShowPanoleroPicker(true)}
+                        className="text-[10px] text-sky-600 hover:text-sky-800 underline font-semibold cursor-pointer"
+                      >
+                        Cambiar firma
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleClearPanoleroSignature}
+                        className="text-[10px] text-rose-600 hover:text-rose-800 underline font-semibold cursor-pointer"
+                      >
+                        Quitar firma
+                      </button>
+                    </div>
                   )}
                 </div>
               ) : (
@@ -404,13 +423,22 @@ export const SalidaReceiptModal: React.FC<SalidaReceiptModalProps> = ({
                   />
                   <div className="w-48 border-b border-slate-400 mb-1"></div>
                   {!isVentas && (
-                    <button
-                      type="button"
-                      onClick={() => setShowRetiraPicker(true)}
-                      className="print:hidden text-[10px] text-sky-600 hover:text-sky-800 underline font-semibold cursor-pointer mb-1"
-                    >
-                      Cambiar firma
-                    </button>
+                    <div className="print:hidden flex items-center gap-2 mb-1">
+                      <button
+                        type="button"
+                        onClick={() => setShowRetiraPicker(true)}
+                        className="text-[10px] text-sky-600 hover:text-sky-800 underline font-semibold cursor-pointer"
+                      >
+                        Cambiar firma
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleClearSignature}
+                        className="text-[10px] text-rose-600 hover:text-rose-800 underline font-semibold cursor-pointer"
+                      >
+                        Quitar firma
+                      </button>
+                    </div>
                   )}
                 </div>
               ) : (

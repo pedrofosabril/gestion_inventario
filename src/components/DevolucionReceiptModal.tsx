@@ -100,6 +100,16 @@ export const DevolucionReceiptModal: React.FC<DevolucionReceiptModalProps> = ({
     setShowDevuelvePicker(false);
   };
 
+  const handleClearDevolucionSignature = () => {
+    if (!currentDevolucionGroup) return;
+    updateDevolucionGroupSignature(currentDevolucionGroup.id, '', currentDevolucionGroup.empleadoDevuelve);
+  };
+
+  const handleClearPanoleroSignature = () => {
+    if (!currentDevolucionGroup) return;
+    updateDevolucionGroupPanoleroSignature(currentDevolucionGroup.id, '', panoleroName);
+  };
+
   const handleSavePanoleroSignature = (dataUrl: string) => {
     if (!currentDevolucionGroup) return;
     updateDevolucionGroupPanoleroSignature(
@@ -272,13 +282,22 @@ export const DevolucionReceiptModal: React.FC<DevolucionReceiptModalProps> = ({
                     className="h-12 max-w-[180px] object-contain"
                   />
                   <div className="w-48 border-b border-slate-400 mb-1"></div>
-                  <button
-                    type="button"
-                    onClick={() => setShowPanoleroPicker(true)}
-                    className="text-[10px] text-amber-700 hover:text-amber-900 underline font-semibold cursor-pointer mb-1"
-                  >
-                    Cambiar firma
-                  </button>
+                  <div className="flex items-center gap-2 mb-1">
+                    <button
+                      type="button"
+                      onClick={() => setShowPanoleroPicker(true)}
+                      className="text-[10px] text-amber-700 hover:text-amber-900 underline font-semibold cursor-pointer"
+                    >
+                      Cambiar firma
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleClearPanoleroSignature}
+                      className="text-[10px] text-rose-600 hover:text-rose-800 underline font-semibold cursor-pointer"
+                    >
+                      Quitar firma
+                    </button>
+                  </div>
                 </div>
               ) : (
                 <button
@@ -309,13 +328,22 @@ export const DevolucionReceiptModal: React.FC<DevolucionReceiptModalProps> = ({
                     className="h-12 max-w-[180px] object-contain"
                   />
                   <div className="w-48 border-b border-slate-400 mb-1"></div>
-                  <button
-                    type="button"
-                    onClick={() => setShowDevuelvePicker(true)}
-                    className="text-[10px] text-amber-700 hover:text-amber-900 underline font-semibold cursor-pointer mb-1"
-                  >
-                    Cambiar firma
-                  </button>
+                  <div className="flex items-center gap-2 mb-1">
+                    <button
+                      type="button"
+                      onClick={() => setShowDevuelvePicker(true)}
+                      className="text-[10px] text-amber-700 hover:text-amber-900 underline font-semibold cursor-pointer"
+                    >
+                      Cambiar firma
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleClearDevolucionSignature}
+                      className="text-[10px] text-rose-600 hover:text-rose-800 underline font-semibold cursor-pointer"
+                    >
+                      Quitar firma
+                    </button>
+                  </div>
                 </div>
               ) : (
                 <button
