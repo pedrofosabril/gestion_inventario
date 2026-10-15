@@ -1720,38 +1720,38 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
                             <div className="flex items-center gap-3 text-[11px] text-slate-500 mt-1">
                               {showPrices && <span>P. Unit: <strong className="font-mono text-slate-700">${draft.item.precio.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</strong></span>}
                               <span>
-                                Stock {hasDualStock ? 'Original' : 'Pañol'}: <strong className="text-slate-700">{draft.item.stock} u.</strong>
+                                Stock Original: <strong className="text-slate-700">{draft.item.stock} u.</strong>
                               </span>
-                              {hasDualStock && <span>P/SERVICIO: <strong className="text-slate-700">{stockServicio} u.</strong></span>}
+                              <span>P/SERVICIO: <strong className="text-slate-700">{stockServicio} u.</strong></span>
                               <span className="text-emerald-700 font-bold">Quedarán en {ORIGEN_LABEL[draft.origenStock]}: {remainingStock} u.</span>
                             </div>
-                            {hasDualStock && (
-                              <div className="flex items-center gap-1 mt-2">
-                                <span className="text-[10px] text-slate-400 font-bold uppercase">Desde:</span>
-                                <button
-                                  type="button"
-                                  onClick={() => handleChangeSalidaOrigen(idx, 'normal')}
-                                  className={`text-[10px] px-2 py-1 rounded-md font-bold transition-colors cursor-pointer ${
-                                    draft.origenStock === 'normal'
-                                      ? 'bg-[#006bb0] text-white shadow-2xs'
-                                      : 'bg-[#f4f9fd] text-slate-600 border border-[#badbf5] hover:bg-[#e8f4fc]'
-                                  }`}
-                                >
-                                  Original{draft.item.stock > 0 ? ` (${draft.item.stock} u.)` : ''}
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleChangeSalidaOrigen(idx, 'servicio')}
-                                  className={`text-[10px] px-2 py-1 rounded-md font-bold transition-colors cursor-pointer ${
-                                    draft.origenStock === 'servicio'
-                                      ? 'bg-[#006bb0] text-white shadow-2xs'
-                                      : 'bg-[#f4f9fd] text-slate-600 border border-[#badbf5] hover:bg-[#e8f4fc]'
-                                  }`}
-                                >
-                                  P/SERVICIO{stockServicio > 0 ? ` (${stockServicio} u.)` : ''}
-                                </button>
-                              </div>
-                            )}
+                            <div className="flex items-center gap-1 mt-2">
+                              <span className="text-[10px] text-slate-400 font-bold uppercase">Desde:</span>
+                              <button
+                                type="button"
+                                disabled={draft.item.stock <= 0}
+                                onClick={() => handleChangeSalidaOrigen(idx, 'normal')}
+                                className={`text-[10px] px-2 py-1 rounded-md font-bold transition-colors ${
+                                  draft.origenStock === 'normal'
+                                    ? 'bg-[#006bb0] text-white shadow-2xs'
+                                    : 'bg-[#f4f9fd] text-slate-600 border border-[#badbf5] hover:bg-[#e8f4fc]'
+                                } ${draft.item.stock <= 0 ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}
+                              >
+                                Original{draft.item.stock > 0 ? ` (${draft.item.stock} u.)` : ''}
+                              </button>
+                              <button
+                                type="button"
+                                disabled={stockServicio <= 0}
+                                onClick={() => handleChangeSalidaOrigen(idx, 'servicio')}
+                                className={`text-[10px] px-2 py-1 rounded-md font-bold transition-colors ${
+                                  draft.origenStock === 'servicio'
+                                    ? 'bg-[#006bb0] text-white shadow-2xs'
+                                    : 'bg-[#f4f9fd] text-slate-600 border border-[#badbf5] hover:bg-[#e8f4fc]'
+                                } ${stockServicio <= 0 ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}
+                              >
+                                P/SERVICIO{stockServicio > 0 ? ` (${stockServicio} u.)` : ''}
+                              </button>
+                            </div>
                           </div>
 
                           <div className="flex items-center gap-3 self-end sm:self-center shrink-0">
@@ -1832,39 +1832,37 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
                             </div>
                             <p className="text-xs font-medium text-slate-700 line-clamp-1 mt-0.5">{draft.item.descripcion}</p>
                             <div className="flex items-center gap-3 text-[11px] text-slate-500 mt-1">
-                              <span>Stock {hasDualStock ? 'Original' : 'actual'}: <strong className="text-slate-700">{draft.item.stock} u.</strong></span>
-                              {hasDualStock && <span>P/SERVICIO: <strong className="text-slate-700">{draft.item.paraServicio ?? 0} u.</strong></span>}
+                              <span>Stock Original: <strong className="text-slate-700">{draft.item.stock} u.</strong></span>
+                              <span>P/SERVICIO: <strong className="text-slate-700">{draft.item.paraServicio ?? 0} u.</strong></span>
                               <span className="text-amber-700 font-bold">
                                 Quedarán en {ORIGEN_LABEL[draft.origenStock]}: {draft.origenStock === 'servicio' ? finalServicio : finalStock} u. (+{draft.cantidad} u.)
                               </span>
                             </div>
-                            {hasDualStock && (
-                              <div className="flex items-center gap-1 mt-2">
-                                <span className="text-[10px] text-slate-400 font-bold uppercase">Se suma a:</span>
-                                <button
-                                  type="button"
-                                  onClick={() => handleChangeDevolucionOrigen(idx, 'normal')}
-                                  className={`text-[10px] px-2 py-1 rounded-md font-bold transition-colors cursor-pointer ${
-                                    draft.origenStock === 'normal'
-                                      ? 'bg-amber-600 text-white shadow-2xs'
-                                      : 'bg-[#f4f9fd] text-slate-600 border border-[#fcd9a8] hover:bg-amber-50'
-                                  }`}
-                                >
-                                  Original{draft.item.stock > 0 ? ` (${draft.item.stock} u.)` : ''}
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleChangeDevolucionOrigen(idx, 'servicio')}
-                                  className={`text-[10px] px-2 py-1 rounded-md font-bold transition-colors cursor-pointer ${
-                                    draft.origenStock === 'servicio'
-                                      ? 'bg-amber-600 text-white shadow-2xs'
-                                      : 'bg-[#f4f9fd] text-slate-600 border border-[#fcd9a8] hover:bg-amber-50'
-                                  }`}
-                                >
-                                  P/SERVICIO{(draft.item.paraServicio ?? 0) > 0 ? ` (${draft.item.paraServicio ?? 0} u.)` : ''}
-                                </button>
-                              </div>
-                            )}
+                            <div className="flex items-center gap-1 mt-2">
+                              <span className="text-[10px] text-slate-400 font-bold uppercase">Se suma a:</span>
+                              <button
+                                type="button"
+                                onClick={() => handleChangeDevolucionOrigen(idx, 'normal')}
+                                className={`text-[10px] px-2 py-1 rounded-md font-bold transition-colors cursor-pointer ${
+                                  draft.origenStock === 'normal'
+                                    ? 'bg-amber-600 text-white shadow-2xs'
+                                    : 'bg-[#f4f9fd] text-slate-600 border border-[#fcd9a8] hover:bg-amber-50'
+                                }`}
+                              >
+                                Original{draft.item.stock > 0 ? ` (${draft.item.stock} u.)` : ''}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleChangeDevolucionOrigen(idx, 'servicio')}
+                                className={`text-[10px] px-2 py-1 rounded-md font-bold transition-colors cursor-pointer ${
+                                  draft.origenStock === 'servicio'
+                                    ? 'bg-amber-600 text-white shadow-2xs'
+                                    : 'bg-[#f4f9fd] text-slate-600 border border-[#fcd9a8] hover:bg-amber-50'
+                                }`}
+                              >
+                                P/SERVICIO{(draft.item.paraServicio ?? 0) > 0 ? ` (${draft.item.paraServicio ?? 0} u.)` : ''}
+                              </button>
+                            </div>
                           </div>
 
                           <div className="flex items-center gap-3 self-end sm:self-center shrink-0">
@@ -1951,39 +1949,37 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
                             </div>
                             <p className="text-xs font-medium text-slate-700 line-clamp-1 mt-0.5">{draft.descripcion}</p>
                             <div className="flex items-center gap-3 text-[11px] text-slate-500 mt-1">
-                              <span>Stock {hasDualStock ? 'Original' : 'actual'}: <strong className="text-slate-700">{draft.currentStock} u.</strong></span>
-                              {hasDualStock && <span>P/SERVICIO: <strong className="text-slate-700">{draft.paraServicio ?? 0} u.</strong></span>}
+                              <span>Stock Original: <strong className="text-slate-700">{draft.currentStock} u.</strong></span>
+                              <span>P/SERVICIO: <strong className="text-slate-700">{draft.paraServicio ?? 0} u.</strong></span>
                               <span className="text-emerald-700 font-bold">
                                 Quedarán en {ORIGEN_LABEL[draft.origenStock]}: {draft.origenStock === 'servicio' ? finalServicio : finalStock} u. (+{draft.cantidad} u.)
                               </span>
                             </div>
-                            {hasDualStock && (
-                              <div className="flex items-center gap-1 mt-2">
-                                <span className="text-[10px] text-slate-400 font-bold uppercase">Se suma a:</span>
-                                <button
-                                  type="button"
-                                  onClick={() => handleChangeIngresoOrigen(idx, 'normal')}
-                                  className={`text-[10px] px-2 py-1 rounded-md font-bold transition-colors cursor-pointer ${
-                                    draft.origenStock === 'normal'
-                                      ? 'bg-emerald-600 text-white shadow-2xs'
-                                      : 'bg-[#f4f9fd] text-slate-600 border border-emerald-200 hover:bg-emerald-50'
-                                  }`}
-                                >
-                                  Original{draft.currentStock > 0 ? ` (${draft.currentStock} u.)` : ''}
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleChangeIngresoOrigen(idx, 'servicio')}
-                                  className={`text-[10px] px-2 py-1 rounded-md font-bold transition-colors cursor-pointer ${
-                                    draft.origenStock === 'servicio'
-                                      ? 'bg-emerald-600 text-white shadow-2xs'
-                                      : 'bg-[#f4f9fd] text-slate-600 border border-emerald-200 hover:bg-emerald-50'
-                                  }`}
-                                >
-                                  P/SERVICIO{(draft.paraServicio ?? 0) > 0 ? ` (${draft.paraServicio ?? 0} u.)` : ''}
-                                </button>
-                              </div>
-                            )}
+                            <div className="flex items-center gap-1 mt-2">
+                              <span className="text-[10px] text-slate-400 font-bold uppercase">Se suma a:</span>
+                              <button
+                                type="button"
+                                onClick={() => handleChangeIngresoOrigen(idx, 'normal')}
+                                className={`text-[10px] px-2 py-1 rounded-md font-bold transition-colors cursor-pointer ${
+                                  draft.origenStock === 'normal'
+                                    ? 'bg-emerald-600 text-white shadow-2xs'
+                                    : 'bg-[#f4f9fd] text-slate-600 border border-emerald-200 hover:bg-emerald-50'
+                                }`}
+                              >
+                                Original{draft.currentStock > 0 ? ` (${draft.currentStock} u.)` : ''}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleChangeIngresoOrigen(idx, 'servicio')}
+                                className={`text-[10px] px-2 py-1 rounded-md font-bold transition-colors cursor-pointer ${
+                                  draft.origenStock === 'servicio'
+                                    ? 'bg-emerald-600 text-white shadow-2xs'
+                                    : 'bg-[#f4f9fd] text-slate-600 border border-emerald-200 hover:bg-emerald-50'
+                                }`}
+                              >
+                                P/SERVICIO{(draft.paraServicio ?? 0) > 0 ? ` (${draft.paraServicio ?? 0} u.)` : ''}
+                              </button>
+                            </div>
                           </div>
 
                           <div className="flex items-center gap-3 self-end sm:self-center shrink-0">
