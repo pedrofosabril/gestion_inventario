@@ -296,7 +296,7 @@ function mapSalidaRow(row: unknown[], block: Block): Record<string, unknown> | n
     nroRemito: String(get(['n presp', 'remito', 'n° presp', 'comprobante', 'nro']) ?? '').trim(),
     codigo,
     descripcion: String(get(['descripcion', 'desc', 'detalle']) ?? '').trim(),
-    fechaSalida: toISODate(get(['f salida', 'f. salida', 'fecha salida', 'fecha'])),
+    fechaSalida: toISODate(get(['fecha salida', 'fecha', 'f salida', 'f.salida', 'f. salida', 'fsalida'])),
     cliente: String(get(['cliente', 'destinatario']) ?? '').trim(),
     retira: String(get(['retira', 'responsable', 'retira responsable']) ?? '').trim(),
     cantidad
@@ -322,7 +322,7 @@ function mapIngresoRow(row: unknown[], block: Block): Record<string, unknown> | 
     proveedor: String(get(['proveedor', 'marca', 'fabricante']) ?? '').trim(),
     descripcion: String(get(['descripcion', 'desc', 'detalle']) ?? '').trim(),
     cantidad,
-    fechaIngreso: toISODate(get(['f ingreso', 'f. ingreso', 'fecha ingreso', 'fecha'])),
+    fechaIngreso: toISODate(get(['fecha ingreso', 'fecha', 'f ingreso', 'f.ingreso', 'f. ingreso', 'fingreso'])),
     factura: String(get(['factura', 'comprobante', 'nro']) ?? '').trim()
   };
 }
