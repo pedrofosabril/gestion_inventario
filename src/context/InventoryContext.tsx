@@ -23,7 +23,7 @@ import {
   INITIAL_USERS 
 } from '../data/initialData';
 import { replaceYazWithYas, sanitizeYazObject } from '../utils/sanitizeUtils';
-import { createMovement, createMovementsBulk, clearSupabaseAll, deleteInventoryItem, getInventory, saveInventoryItem, getGlobalUsers, saveGlobalUser, deleteGlobalUser, MovementInput } from '../lib/supabase';
+import { createMovement, createMovementsBulk, clearSupabaseAll, deleteInventoryItem, getInventory, saveInventoryItem, getGlobalUsers, saveGlobalUser, deleteGlobalUser, getGlobalSignatures, saveGlobalSignature, deleteGlobalSignature, MovementInput } from '../lib/supabase';
 import { mergeSameProductPairs } from '../utils/productMerge';
 
 export type MainNavSection = ItemCategory | 'salidas_log' | 'ingresos_log' | 'gerencia_dashboard';
@@ -417,6 +417,16 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return () => { active = false; };
   }, []);
 
+  // Mantiene en Supabase las firmas locales, incluidas las creadas sin conexión.
+  // El upsert hace que volver a sincronizar una firma ya compartida sea seguro.
+  useEffect(() => {
+    for (const signature of savedSignatures) {
+      void saveGlobalSignature(signature).catch(error =>
+        console.error('No se pudo sincronizar la firma a Supabase:', error)
+      );
+    }
+  }, [savedSignatures]);
+
   // Global user accounts: the shared `usuarios` table is the source of truth.
   // Local seeds/config are merged on top so existing per-browser accounts survive,
   // and any account only present locally is pushed up to the shared table.
@@ -455,6 +465,32 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         }
       })
       .catch(error => console.error('No se pudieron cargar los usuarios globales de Supabase:', error));
+    return () => { active = false; };
+  }, []);
+
+  // Firmas guardadas: la tabla compartida `firmas` es la fuente de verdad.
+  // Se mezclan las locales (por si hay firmas creadas sin conexión) con las globales.
+  useEffect(() => {
+    let active = true;
+    getGlobalSignatures()
+      .then(globalSignatures => {
+        if (!active) return;
+        setSavedSignatures(prev => {
+          const merged = new Map<string, SavedSignature>();
+          for (const s of prev) merged.set(s.dataUrl, s);
+          for (const s of globalSignatures) {
+            if (!merged.has(s.dataUrl)) merged.set(s.dataUrl, s);
+          }
+          const all = Array.from(merged.values());
+          try {
+            localStorage.setItem(STORAGE_KEYS.SAVED_SIGNATURES, JSON.stringify(all));
+          } catch (e) {
+            console.error('Failed to save savedSignatures', e);
+          }
+          return all;
+        });
+      })
+      .catch(error => console.error('No se pudieron cargar las firmas globales de Supabase:', error));
     return () => { active = false; };
   }, []);
 
@@ -1301,6 +1337,9 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const deleteSavedSignature = (id: string) => {
     setSavedSignatures(prev => prev.filter(s => s.id !== id));
+    void deleteGlobalSignature(id).catch(error =>
+      console.error('No se pudo eliminar la firma compartida de Supabase:', error)
+    );
   };
 
   const deleteSalida = (salidaId: string, restoreStock: boolean = true) => {

@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { InventoryItem, ItemCategory, UserAccount, UserRole } from '../types';
+import { InventoryItem, ItemCategory, UserAccount, UserRole, SavedSignature } from '../types';
 import { CATEGORY_MAP, type CategoryEntry } from '../data/categoryMap';
 import { isSullairProveedor } from '../utils/barcodeUtils';
 import { mergeSameProductPairs } from '../utils/productMerge';
@@ -358,5 +358,40 @@ export async function saveGlobalUser(user: UserAccount): Promise<void> {
 /** Deletes a user account from the shared global users table. */
 export async function deleteGlobalUser(username: string): Promise<void> {
   const { error } = await supabase.from('usuarios').delete().eq('username', username);
+  if (error) throw error;
+}
+
+type GlobalSignatureRow = {
+  id: string;
+  nombre: string;
+  data_url: string;
+  fecha_creacion: string | null;
+};
+
+/** Fetches every saved signature from the shared table (used across all computers). */
+export async function getGlobalSignatures(): Promise<SavedSignature[]> {
+  const rows = await fetchAllRows<GlobalSignatureRow>('firmas', 'id, nombre, data_url, fecha_creacion');
+  return (rows ?? []).map(row => ({
+    id: row.id,
+    nombre: row.nombre,
+    dataUrl: row.data_url,
+    fechaCreacion: row.fecha_creacion || '',
+  }));
+}
+
+/** Upserts a signature into the shared table so other computers can reuse it. */
+export async function saveGlobalSignature(signature: SavedSignature): Promise<void> {
+  const { error } = await supabase.from('firmas').upsert({
+    id: signature.id,
+    nombre: signature.nombre,
+    data_url: signature.dataUrl,
+    fecha_creacion: signature.fechaCreacion,
+  }, { onConflict: 'id' });
+  if (error) throw error;
+}
+
+/** Deletes a signature from the shared table. */
+export async function deleteGlobalSignature(id: string): Promise<void> {
+  const { error } = await supabase.from('firmas').delete().eq('id', id);
   if (error) throw error;
 }

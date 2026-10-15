@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   X, 
   Package, 
@@ -50,6 +50,13 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   const isGerencia = currentUser?.rol === 'gerencia';
   const isVentas = currentUser?.rol === 'ventas';
   const [copiedCode, setCopiedCode] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = previousOverflow; };
+  }, [isOpen]);
 
   if (!isOpen || !item) return null;
 

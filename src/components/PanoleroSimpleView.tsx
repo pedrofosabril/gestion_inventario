@@ -25,7 +25,8 @@ interface PanoleroSimpleViewProps {
 }
 
 export const PanoleroSimpleView: React.FC<PanoleroSimpleViewProps> = ({
-  onOpenScanner
+  onOpenScanner,
+  onOpenDetail
 }) => {
   const { items, currentUser, salidas, ingresos, devolucionGroups, deleteSalida, deleteIngreso, deleteDevolucionItem } = useInventory();
   const [searchTerm, setSearchTerm] = useState<string>('');
@@ -34,7 +35,13 @@ export const PanoleroSimpleView: React.FC<PanoleroSimpleViewProps> = ({
   const [showCameraScanner, setShowCameraScanner] = useState<boolean>(false);
   const [pendingDelete, setPendingDelete] = useState<{ tab: 'salida' | 'entrada' | 'devolucion'; codigo: string } | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [undoAction, setUndoAction] = useState<(() => void) | null>(null);
+  const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => () => {
+    if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+  }, []);
 
   const isVentas = currentUser?.rol === 'ventas';
 
@@ -227,6 +234,7 @@ export const PanoleroSimpleView: React.FC<PanoleroSimpleViewProps> = ({
       ? 'se revirtió el stock'
       : 'el stock quedó como está';
 
+    const deleteNow = () => {
     if (tab === 'salida') {
       const recs = salidasPorCodigo.get(key) ?? [];
       recs.forEach(r => deleteSalida(r.id, revertStock));
@@ -240,6 +248,16 @@ export const PanoleroSimpleView: React.FC<PanoleroSimpleViewProps> = ({
       refs.forEach(r => deleteDevolucionItem(r.groupId, codigo, revertStock));
       showToast(`Se quitar${refs.length === 1 ? 'ó' : 'on'} ${refs.length} devolución${refs.length === 1 ? '' : 'es'} de ${codigo}: ${nota}.`);
     }
+    };
+
+    if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+    setUndoAction(() => deleteNow);
+    setToastMessage(`Se borrará el historial de ${codigo} en 8 segundos.`);
+    undoTimerRef.current = setTimeout(() => {
+      deleteNow();
+      setUndoAction(null);
+      undoTimerRef.current = null;
+    }, 8000);
 
     setPendingDelete(null);
   };
@@ -251,7 +269,23 @@ export const PanoleroSimpleView: React.FC<PanoleroSimpleViewProps> = ({
         <div className="fixed top-20 right-5 z-50 bg-slate-900 text-white px-4 py-3 rounded-xl shadow-xl flex items-center gap-2 text-sm font-bold animate-in slide-in-from-top-4 duration-200 max-w-xs">
           <Check className="w-5 h-5 text-emerald-400" />
           <span className="flex-1">{toastMessage}</span>
-          <button onClick={() => setToastMessage(null)} className="text-slate-300 hover:text-white cursor-pointer">
+          {undoAction && (
+            <button type="button" onClick={() => {
+              if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+              undoTimerRef.current = null;
+              setUndoAction(null);
+              setToastMessage('Borrado cancelado.');
+              setTimeout(() => setToastMessage(null), 2500);
+            }} className="px-2 py-1 rounded-lg bg-white/15 hover:bg-white/25 text-white font-black whitespace-nowrap">
+              Deshacer
+            </button>
+          )}
+          <button onClick={() => {
+            if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+            undoTimerRef.current = null;
+            setUndoAction(null);
+            setToastMessage(null);
+          }} className="text-slate-300 hover:text-white cursor-pointer">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -440,9 +474,9 @@ export const PanoleroSimpleView: React.FC<PanoleroSimpleViewProps> = ({
                         )}
                       </div>
 
-                      <h3 className="text-base sm:text-xl font-black text-slate-900 leading-snug">
+                      <button type="button" onClick={() => onOpenDetail?.(item)} className="text-left text-base sm:text-xl font-black text-slate-900 leading-snug hover:text-sky-800">
                         {item.descripcion}
-                      </h3>
+                      </button>
 
                       {item.equivalencias && item.equivalencias !== '-' && (
                         <p className="text-xs text-slate-600 font-semibold mt-1">
