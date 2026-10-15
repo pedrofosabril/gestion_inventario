@@ -68,7 +68,7 @@ export const generateDevolucionPDF = (rawDevolucionGroup: DevolucionGroupRecord)
   doc.text('FECHA Y HORA:', 18, startY + 6);
   doc.setFontSize(9);
   doc.setTextColor(...darkColor);
-  doc.text(`${formatDisplayDate(devolucionGroup.fechaDevolucion)} - ${devolucionGroup.horaDevolucion} hs`, 18, startY + 11);
+  doc.text(devolucionGroup.horaDevolucion ? `${formatDisplayDate(devolucionGroup.fechaDevolucion)} - ${devolucionGroup.horaDevolucion} hs` : formatDisplayDate(devolucionGroup.fechaDevolucion), 18, startY + 11);
 
   doc.setFontSize(8);
   doc.setTextColor(...slateColor);

@@ -177,7 +177,7 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
     } else {
       onAddSalidaItem(selectedItem, salidaQty);
     }
-    setSuccessMsg(`✓ Se agregaron ${salidaQty} u. de "${selectedItem.codigo}" a la lista de devolución (${salidaOrigen === 'servicio' ? 'P/SERVICIO' : 'normal'}).`);
+    setSuccessMsg(`✓ Se agregaron ${salidaQty} u. de "${selectedItem.codigo}" a la lista de devolución (${salidaOrigen === 'servicio' ? 'P/SERVICIO' : 'original'}).`);
     setErrorMsg(null);
     setSelectedItem(null);
     setSearchTerm('');
@@ -199,12 +199,12 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
       return;
     }
     if (salidaQty > salidaCap) {
-      setErrorMsg(`No puedes retirar más de ${salidaCap} unidades de stock ${salidaOrigen === 'servicio' ? 'P/SERVICIO' : 'normal'} de este producto.`);
+      setErrorMsg(`No puedes retirar más de ${salidaCap} unidades de stock ${salidaOrigen === 'servicio' ? 'P/SERVICIO' : 'original'} de este producto.`);
       return;
     }
 
     onAddSalidaItem(selectedItem, salidaQty, salidaOrigen);
-    setSuccessMsg(`✓ Se agregaron ${salidaQty} u. de "${selectedItem.codigo}" a la lista de salida (${salidaOrigen === 'servicio' ? 'P/SERVICIO' : 'normal'}).`);
+    setSuccessMsg(`✓ Se agregaron ${salidaQty} u. de "${selectedItem.codigo}" a la lista de salida (${salidaOrigen === 'servicio' ? 'P/SERVICIO' : 'original'}).`);
     setErrorMsg(null);
     setSelectedItem(null);
     setSearchTerm('');
@@ -223,7 +223,7 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
     }
 
     onAddExistingIngresoItem(selectedItem, ingresoQty, ingresoPrecio > 0 ? ingresoPrecio : undefined, ingresoOrigen);
-    setSuccessMsg(`✓ Se agregaron ${ingresoQty} u. de "${selectedItem.codigo}" al lote de entrada (${ingresoOrigen === 'servicio' ? 'P/SERVICIO' : 'normal'}).`);
+    setSuccessMsg(`✓ Se agregaron ${ingresoQty} u. de "${selectedItem.codigo}" al lote de entrada (${ingresoOrigen === 'servicio' ? 'P/SERVICIO' : 'original'}).`);
     setErrorMsg(null);
     setSelectedItem(null);
     setSearchTerm('');
@@ -488,33 +488,31 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
                         </div>
                       </div>
 
-                      {(selectedItem.paraServicio ?? 0) > 0 && (
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="text-[11px] font-bold text-slate-500 uppercase">Se suma a:</span>
-                          <button
-                            type="button"
-                            onClick={() => setSalidaOrigen('normal')}
-                            className={`px-3 py-1.5 text-xs font-bold rounded-lg border cursor-pointer transition-colors ${
-                              salidaOrigen === 'normal'
-                                ? 'bg-amber-600 text-white border-amber-600 shadow-2xs'
-                                : 'border-amber-300 bg-white hover:bg-amber-50 text-slate-700'
-                            }`}
-                          >
-                            Normal ({selectedItem.stock} u.)
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setSalidaOrigen('servicio')}
-                            className={`px-3 py-1.5 text-xs font-bold rounded-lg border cursor-pointer transition-colors ${
-                              salidaOrigen === 'servicio'
-                                ? 'bg-amber-600 text-white border-amber-600 shadow-2xs'
-                                : 'border-amber-300 bg-white hover:bg-amber-50 text-slate-700'
-                            }`}
-                          >
-                            P/SERVICIO ({selectedItem.paraServicio ?? 0} u.)
-                          </button>
-                        </div>
-                      )}
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-[11px] font-bold text-slate-500 uppercase">Se suma a:</span>
+                        <button
+                          type="button"
+                          onClick={() => setSalidaOrigen('normal')}
+                          className={`px-3 py-1.5 text-xs font-bold rounded-lg border cursor-pointer transition-colors ${
+                            salidaOrigen === 'normal'
+                              ? 'bg-amber-600 text-white border-amber-600 shadow-2xs'
+                              : 'border-amber-300 bg-white hover:bg-amber-50 text-slate-700'
+                          }`}
+                        >
+                          Original{selectedItem.stock > 0 ? ` (${selectedItem.stock} u.)` : ''}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSalidaOrigen('servicio')}
+                          className={`px-3 py-1.5 text-xs font-bold rounded-lg border cursor-pointer transition-colors ${
+                            salidaOrigen === 'servicio'
+                              ? 'bg-amber-600 text-white border-amber-600 shadow-2xs'
+                              : 'border-amber-300 bg-white hover:bg-amber-50 text-slate-700'
+                          }`}
+                        >
+                          P/SERVICIO{(selectedItem.paraServicio ?? 0) > 0 ? ` (${selectedItem.paraServicio ?? 0} u.)` : ''}
+                        </button>
+                      </div>
 
                       <div className="flex items-center justify-end gap-2 pt-2">
                         <button
@@ -594,33 +592,33 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
                           </div>
                         </div>
 
-                        {(selectedItem.paraServicio ?? 0) > 0 && (
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="text-[11px] font-bold text-slate-500 uppercase">Desde:</span>
-                            <button
-                              type="button"
-                              onClick={() => { setSalidaOrigen('normal'); setSalidaQty(1); }}
-                              className={`px-2.5 py-1.5 text-xs font-bold rounded-lg border cursor-pointer ${
-                                salidaOrigen === 'normal'
-                                  ? 'border-[#006bb0] bg-[#006bb0] text-white'
-                                  : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-600'
-                              }`}
-                            >
-                              Normal ({selectedItem.stock} u.)
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => { setSalidaOrigen('servicio'); setSalidaQty(1); }}
-                              className={`px-2.5 py-1.5 text-xs font-bold rounded-lg border cursor-pointer ${
-                                salidaOrigen === 'servicio'
-                                  ? 'border-[#006bb0] bg-[#006bb0] text-white'
-                                  : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-600'
-                              }`}
-                            >
-                              P/SERVICIO ({selectedItem.paraServicio ?? 0} u.)
-                            </button>
-                          </div>
-                        )}
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-[11px] font-bold text-slate-500 uppercase">Desde:</span>
+                          <button
+                            type="button"
+                            disabled={selectedItem.stock <= 0}
+                            onClick={() => { setSalidaOrigen('normal'); setSalidaQty(1); }}
+                            className={`px-2.5 py-1.5 text-xs font-bold rounded-lg border transition-colors ${
+                              salidaOrigen === 'normal'
+                                ? 'border-[#006bb0] bg-[#006bb0] text-white'
+                                : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-600'
+                            } ${selectedItem.stock <= 0 ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}
+                          >
+                            Original{selectedItem.stock > 0 ? ` (${selectedItem.stock} u.)` : ''}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={(selectedItem.paraServicio ?? 0) <= 0}
+                            onClick={() => { setSalidaOrigen('servicio'); setSalidaQty(1); }}
+                            className={`px-2.5 py-1.5 text-xs font-bold rounded-lg border transition-colors ${
+                              salidaOrigen === 'servicio'
+                                ? 'border-[#006bb0] bg-[#006bb0] text-white'
+                                : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-600'
+                            } ${(selectedItem.paraServicio ?? 0) <= 0 ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}
+                          >
+                            P/SERVICIO{(selectedItem.paraServicio ?? 0) > 0 ? ` (${selectedItem.paraServicio ?? 0} u.)` : ''}
+                          </button>
+                        </div>
                       </div>
 
                       <div className="flex items-center justify-end gap-2 pt-2">
@@ -692,33 +690,31 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
                         </div>
                       </div>
 
-                      {(selectedItem.paraServicio ?? 0) > 0 && (
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="text-[11px] font-bold text-slate-500 uppercase">Se suma a:</span>
-                          <button
-                            type="button"
-                            onClick={() => setIngresoOrigen('normal')}
-                            className={`px-3 py-1.5 text-xs font-bold rounded-lg border cursor-pointer transition-colors ${
-                              ingresoOrigen === 'normal'
-                                ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs'
-                                : 'border-emerald-300 bg-white hover:bg-emerald-50 text-slate-700'
-                            }`}
-                          >
-                            Normal ({selectedItem.stock} u.)
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setIngresoOrigen('servicio')}
-                            className={`px-3 py-1.5 text-xs font-bold rounded-lg border cursor-pointer transition-colors ${
-                              ingresoOrigen === 'servicio'
-                                ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs'
-                                : 'border-emerald-300 bg-white hover:bg-emerald-50 text-slate-700'
-                            }`}
-                          >
-                            P/SERVICIO ({selectedItem.paraServicio ?? 0} u.)
-                          </button>
-                        </div>
-                      )}
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-[11px] font-bold text-slate-500 uppercase">Se suma a:</span>
+                        <button
+                          type="button"
+                          onClick={() => setIngresoOrigen('normal')}
+                          className={`px-3 py-1.5 text-xs font-bold rounded-lg border cursor-pointer transition-colors ${
+                            ingresoOrigen === 'normal'
+                              ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs'
+                              : 'border-emerald-300 bg-white hover:bg-emerald-50 text-slate-700'
+                          }`}
+                        >
+                          Original{selectedItem.stock > 0 ? ` (${selectedItem.stock} u.)` : ''}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setIngresoOrigen('servicio')}
+                          className={`px-3 py-1.5 text-xs font-bold rounded-lg border cursor-pointer transition-colors ${
+                            ingresoOrigen === 'servicio'
+                              ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs'
+                              : 'border-emerald-300 bg-white hover:bg-emerald-50 text-slate-700'
+                          }`}
+                        >
+                          P/SERVICIO{(selectedItem.paraServicio ?? 0) > 0 ? ` (${selectedItem.paraServicio ?? 0} u.)` : ''}
+                        </button>
+                      </div>
 
                       {/* Live Valuation Calculation */}
                       <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between text-xs">

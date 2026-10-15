@@ -490,7 +490,7 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({
                 >
                   <div className="flex items-center justify-end gap-1">
                     <span className="font-black text-sky-950 group-hover:text-[#006bb0] transition-colors">
-                      STOCK NORMAL ↕
+                      STOCK ORIGINAL ↕
                     </span>
                   </div>
                 </th>
@@ -824,7 +824,7 @@ const isPorEncargo = !!item.porEncargo;
                     </span>
                   </div>
 
-                  {/* Stocks: normal + p/servicio */}
+                  {/* Stocks: original + p/servicio */}
                   <div className="grid grid-cols-2 gap-2">
                     <div className={`rounded-xl border-2 px-3 py-2 text-center ${
                       isOutOfStock
@@ -835,7 +835,7 @@ const isPorEncargo = !!item.porEncargo;
                     }`}>
                       <span className="text-[9px] uppercase font-black tracking-wider text-slate-500 flex items-center justify-center gap-1">
                         <Package className="w-3 h-3" />
-                        Stock normal
+                        Stock original
                       </span>
                       {isPorEncargo ? (
                         <span className={`text-base sm:text-lg font-black font-mono block mt-0.5 ${item.stock > 0 ? 'text-purple-800' : 'text-purple-500'}`}>

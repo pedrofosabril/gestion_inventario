@@ -70,9 +70,7 @@ export const SavedSignaturePicker: React.FC<SavedSignaturePickerProps> = ({
                     alt={`Firma de ${sig.nombre}`}
                     className="h-16 max-w-[220px] object-contain bg-slate-50 rounded-lg border border-slate-100 p-2"
                   />
-                  <span className="text-[11px] font-black text-slate-700 text-center leading-tight">
-                    {sig.nombre}
-                  </span>
+                  <span className="text-xs font-bold text-slate-800">{sig.nombre}</span>
                   <span className="text-[10px] text-slate-400 font-medium">{sig.fechaCreacion}</span>
                   <div className="flex items-center gap-2 w-full">
                     <button

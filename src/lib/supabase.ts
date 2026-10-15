@@ -283,9 +283,12 @@ export type MovementInput = {
 };
 
 export async function createMovement(input: MovementInput): Promise<void> {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const localDateTime = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
   const { error } = await supabase.from('movimientos').insert({
     id_movimiento: crypto.randomUUID(), tipo_movimiento: input.tipo, codigo: input.codigo,
-    cantidad: input.cantidad, fecha: input.fecha || new Date().toISOString().slice(0, 10),
+    cantidad: input.cantidad, fecha: input.fecha || localDateTime,
     comprobante: input.comprobante ?? '', cliente_proveedor: input.clienteProveedor ?? '',
     retira_responsable: input.responsable ?? ''
   });
@@ -406,4 +409,20 @@ export async function saveGlobalUser(user: UserAccount): Promise<void> {
 export async function deleteGlobalUser(username: string): Promise<void> {
   const { error } = await supabase.from('usuarios').delete().eq('username', username);
   if (error) throw error;
+}
+
+export type MovimientoRow = {
+  id_movimiento: string;
+  tipo_movimiento?: string | null;
+  codigo?: string | null;
+  cantidad?: number | null;
+  fecha?: string | null;
+  comprobante?: string | null;
+  cliente_proveedor?: string | null;
+  retira_responsable?: string | null;
+};
+
+/** Lee todos los movimientos registrados en Supabase (compartidos entre dispositivos). */
+export async function getMovimientos(): Promise<MovimientoRow[]> {
+  return fetchAllRows<MovimientoRow>('movimientos', '*');
 }

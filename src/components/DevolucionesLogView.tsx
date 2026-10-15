@@ -136,7 +136,7 @@ export const DevolucionesLogView: React.FC<DevolucionesLogViewProps> = ({ paraPa
                   <span className="font-mono text-base font-black text-amber-800 bg-white px-3 py-1 rounded-xl border border-amber-200">
                     {group.numeroDevolucionFormatted}
                   </span>
-                  <span className="text-xs font-medium text-slate-600">{formatDisplayDate(group.fechaDevolucion)} · {group.horaDevolucion} hs</span>
+                  <span className="text-xs font-medium text-slate-600">{formatDisplayDate(group.fechaDevolucion)}{group.horaDevolucion ? ` · ${group.horaDevolucion} hs` : ''}</span>
                   <span className="text-xs font-bold text-slate-700">Devuelve: {group.empleadoDevuelve}</span>
                 </div>
                 <div className="flex items-center gap-2">

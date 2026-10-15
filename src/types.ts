@@ -1,4 +1,4 @@
-/** De qué stock se descuenta una salida: stock normal/venta o stock P/SERVICIO. */
+/** De qué stock se descuenta una salida: stock original/venta o stock P/SERVICIO. */
 export type SalidaStockOrigen = 'normal' | 'servicio';
 
 export type ItemCategory = 
@@ -133,6 +133,7 @@ export interface IngresoRecord {
   descripcion: string;
   cantidad: number;
   fechaIngreso: string;
+  horaIngreso?: string;
   factura: string;
   precioUnitario?: number;
   ubicacion?: string;
@@ -153,7 +154,7 @@ export interface UserAccount {
 
 export interface SavedSignature {
   id: string;
-  nombre: string;      // Pañolero / emisor dueño de la firma
+  nombre: string;      // Pañolero/emisor o empleado (retira/devuelve) dueño de la firma
   dataUrl: string;     // PNG data URL
   fechaCreacion: string; // Formatted local (ex: "14/09/2026 15:30:22")
   sincronizada?: boolean; // true cuando ya se conoce en la nube (Supabase)
