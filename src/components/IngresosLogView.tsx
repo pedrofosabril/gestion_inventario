@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect, useDeferredValue } from 'react';
 import { 
   ArrowDownLeft, 
   Search, 
@@ -36,8 +36,10 @@ export const IngresosLogView: React.FC<IngresosLogViewProps> = ({ onOpenScanner,
   const [selectedSupplier, setSelectedSupplier] = useState<string>('all');
   const [isReceivingModalOpen, setIsReceivingModalOpen] = useState<boolean>(false);
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
+  const deferredSearch = useDeferredValue(searchTerm);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [confirmClearHistory, setConfirmClearHistory] = useState<boolean>(false);
+  const [clearing, setClearing] = useState<boolean>(false);
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'info' } | null>(null);
 
   const isVentas = currentUser?.rol === 'ventas';
@@ -62,7 +64,9 @@ export const IngresosLogView: React.FC<IngresosLogViewProps> = ({ onOpenScanner,
 
   const handleClearHistory = async () => {
     setConfirmClearHistory(false);
+    setClearing(true);
     const res = await clearIngresosHistory();
+    setClearing(false);
     showToast(res.message, res.success ? 'success' : 'info');
   };
 
@@ -76,12 +80,15 @@ export const IngresosLogView: React.FC<IngresosLogViewProps> = ({ onOpenScanner,
   const [categoria, setCategoria] = useState<ItemCategory>('panol');
   const [precioUnitario, setPrecioUnitario] = useState<number>(0);
 
-  const uniqueSuppliers = Array.from(new Set(ingresos.map(i => i.proveedor).filter(Boolean))).sort();
+  const uniqueSuppliers = useMemo(
+    () => Array.from(new Set(ingresos.map(i => i.proveedor).filter(Boolean))).sort(),
+    [ingresos]
+  );
 
-  const filteredIngresos = ingresos.filter(i => {
+  const filteredIngresos = useMemo(() => ingresos.filter(i => {
     if (selectedSupplier !== 'all' && i.proveedor !== selectedSupplier) return false;
-    if (searchTerm.trim()) {
-      const q = searchTerm.toLowerCase();
+    if (deferredSearch.trim()) {
+      const q = deferredSearch.toLowerCase();
       return (
         i.codigo.toLowerCase().includes(q) ||
         i.descripcion.toLowerCase().includes(q) ||
@@ -94,9 +101,20 @@ export const IngresosLogView: React.FC<IngresosLogViewProps> = ({ onOpenScanner,
   }).sort((a, b) => {
     const comparison = a.fechaIngreso.localeCompare(b.fechaIngreso);
     return sortOrder === 'desc' ? -comparison : comparison;
-  });
+  }), [ingresos, selectedSupplier, deferredSearch, sortOrder]);
 
-  const totalUnidadesIngresadas = filteredIngresos.reduce((sum, i) => sum + i.cantidad, 0);
+  const totalUnidadesIngresadas = useMemo(
+    () => filteredIngresos.reduce((sum, i) => sum + i.cantidad, 0),
+    [filteredIngresos]
+  );
+
+  // Renderizado progresivo para historiales largos.
+  const ITEMS_STEP = 80;
+  const [visibleItems, setVisibleItems] = useState(ITEMS_STEP);
+  useEffect(() => {
+    setVisibleItems(ITEMS_STEP);
+  }, [deferredSearch, selectedSupplier, sortOrder]);
+  const visibleIngresos = filteredIngresos.slice(0, visibleItems);
 
   const handleSubmitIngreso = (e: React.FormEvent) => {
     e.preventDefault();
@@ -220,11 +238,12 @@ export const IngresosLogView: React.FC<IngresosLogViewProps> = ({ onOpenScanner,
               <button
                 type="button"
                 onClick={() => setConfirmClearHistory(true)}
-                className="px-3.5 py-2 border border-rose-200 bg-white hover:bg-rose-50 text-rose-700 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
+                disabled={clearing}
+                className="px-3.5 py-2 border border-rose-200 bg-white hover:bg-rose-50 text-rose-700 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-60 disabled:cursor-wait"
                 title="Borrar todo el historial de ingresos (también en la nube)"
               >
                 <Trash2 className="w-3.5 h-3.5" />
-                Vaciar historial
+                {clearing ? 'Vaciando…' : 'Vaciar historial'}
               </button>
             )
           )}
@@ -302,8 +321,8 @@ export const IngresosLogView: React.FC<IngresosLogViewProps> = ({ onOpenScanner,
                 </tr>
               </thead>
             <tbody className="divide-y divide-[#e2effa] bg-white">
-              {filteredIngresos.length > 0 ? (
-                filteredIngresos.map((ingreso, idx) => (
+                {filteredIngresos.length > 0 ? (
+                  visibleIngresos.map((ingreso, idx) => (
                   <tr key={ingreso.id} className={`hover:bg-[#e5f3fd] transition-colors ${idx % 2 === 1 ? 'bg-[#f4f9fd]' : 'bg-white'}`}>
                     
                     {/* Factura */}
@@ -412,6 +431,17 @@ export const IngresosLogView: React.FC<IngresosLogViewProps> = ({ onOpenScanner,
             </tbody>
           </table>
         </div>
+        {filteredIngresos.length > visibleItems && (
+          <div className="flex justify-center py-3 border-t border-[#cce4f8] bg-[#f4f9fd]">
+            <button
+              type="button"
+              onClick={() => setVisibleItems(v => v + ITEMS_STEP)}
+              className="px-5 py-2.5 bg-white hover:bg-[#eaf4fb] text-[#006bb0] border border-[#badbf5] text-xs font-bold rounded-xl transition-all cursor-pointer shadow-2xs"
+            >
+              Mostrar más ({filteredIngresos.length - visibleItems} restantes)
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Modal for Receiving New Stock */}

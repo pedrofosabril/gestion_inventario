@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect, useDeferredValue } from 'react';
 import { 
   ArrowUpRight, 
   Search, 
@@ -60,9 +60,26 @@ export const SalidasLogView: React.FC<SalidasLogViewProps> = ({ onOpenScanner, p
   const [selectedRetira, setSelectedRetira] = useState<string>('all');
   const [selectedRemitoType, setSelectedRemitoType] = useState<'all' | 'interno' | 'cliente'>('all');
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
+
+  // Búsqueda diferida: el input responde al instante y el filtrado pesado se hace
+  // en segundo plano para que no se trabe al tipear con historiales largos.
+  const deferredSearch = useDeferredValue(searchTerm);
   
   // Selected group for receipt view
   const [activeReceiptGroup, setActiveReceiptGroup] = useState<SalidaGroupRecord | null>(null);
+
+  // Renderizado progresivo: con historiales largos, dibujar todos los registros de una
+  // vez congela la pantalla. Se muestran de a tandas y se amplía con "Mostrar más".
+  const GROUPS_STEP = 20;
+  const ITEMS_STEP = 80;
+  const [visibleGroups, setVisibleGroups] = useState(GROUPS_STEP);
+  const [visibleItems, setVisibleItems] = useState(ITEMS_STEP);
+
+  // Al cambiar cualquier filtro/búsqueda/orden se vuelve al primer tramo.
+  useEffect(() => {
+    setVisibleGroups(GROUPS_STEP);
+    setVisibleItems(ITEMS_STEP);
+  }, [deferredSearch, selectedClient, selectedRetira, selectedRemitoType, sortOrder, viewMode]);
 
   // Helper to ensure each product is displayed strictly once per group
   const getConsolidatedGroupItems = (items: SalidaItemEntry[]): SalidaItemEntry[] => {
@@ -85,6 +102,7 @@ export const SalidasLogView: React.FC<SalidasLogViewProps> = ({ onOpenScanner, p
   const [pendingDeleteGroupId, setPendingDeleteGroupId] = useState<string | null>(null);
   const [pendingDeleteSalidaId, setPendingDeleteSalidaId] = useState<string | null>(null);
   const [confirmClearHistory, setConfirmClearHistory] = useState<boolean>(false);
+  const [clearing, setClearing] = useState<boolean>(false);
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'info' } | null>(null);
 
   const showToast = (text: string, type: 'success' | 'info' = 'success') => {
@@ -127,45 +145,52 @@ export const SalidasLogView: React.FC<SalidasLogViewProps> = ({ onOpenScanner, p
 
   const handleClearHistory = async () => {
     setConfirmClearHistory(false);
+    setClearing(true);
     const res = await clearSalidasHistory();
+    setClearing(false);
     showToast(res.message, res.success ? 'success' : 'info');
   };
 
   // Extract unique clients and operators
-  const uniqueClients = Array.from(new Set([
+  const uniqueClients = useMemo(() => Array.from(new Set([
     ...salidaGroups.map(g => g.cliente),
     ...salidas.map(s => s.cliente)
-  ].filter(Boolean))).sort();
+  ].filter(Boolean))).sort(), [salidaGroups, salidas]);
 
-  const uniqueOperators = Array.from(new Set([
+  const uniqueOperators = useMemo(() => Array.from(new Set([
     ...salidaGroups.map(g => g.retira),
     ...salidas.map(s => s.retira)
-  ].filter(Boolean))).sort();
+  ].filter(Boolean))).sort(), [salidaGroups, salidas]);
+
+  // Códigos de inventario cuyo código de barras coincide con la búsqueda. Se calcula
+  // UNA sola vez por término (antes se rehacía por cada registro: O(n × m)).
+  const matchingInventoryCodes = useMemo(() => {
+    if (!deferredSearch.trim()) return new Set<string>();
+    const q = deferredSearch.toLowerCase();
+    const qAlphaNum = q.replace(/[^a-zA-Z0-9]/g, '');
+    return new Set(
+      items.filter(i => {
+        const b = (i.codigoBarras || '').toLowerCase();
+        const bAlpha = (i.codigoBarras || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+        return b.includes(q) || (qAlphaNum !== '' && bAlpha.includes(qAlphaNum));
+      }).map(i => i.codigo.toLowerCase())
+    );
+  }, [deferredSearch, items]);
 
   // Filter groups
-  const filteredGroups = salidaGroups.filter(g => {
+  const filteredGroups = useMemo(() => salidaGroups.filter(g => {
     if (selectedClient !== 'all' && g.cliente !== selectedClient) return false;
     if (selectedRetira !== 'all' && g.retira !== selectedRetira) return false;
     if (selectedRemitoType === 'interno' && !g.esRemitoInterno) return false;
     if (selectedRemitoType === 'cliente' && g.esRemitoInterno) return false;
-    if (searchTerm.trim()) {
-      const q = searchTerm.toLowerCase();
-      const qAlphaNum = q.replace(/[^a-zA-Z0-9]/g, '');
-      // Find codes that match this barcode in inventory
-      const matchingInventoryCodes = new Set(
-        items.filter(i => {
-          const b = (i.codigoBarras || '').toLowerCase();
-          const bAlpha = (i.codigoBarras || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
-          return b.includes(q) || (qAlphaNum !== '' && bAlpha.includes(qAlphaNum));
-        }).map(i => i.codigo.toLowerCase())
-      );
-
+    if (deferredSearch.trim()) {
+      const q = deferredSearch.toLowerCase();
       const matchNum = g.numeroSalidaFormatted.toLowerCase().includes(q) || String(g.numeroSalida).includes(q);
       const matchClient = g.cliente.toLowerCase().includes(q);
       const matchRetira = g.retira.toLowerCase().includes(q);
       const matchRemito = g.nroRemito.toLowerCase().includes(q);
-      const matchItem = g.items.some(it => 
-        it.codigo.toLowerCase().includes(q) || 
+      const matchItem = g.items.some(it =>
+        it.codigo.toLowerCase().includes(q) ||
         it.descripcion.toLowerCase().includes(q) ||
         matchesUbicacion(it.ubicacion, q) ||
         matchingInventoryCodes.has(it.codigo.toLowerCase())
@@ -177,25 +202,16 @@ export const SalidasLogView: React.FC<SalidasLogViewProps> = ({ onOpenScanner, p
     const comparison = `${a.fechaSalida} ${a.horaSalida || ''}`.localeCompare(`${b.fechaSalida} ${b.horaSalida || ''}`);
     if (comparison !== 0) return sortOrder === 'desc' ? -comparison : comparison;
     return sortOrder === 'desc' ? b.numeroSalida - a.numeroSalida : a.numeroSalida - b.numeroSalida;
-  });
+  }), [salidaGroups, selectedClient, selectedRetira, selectedRemitoType, deferredSearch, sortOrder, matchingInventoryCodes]);
 
   // Filter individual items
-  const filteredSalidas = salidas.filter(s => {
+  const filteredSalidas = useMemo(() => salidas.filter(s => {
     if (selectedClient !== 'all' && s.cliente !== selectedClient) return false;
     if (selectedRetira !== 'all' && s.retira !== selectedRetira) return false;
     if (selectedRemitoType === 'interno' && !s.esRemitoInterno && !s.esTaller) return false;
     if (selectedRemitoType === 'cliente' && (s.esRemitoInterno || s.esTaller)) return false;
-    if (searchTerm.trim()) {
-      const q = searchTerm.toLowerCase();
-      const qAlphaNum = q.replace(/[^a-zA-Z0-9]/g, '');
-      const matchingInventoryCodes = new Set(
-        items.filter(i => {
-          const b = (i.codigoBarras || '').toLowerCase();
-          const bAlpha = (i.codigoBarras || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
-          return b.includes(q) || (qAlphaNum !== '' && bAlpha.includes(qAlphaNum));
-        }).map(i => i.codigo.toLowerCase())
-      );
-
+    if (deferredSearch.trim()) {
+      const q = deferredSearch.toLowerCase();
       return (
         s.codigo.toLowerCase().includes(q) ||
         matchingInventoryCodes.has(s.codigo.toLowerCase()) ||
@@ -211,7 +227,10 @@ export const SalidasLogView: React.FC<SalidasLogViewProps> = ({ onOpenScanner, p
     const comparison = `${a.fechaSalida} ${a.horaSalida || ''}`.localeCompare(`${b.fechaSalida} ${b.horaSalida || ''}`);
     if (comparison !== 0) return sortOrder === 'desc' ? -comparison : comparison;
     return sortOrder === 'desc' ? (b.numeroSalida || 0) - (a.numeroSalida || 0) : (a.numeroSalida || 0) - (b.numeroSalida || 0);
-  });
+  }), [salidas, selectedClient, selectedRetira, selectedRemitoType, deferredSearch, sortOrder, matchingInventoryCodes]);
+
+  const visibleGroupsList = filteredGroups.slice(0, visibleGroups);
+  const visibleSalidasList = filteredSalidas.slice(0, visibleItems);
 
   const totalUnidadesRetiradas = viewMode === 'groups'
     ? filteredGroups.reduce((sum, g) => sum + g.totalUnidades, 0)
@@ -324,11 +343,12 @@ export const SalidasLogView: React.FC<SalidasLogViewProps> = ({ onOpenScanner, p
               <button
                 type="button"
                 onClick={() => setConfirmClearHistory(true)}
-                className="px-3.5 py-2 border border-rose-200 bg-white hover:bg-rose-50 text-rose-700 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
+                disabled={clearing}
+                className="px-3.5 py-2 border border-rose-200 bg-white hover:bg-rose-50 text-rose-700 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-60 disabled:cursor-wait"
                 title="Borrar todo el historial de salidas (también en la nube)"
               >
                 <Trash2 className="w-3.5 h-3.5" />
-                Vaciar historial
+                {clearing ? 'Vaciando…' : 'Vaciar historial'}
               </button>
             )
           )}
@@ -429,7 +449,8 @@ export const SalidasLogView: React.FC<SalidasLogViewProps> = ({ onOpenScanner, p
               <p className="text-xs text-slate-500 mt-1">Ajusta los filtros o realiza un nuevo despacho con el escáner.</p>
             </div>
           ) : (
-            filteredGroups.map(group => (
+            <>
+              {visibleGroupsList.map(group => (
               <div 
                 key={group.id}
                 className="bg-[#f8fcfe] rounded-2xl border border-[#c4e1f7] shadow-xs hover:shadow transition-all overflow-hidden"
@@ -628,7 +649,19 @@ export const SalidasLogView: React.FC<SalidasLogViewProps> = ({ onOpenScanner, p
                 </div>
 
               </div>
-            ))
+            ))}
+            {filteredGroups.length > visibleGroups && (
+              <div className="flex justify-center pt-1">
+                <button
+                  type="button"
+                  onClick={() => setVisibleGroups(v => v + GROUPS_STEP)}
+                  className="px-5 py-2.5 bg-white hover:bg-[#eaf4fb] text-[#006bb0] border border-[#badbf5] text-xs font-bold rounded-xl transition-all cursor-pointer shadow-2xs"
+                >
+                  Mostrar más ({filteredGroups.length - visibleGroups} restantes)
+                </button>
+              </div>
+            )}
+            </>
           )}
         </div>
 
@@ -654,7 +687,7 @@ export const SalidasLogView: React.FC<SalidasLogViewProps> = ({ onOpenScanner, p
               </thead>
               <tbody className="divide-y divide-[#e2effa] bg-white">
                 {filteredSalidas.length > 0 ? (
-                  filteredSalidas.map((salida, idx) => (
+                  visibleSalidasList.map((salida, idx) => (
                     <tr key={salida.id} className={`hover:bg-[#e5f3fd] transition-colors ${idx % 2 === 1 ? 'bg-[#f4f9fd]' : 'bg-white'}`}>
                       
                       {/* Salida N° */}
@@ -774,6 +807,17 @@ export const SalidasLogView: React.FC<SalidasLogViewProps> = ({ onOpenScanner, p
               </tbody>
             </table>
           </div>
+          {filteredSalidas.length > visibleItems && (
+            <div className="flex justify-center py-3 border-t border-[#cce4f8] bg-[#f4f9fd]">
+              <button
+                type="button"
+                onClick={() => setVisibleItems(v => v + ITEMS_STEP)}
+                className="px-5 py-2.5 bg-white hover:bg-[#eaf4fb] text-[#006bb0] border border-[#badbf5] text-xs font-bold rounded-xl transition-all cursor-pointer shadow-2xs"
+              >
+                Mostrar más ({filteredSalidas.length - visibleItems} restantes)
+              </button>
+            </div>
+          )}
         </div>
       )}
 

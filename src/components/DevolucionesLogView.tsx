@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { ArrowDownUp, Check, Eye, History, RotateCcw, Search, Trash2, X } from 'lucide-react';
 import { useInventory } from '../context/InventoryContext';
 import { DevolucionGroupRecord } from '../types';
@@ -20,6 +20,7 @@ export const DevolucionesLogView: React.FC<DevolucionesLogViewProps> = ({ paraPa
   const [activeGroup, setActiveGroup] = useState<DevolucionGroupRecord | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [confirmClearHistory, setConfirmClearHistory] = useState<boolean>(false);
+  const [clearing, setClearing] = useState<boolean>(false);
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'info' } | null>(null);
 
   const isVentas = currentUser?.rol === 'ventas';
@@ -44,11 +45,13 @@ export const DevolucionesLogView: React.FC<DevolucionesLogViewProps> = ({ paraPa
 
   const handleClearHistory = async () => {
     setConfirmClearHistory(false);
+    setClearing(true);
     const res = await clearDevolucionesHistory();
+    setClearing(false);
     showToast(res.message, res.success ? 'success' : 'info');
   };
 
-  const filteredGroups = devolucionGroups
+  const filteredGroups = useMemo(() => devolucionGroups
     .filter(group => {
       const query = searchTerm.trim().toLowerCase();
       if (!query) return true;
@@ -63,9 +66,20 @@ export const DevolucionesLogView: React.FC<DevolucionesLogViewProps> = ({ paraPa
       const comparison = `${a.fechaDevolucion} ${a.horaDevolucion || ''}`.localeCompare(`${b.fechaDevolucion} ${b.horaDevolucion || ''}`);
       if (comparison !== 0) return sortOrder === 'desc' ? -comparison : comparison;
       return sortOrder === 'desc' ? b.numeroDevolucion - a.numeroDevolucion : a.numeroDevolucion - b.numeroDevolucion;
-    });
+    }), [devolucionGroups, searchTerm, sortOrder]);
 
-  const totalUnidades = filteredGroups.reduce((sum, group) => sum + group.totalUnidades, 0);
+  const totalUnidades = useMemo(
+    () => filteredGroups.reduce((sum, group) => sum + group.totalUnidades, 0),
+    [filteredGroups]
+  );
+
+  // Renderizado progresivo para historiales largos.
+  const GROUPS_STEP = 20;
+  const [visibleGroups, setVisibleGroups] = useState(GROUPS_STEP);
+  useEffect(() => {
+    setVisibleGroups(GROUPS_STEP);
+  }, [searchTerm, sortOrder]);
+  const visibleGroupsList = filteredGroups.slice(0, visibleGroups);
 
   return (
     <div className="flex flex-col gap-4 animate-in fade-in duration-200">
@@ -125,11 +139,12 @@ export const DevolucionesLogView: React.FC<DevolucionesLogViewProps> = ({ paraPa
               <button
                 type="button"
                 onClick={() => setConfirmClearHistory(true)}
-                className="px-3.5 py-2 border border-rose-200 bg-white hover:bg-rose-50 text-rose-700 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
+                disabled={clearing}
+                className="px-3.5 py-2 border border-rose-200 bg-white hover:bg-rose-50 text-rose-700 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-60 disabled:cursor-wait"
                 title="Borrar todo el historial de devoluciones (también en la nube)"
               >
                 <Trash2 className="w-3.5 h-3.5" />
-                Vaciar historial
+                {clearing ? 'Vaciando…' : 'Vaciar historial'}
               </button>
             )
           )}
@@ -170,7 +185,8 @@ export const DevolucionesLogView: React.FC<DevolucionesLogViewProps> = ({ paraPa
             <p className="text-sm font-bold text-slate-700">No se encontraron devoluciones.</p>
           </div>
         ) : (
-          filteredGroups.map(group => (
+          <>
+            {visibleGroupsList.map(group => (
             <div key={group.id} className="bg-white rounded-2xl border border-[#c4e1f7] shadow-xs overflow-hidden">
               <div className="p-4 bg-amber-50/60 border-b border-amber-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                 <div className="flex items-center gap-3 flex-wrap">
@@ -258,7 +274,19 @@ export const DevolucionesLogView: React.FC<DevolucionesLogViewProps> = ({ paraPa
                 </div>
               </div>
             </div>
-          ))
+          ))}
+            {filteredGroups.length > visibleGroups && (
+              <div className="flex justify-center pt-1">
+                <button
+                  type="button"
+                  onClick={() => setVisibleGroups(v => v + GROUPS_STEP)}
+                  className="px-5 py-2.5 bg-white hover:bg-[#eaf4fb] text-[#006bb0] border border-[#badbf5] text-xs font-bold rounded-xl transition-all cursor-pointer shadow-2xs"
+                >
+                  Mostrar más ({filteredGroups.length - visibleGroups} restantes)
+                </button>
+              </div>
+            )}
+          </>
         )}
       </div>
 
