@@ -38,13 +38,21 @@ type StockRow = {
 
 const numberOf = (value: number | string | null | undefined) => Number(value ?? 0);
 
-/** Fetch all rows from a table, paginating past Supabase's 1000-row default limit. */
-async function fetchAllRows<T>(table: string, columns: string): Promise<T[]> {
+/** Fetch all rows from a table, paginating past Supabase's 1000-row default limit.
+ *  `filter` permite acotar la consulta (p. ej. por tipo de movimiento) para no
+ *  traer toda la tabla cuando solo se necesita una parte. */
+async function fetchAllRows<T>(
+  table: string,
+  columns: string,
+  filter?: (query: any) => any
+): Promise<T[]> {
   const all: T[] = [];
   const pageSize = 1000;
   let from = 0;
   while (true) {
-    const { data, error } = await supabase.from(table).select(columns).range(from, from + pageSize - 1);
+    let query: any = supabase.from(table).select(columns);
+    if (filter) query = filter(query);
+    const { data, error } = await query.range(from, from + pageSize - 1);
     if (error) throw error;
     const rows = (data ?? []) as T[];
     all.push(...rows);
@@ -422,7 +430,28 @@ export type MovimientoRow = {
   retira_responsable?: string | null;
 };
 
-/** Lee todos los movimientos registrados en Supabase (compartidos entre dispositivos). */
-export async function getMovimientos(): Promise<MovimientoRow[]> {
-  return fetchAllRows<MovimientoRow>('movimientos', '*');
+/** Lee los movimientos registrados en Supabase (compartidos entre dispositivos).
+ *  Si se indica `tipo`, solo trae ese tipo ('Salida' | 'Ingreso' | 'Devolucion'). */
+export async function getMovimientos(tipo?: string): Promise<MovimientoRow[]> {
+  if (!tipo) return fetchAllRows<MovimientoRow>('movimientos', '*');
+  return fetchAllRows<MovimientoRow>('movimientos', '*', q => q.eq('tipo_movimiento', tipo));
+}
+
+/** Borra movimientos de la nube por sus ids. Devuelve cuántas filas se borraron.
+ *  El `.select()` posterior permite confirmar que RLS no bloqueó el borrado. */
+export async function deleteMovimientosByIds(ids: string[]): Promise<number> {
+  if (!ids || ids.length === 0) return 0;
+  const chunkSize = 200;
+  let deleted = 0;
+  for (let i = 0; i < ids.length; i += chunkSize) {
+    const chunk = ids.slice(i, i + chunkSize);
+    const { data, error } = await supabase
+      .from('movimientos')
+      .delete()
+      .in('id_movimiento', chunk)
+      .select('id_movimiento');
+    if (error) throw error;
+    deleted += data?.length ?? 0;
+  }
+  return deleted;
 }
