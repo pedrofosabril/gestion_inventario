@@ -8,6 +8,7 @@ import {
   DevolucionItemEntry
 } from '../types';
 import type { MovimientoRow } from '../lib/supabase';
+import { isValidMovementDate } from './dateUtils';
 
 const norm = (v?: string | null): string => (v ?? '').trim();
 const lower = (v?: string | null): string => norm(v).toLowerCase();
@@ -60,11 +61,16 @@ interface MergedState extends LocalState {}
  * cada registro se numera para no pisar los números locales.
  */
 export function mergeRemoteMovements(
-  rows: MovimientoRow[],
+  rawRows: MovimientoRow[],
   items: InventoryItem[],
   local: LocalState
 ): MergedState {
-  if (!rows || rows.length === 0) return local;
+  if (!rawRows || rawRows.length === 0) return local;
+
+  // Descarta movimientos con fechas corruptas (p. ej. "830-01-01") para que no
+  // contaminen los historiales al reconstruirlos desde la nube.
+  const rows = rawRows.filter(r => isValidMovementDate(dateKey(r.fecha)));
+  if (rows.length === 0) return local;
 
   const byCode = new Map<string, InventoryItem>();
   for (const item of items) byCode.set(item.codigo.toUpperCase(), item);

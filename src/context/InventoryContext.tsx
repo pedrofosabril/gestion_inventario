@@ -25,6 +25,7 @@ import {
 } from '../data/initialData';
 import { replaceYazWithYas, sanitizeYazObject } from '../utils/sanitizeUtils';
 import { normalizeCodigo } from '../utils/codeUtils';
+import { isValidMovementDate } from '../utils/dateUtils';
 import { createMovement, createMovementsBulk, clearSupabaseAll, deleteInventoryItem, getInventory, saveInventoryItem, getGlobalUsers, saveGlobalUser, deleteGlobalUser, getSavedSignaturesCloud, saveSavedSignatureCloud, deleteSavedSignatureCloud, deleteMovimientosByIds, MovementInput, getMovimientos, type MovimientoRow } from '../lib/supabase';
 import { mergeSameProductPairs } from '../utils/productMerge';
 import { mergeRemoteMovements, cloudIdsForSalida, cloudIdsForSalidaGroup, cloudIdsForIngreso, cloudIdsForDevolucion, esDevolucionDev } from '../utils/movimientosSync';
@@ -308,20 +309,20 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [salidas, setSalidas] = useState<SalidaRecord[]>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEYS.SALIDAS);
-      if (saved) return deduplicateSalidasList(sanitizeYazObject(JSON.parse(saved)));
-      return deduplicateSalidasList(sanitizeYazObject(INITIAL_SALIDAS));
+      const list = saved ? JSON.parse(saved) : INITIAL_SALIDAS;
+      return deduplicateSalidasList(sanitizeYazObject(list)).filter(s => isValidMovementDate(s.fechaSalida));
     } catch {
-      return deduplicateSalidasList(sanitizeYazObject(INITIAL_SALIDAS));
+      return deduplicateSalidasList(sanitizeYazObject(INITIAL_SALIDAS)).filter(s => isValidMovementDate(s.fechaSalida));
     }
   });
 
   const [salidaGroups, setSalidaGroups] = useState<SalidaGroupRecord[]>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEYS.SALIDA_GROUPS);
-      if (saved) return deduplicateSalidaGroupsList(sanitizeYazObject(JSON.parse(saved)));
-      return deduplicateSalidaGroupsList(sanitizeYazObject(INITIAL_SALIDA_GROUPS));
+      const list = saved ? JSON.parse(saved) : INITIAL_SALIDA_GROUPS;
+      return deduplicateSalidaGroupsList(sanitizeYazObject(list)).filter(g => isValidMovementDate(g.fechaSalida));
     } catch {
-      return deduplicateSalidaGroupsList(sanitizeYazObject(INITIAL_SALIDA_GROUPS));
+      return deduplicateSalidaGroupsList(sanitizeYazObject(INITIAL_SALIDA_GROUPS)).filter(g => isValidMovementDate(g.fechaSalida));
     }
   });
 

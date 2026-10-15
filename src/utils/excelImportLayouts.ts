@@ -1,5 +1,6 @@
 import { ItemCategory } from '../types';
 import { normalizeCodigo } from './codeUtils';
+import { isPlausibleYear } from './dateUtils';
 
 export type SheetKind = 'productos' | 'salidas' | 'ingresos';
 
@@ -154,31 +155,48 @@ export function toNumber(value: unknown): number {
   return isFinite(n) ? n : 0;
 }
 
-/** Normaliza fechas de Excel a ISO (yyyy-mm-dd). Acepta Date, ISO y "28-08/2025". */
+/**
+ * Arma una fecha ISO validando mes/día/año. Devuelve '' si la fecha no es plausible,
+ * para no generar valores como "830-01-01" o "2034-01-01".
+ */
+function isoFromParts(year: number, month: number, day: number): string {
+  if (!isPlausibleYear(year) || month < 1 || month > 12 || day < 1 || day > 31) return '';
+  const m = String(month).padStart(2, '0');
+  const d = String(day).padStart(2, '0');
+  return `${year}-${m}-${d}`;
+}
+
+/**
+ * Normaliza fechas de Excel a ISO (yyyy-mm-dd). Acepta Date, serial de Excel, ISO y "28-08/2025".
+ * Nunca interpreta un número suelto (p. ej. el Nº de salida 168 o 34) como año.
+ */
 export function toISODate(value: unknown): string {
-  if (value instanceof Date && !isNaN(value.getTime())) {
-    const y = value.getFullYear();
-    const m = String(value.getMonth() + 1).padStart(2, '0');
-    const d = String(value.getDate()).padStart(2, '0');
-    return `${y}-${m}-${d}`;
+  if (value instanceof Date) {
+    if (isNaN(value.getTime())) return '';
+    return isoFromParts(value.getFullYear(), value.getMonth() + 1, value.getDate());
+  }
+  if (typeof value === 'number') {
+    // Serial de Excel (días desde 1899-12-30), solo en un rango razonable.
+    if (!isFinite(value) || value < 20000 || value > 60000) return '';
+    const ms = Math.round((value - 25569) * 86400000);
+    const d = new Date(ms);
+    if (isNaN(d.getTime())) return '';
+    return isoFromParts(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate());
   }
   const s = String(value ?? '').trim();
   if (!s) return '';
-  const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+  // Un string compuesto solo por dígitos (p. ej. "168", "34") no es una fecha.
+  if (/^\d+$/.test(s)) return '';
+  const iso = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (iso) return isoFromParts(Number(iso[1]), Number(iso[2]), Number(iso[3]));
   const dmy = s.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})$/);
   if (dmy) {
-    const d = dmy[1].padStart(2, '0');
-    const m = dmy[2].padStart(2, '0');
-    const y = dmy[3].length === 2 ? `20${dmy[3]}` : dmy[3];
-    return `${y}-${m}-${d}`;
+    const year = dmy[3].length === 2 ? Number(`20${dmy[3]}`) : Number(dmy[3]);
+    return isoFromParts(year, Number(dmy[2]), Number(dmy[1]));
   }
   const parsed = new Date(s);
   if (!isNaN(parsed.getTime())) {
-    const y = parsed.getFullYear();
-    const m = String(parsed.getMonth() + 1).padStart(2, '0');
-    const d = String(parsed.getDate()).padStart(2, '0');
-    return `${y}-${m}-${d}`;
+    return isoFromParts(parsed.getFullYear(), parsed.getMonth() + 1, parsed.getDate());
   }
   return '';
 }
@@ -278,7 +296,7 @@ function mapSalidaRow(row: unknown[], block: Block): Record<string, unknown> | n
     nroRemito: String(get(['n presp', 'remito', 'n° presp', 'comprobante', 'nro']) ?? '').trim(),
     codigo,
     descripcion: String(get(['descripcion', 'desc', 'detalle']) ?? '').trim(),
-    fechaSalida: toISODate(get(['salida', 'fecha'])),
+    fechaSalida: toISODate(get(['f salida', 'f. salida', 'fecha salida', 'fecha'])),
     cliente: String(get(['cliente', 'destinatario']) ?? '').trim(),
     retira: String(get(['retira', 'responsable', 'retira responsable']) ?? '').trim(),
     cantidad
@@ -304,7 +322,7 @@ function mapIngresoRow(row: unknown[], block: Block): Record<string, unknown> | 
     proveedor: String(get(['proveedor', 'marca', 'fabricante']) ?? '').trim(),
     descripcion: String(get(['descripcion', 'desc', 'detalle']) ?? '').trim(),
     cantidad,
-    fechaIngreso: toISODate(get(['f.ingreso', 'fecha', 'ingreso'])),
+    fechaIngreso: toISODate(get(['f ingreso', 'f. ingreso', 'fecha ingreso', 'fecha'])),
     factura: String(get(['factura', 'comprobante', 'nro']) ?? '').trim()
   };
 }
