@@ -51,12 +51,17 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   const isVentas = currentUser?.rol === 'ventas';
   const [copiedCode, setCopiedCode] = useState<boolean>(false);
 
+  // Keep the page behind the product detail fixed while the modal is open.
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || !item) return;
+
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = previousOverflow; };
-  }, [isOpen]);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isOpen, item]);
 
   if (!isOpen || !item) return null;
 
@@ -202,7 +207,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
             <div className="p-3.5 rounded-2xl bg-white border border-[#c4e1f7] shadow-2xs flex flex-col justify-between">
               <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1">
                 <Boxes className="w-3.5 h-3.5 text-sky-600" />
-                Stock normal
+                Stock original
               </span>
               <div className="mt-1.5 flex items-center justify-between">
                 <span className={`text-lg font-mono font-black ${
@@ -271,6 +276,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
 
             {/* Código de barras / Equivalencias */}
             <div className="flex flex-col justify-between gap-1.5">
+              {!isVentas && (
               <div>
                 <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1">
                   <Barcode className="w-3.5 h-3.5 text-slate-700" />
@@ -301,6 +307,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                   )}
                 </div>
               </div>
+              )}
               {item.equivalencias && (
                 <p className="text-xs text-slate-600 mt-1">
                   <strong>Equivalencias:</strong> {item.equivalencias}

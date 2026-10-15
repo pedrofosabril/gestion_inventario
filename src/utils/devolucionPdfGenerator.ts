@@ -68,7 +68,7 @@ export const generateDevolucionPDF = (rawDevolucionGroup: DevolucionGroupRecord)
   doc.text('FECHA Y HORA:', 18, startY + 6);
   doc.setFontSize(9);
   doc.setTextColor(...darkColor);
-  doc.text(`${formatDisplayDate(devolucionGroup.fechaDevolucion)} - ${devolucionGroup.horaDevolucion} hs`, 18, startY + 11);
+  doc.text(devolucionGroup.horaDevolucion ? `${formatDisplayDate(devolucionGroup.fechaDevolucion)} - ${devolucionGroup.horaDevolucion} hs` : formatDisplayDate(devolucionGroup.fechaDevolucion), 18, startY + 11);
 
   doc.setFontSize(8);
   doc.setTextColor(...slateColor);
@@ -123,14 +123,28 @@ export const generateDevolucionPDF = (rawDevolucionGroup: DevolucionGroupRecord)
   }
 
   // --- ITEMS TABLE ---
-  const tableData = devolucionGroup.items.map((item, idx) => [
-    (idx + 1).toString(),
-    item.codigo,
-    item.descripcion,
-    item.ubicacion || 'PAÑOL',
-    item.motivo || devolucionGroup.motivo || 'Devolución',
-    `${item.cantidad} u.`
-  ]);
+  const consolidated = new Map<string, typeof devolucionGroup.items[number]>();
+  for (const item of devolucionGroup.items) {
+    const key = `${item.codigo.toLowerCase()}|${item.origenStock || 'normal'}`;
+    const existing = consolidated.get(key);
+    if (existing) {
+      consolidated.set(key, { ...existing, cantidad: existing.cantidad + item.cantidad });
+    } else {
+      consolidated.set(key, item);
+    }
+  }
+
+  const tableData = Array.from(consolidated.values()).map((item, idx) => {
+    const origenTag = item.origenStock === 'servicio' ? '  [P/SERVICIO]' : '';
+    return [
+      (idx + 1).toString(),
+      `${item.codigo}${origenTag}`,
+      item.descripcion,
+      item.ubicacion || 'PAÑOL',
+      item.motivo || devolucionGroup.motivo || 'Devolución',
+      `${item.cantidad} u.`
+    ];
+  });
 
   autoTable(doc, {
     startY: startY + 38,
@@ -155,7 +169,7 @@ export const generateDevolucionPDF = (rawDevolucionGroup: DevolucionGroupRecord)
     },
     columnStyles: {
       0: { halign: 'center', cellWidth: 10 },
-      1: { fontStyle: 'bold', cellWidth: 28 },
+      1: { fontStyle: 'bold', cellWidth: 40 },
       2: { cellWidth: 'auto' },
       3: { cellWidth: 25 },
       4: { cellWidth: 35 },

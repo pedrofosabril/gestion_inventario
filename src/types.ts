@@ -1,3 +1,6 @@
+/** De qué stock se descuenta una salida: stock original/venta o stock P/SERVICIO. */
+export type SalidaStockOrigen = 'normal' | 'servicio';
+
 export type ItemCategory = 
   | 'panol'
   | 'cajones_fluidos'
@@ -43,6 +46,7 @@ export interface SalidaItemEntry {
   precioUnitario: number;
   precioTotal: number;
   categoria?: ItemCategory;
+  origenStock?: SalidaStockOrigen;
 }
 
 export interface SalidaGroupRecord {
@@ -75,6 +79,7 @@ export interface DevolucionItemEntry {
   precioUnitario?: number;
   ubicacion?: string;
   motivo?: string;
+  origenStock?: SalidaStockOrigen;
 }
 
 export interface DevolucionGroupRecord {
@@ -113,6 +118,7 @@ export interface SalidaRecord {
   cantidad: number;
   precioUnitario?: number;
   categoria?: ItemCategory;
+  origenStock?: SalidaStockOrigen;
   esTaller?: boolean;
   esRemitoInterno?: boolean;
   esDevuelto?: boolean;
@@ -127,10 +133,12 @@ export interface IngresoRecord {
   descripcion: string;
   cantidad: number;
   fechaIngreso: string;
+  horaIngreso?: string;
   factura: string;
   precioUnitario?: number;
   ubicacion?: string;
   categoria?: ItemCategory;
+  origenStock?: SalidaStockOrigen;
   usuarioRegistro?: string;
 }
 
@@ -146,9 +154,10 @@ export interface UserAccount {
 
 export interface SavedSignature {
   id: string;
-  nombre: string;      // Pañolero / emisor dueño de la firma
+  nombre: string;      // Pañolero/emisor o empleado (retira/devuelve) dueño de la firma
   dataUrl: string;     // PNG data URL
   fechaCreacion: string; // Formatted local (ex: "14/09/2026 15:30:22")
+  sincronizada?: boolean; // true cuando ya se conoce en la nube (Supabase)
 }
 
 export interface BackupHistoryEntry {
@@ -181,8 +190,8 @@ export interface ImportPreviewRow {
 }
 
 export const PARAMETRIZED_OPERATORS: string[] = [
-  'Yas',
   'Yasmin',
+  'David',
   'Valeria',
   'Matias',
   'Cristian',

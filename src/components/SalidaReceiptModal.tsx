@@ -48,6 +48,7 @@ export const SalidaReceiptModal: React.FC<SalidaReceiptModalProps> = ({
   const [isSigning, setIsSigning] = useState<boolean>(false);
   const [isSigningPanolero, setIsSigningPanolero] = useState<boolean>(false);
   const [showPanoleroPicker, setShowPanoleroPicker] = useState<boolean>(false);
+  const [showRetiraPicker, setShowRetiraPicker] = useState<boolean>(false);
 
   // Sync with live context state if signature updated
   const currentSalidaGroup = salidaGroup 
@@ -78,7 +79,24 @@ export const SalidaReceiptModal: React.FC<SalidaReceiptModalProps> = ({
   const handleSaveSignature = (dataUrl: string) => {
     if (!currentSalidaGroup) return;
     updateSalidaGroupSignature(currentSalidaGroup.id, dataUrl, currentSalidaGroup.retira);
+    saveSignature(dataUrl, currentSalidaGroup.retira);
     setIsSigning(false);
+  };
+
+  const handlePickRetiraSignature = (dataUrl: string, nombre: string) => {
+    if (!currentSalidaGroup) return;
+    updateSalidaGroupSignature(currentSalidaGroup.id, dataUrl, nombre);
+    setShowRetiraPicker(false);
+  };
+
+  const handleClearSignature = () => {
+    if (!currentSalidaGroup) return;
+    updateSalidaGroupSignature(currentSalidaGroup.id, '', currentSalidaGroup.retira);
+  };
+
+  const handleClearPanoleroSignature = () => {
+    if (!currentSalidaGroup) return;
+    updateSalidaGroupPanoleroSignature(currentSalidaGroup.id, '', panoleroName);
   };
 
   const panoleroName = currentUser?.nombre || currentSalidaGroup.usuarioRegistro || 'Pañolero';
@@ -171,9 +189,13 @@ export const SalidaReceiptModal: React.FC<SalidaReceiptModalProps> = ({
               <div className="text-xs font-bold text-slate-600 mt-0.5 flex items-center sm:justify-end gap-1">
                 <Calendar className="w-3.5 h-3.5 text-sky-600" />
                 <span>{formatDisplayDate(salidaGroup.fechaSalida)}</span>
-                <span className="text-slate-300">•</span>
-                <Clock className="w-3.5 h-3.5 text-sky-600" />
-                <span>{salidaGroup.horaSalida} hs</span>
+                {salidaGroup.horaSalida && (
+                  <>
+                    <span className="text-slate-300">•</span>
+                    <Clock className="w-3.5 h-3.5 text-sky-600" />
+                    <span>{salidaGroup.horaSalida} hs</span>
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -249,7 +271,7 @@ export const SalidaReceiptModal: React.FC<SalidaReceiptModalProps> = ({
           {(() => {
             const consolidatedItems: SalidaItemEntry[] = Array.from(
               (salidaGroup.items || []).reduce((map, item) => {
-                const k = (item.codigo || '').trim().toLowerCase();
+                const k = `${(item.codigo || '').trim().toLowerCase()}\u0000${item.origenStock || ''}`;
                 if (!k) return map;
                 if (map.has(k)) {
                   const existing = map.get(k)!;
@@ -291,6 +313,9 @@ export const SalidaReceiptModal: React.FC<SalidaReceiptModalProps> = ({
                         <tr key={item.id || `${item.codigo}-${idx}`} className="hover:bg-[#f4f9fd] transition-colors">
                           <td className="py-2.5 px-3 font-mono font-bold text-[#006bb0] whitespace-nowrap">
                             {item.codigo}
+                            {item.origenStock === 'servicio' && (
+                              <span className="ml-1.5 text-[9px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-200 font-bold">P/SERVICIO</span>
+                            )}
                           </td>
                           <td className="py-2.5 px-3 text-slate-700">
                             <div className="font-semibold text-slate-900">{item.descripcion}</div>
@@ -347,16 +372,8 @@ export const SalidaReceiptModal: React.FC<SalidaReceiptModalProps> = ({
                     alt="Firma del pañolero/emisor" 
                     className="h-12 max-w-[180px] object-contain"
                   />
+                  {/* Firma cerrada: no se puede modificar desde el comprobante. */}
                   <div className="w-48 border-b border-slate-400 mb-1"></div>
-                  {!isVentas && (
-                    <button
-                      type="button"
-                      onClick={() => setShowPanoleroPicker(true)}
-                      className="print:hidden text-[10px] text-sky-600 hover:text-sky-800 underline font-semibold cursor-pointer mb-1"
-                    >
-                      Cambiar firma
-                    </button>
-                  )}
                 </div>
               ) : (
                 <div className="flex flex-col items-center mb-1.5">
@@ -387,24 +404,16 @@ export const SalidaReceiptModal: React.FC<SalidaReceiptModalProps> = ({
                     alt="Firma digital" 
                     className="h-12 max-w-[180px] object-contain"
                   />
+                  {/* Firma cerrada: no se puede modificar desde el comprobante. */}
                   <div className="w-48 border-b border-slate-400 mb-1"></div>
-                  {!isVentas && (
-                    <button
-                      type="button"
-                      onClick={() => setIsSigning(true)}
-                      className="print:hidden text-[10px] text-sky-600 hover:text-sky-800 underline font-semibold cursor-pointer mb-1"
-                    >
-                      Volver a firmar
-                    </button>
-                  )}
                 </div>
               ) : (
                 <div className="flex flex-col items-center mb-1.5">
                   <button
                     type="button"
-                    onClick={() => setIsSigning(true)}
+                    onClick={() => setShowRetiraPicker(true)}
                     className="print:hidden mb-2 px-3.5 py-1.5 rounded-xl bg-[#006bb0] hover:bg-[#005590] text-white text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer active:scale-95"
-                    title="Habilitar firma digital para este comprobante"
+                    title="Agregar firma del empleado que retira para este comprobante"
                   >
                     <PenLine className="w-3.5 h-3.5" />
                     <span>Firmar</span>
@@ -469,7 +478,7 @@ export const SalidaReceiptModal: React.FC<SalidaReceiptModalProps> = ({
             {!currentSalidaGroup.firmaDigital && (
               <button
                 type="button"
-                onClick={() => setIsSigning(true)}
+                onClick={() => setShowRetiraPicker(true)}
                 className="px-3.5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-black transition-all flex items-center gap-1.5 shadow-xs cursor-pointer active:scale-95"
                 title="Firmar comprobante de salida digitalmente"
               >
@@ -553,6 +562,22 @@ export const SalidaReceiptModal: React.FC<SalidaReceiptModalProps> = ({
           }}
           onDelete={deleteSavedSignature}
           onClose={() => setShowPanoleroPicker(false)}
+        />
+      )}
+
+      {/* Saved Signatures Picker - Empleado que Retira */}
+      {showRetiraPicker && (
+        <SavedSignaturePicker
+          ownerName={currentSalidaGroup.retira}
+          savedSignatures={savedSignatures}
+          accentColor="#006bb0"
+          onPick={handlePickRetiraSignature}
+          onCreateNew={() => {
+            setShowRetiraPicker(false);
+            setIsSigning(true);
+          }}
+          onDelete={deleteSavedSignature}
+          onClose={() => setShowRetiraPicker(false)}
         />
       )}
 

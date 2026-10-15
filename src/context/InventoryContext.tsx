@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import * as XLSX from 'xlsx';
 import confetti from 'canvas-confetti';
 import { 
@@ -12,6 +12,7 @@ import {
   UserAccount, 
   UserRole,
   ItemCategory,
+  SalidaStockOrigen,
   BackupHistoryEntry,
   SavedSignature
 } from '../types';
@@ -23,8 +24,11 @@ import {
   INITIAL_USERS 
 } from '../data/initialData';
 import { replaceYazWithYas, sanitizeYazObject } from '../utils/sanitizeUtils';
-import { createMovement, createMovementsBulk, clearSupabaseAll, deleteInventoryItem, getInventory, saveInventoryItem, getGlobalUsers, saveGlobalUser, deleteGlobalUser, getGlobalSignatures, saveGlobalSignature, deleteGlobalSignature, MovementInput } from '../lib/supabase';
+import { normalizeCodigo } from '../utils/codeUtils';
+import { isValidMovementDate } from '../utils/dateUtils';
+import { createMovement, createMovementsBulk, clearSupabaseAll, deleteInventoryItem, getInventory, saveInventoryItem, getGlobalUsers, saveGlobalUser, deleteGlobalUser, getSavedSignaturesCloud, saveSavedSignatureCloud, deleteSavedSignatureCloud, deleteMovimientosByIds, MovementInput, getMovimientos, type MovimientoRow } from '../lib/supabase';
 import { mergeSameProductPairs } from '../utils/productMerge';
+import { mergeRemoteMovements, cloudIdsForSalida, cloudIdsForSalidaGroup, cloudIdsForIngreso, cloudIdsForDevolucion, esDevolucionDev } from '../utils/movimientosSync';
 
 export type MainNavSection = ItemCategory | 'salidas_log' | 'ingresos_log' | 'gerencia_dashboard';
 
@@ -67,6 +71,7 @@ interface InventoryContextType {
     items: {
       codigo: string;
       cantidad: number;
+      origenStock?: SalidaStockOrigen;
     }[];
     retira: string;
     esRemitoInterno: boolean;
@@ -86,6 +91,8 @@ interface InventoryContextType {
   deleteSavedSignature: (id: string) => void;
   deleteSalida: (salidaId: string, restoreStock?: boolean) => { success: boolean; message: string };
   cleanDuplicateSalidas: () => { removedGroups: number; removedSalidas: number; message: string };
+  /** Borra TODO el historial de salidas (incluidos los ítems devueltos) en pantalla y en la nube. */
+  clearSalidasHistory: () => Promise<{ success: boolean; message: string }>;
   
   // Devoluciones
   registerDevolucionGroup: (data: {
@@ -93,6 +100,7 @@ interface InventoryContextType {
       codigo: string;
       cantidad: number;
       motivo?: string;
+      origenStock?: SalidaStockOrigen;
     }[];
     empleadoDevuelve: string;
     motivo?: string;
@@ -104,6 +112,8 @@ interface InventoryContextType {
   };
   deleteDevolucionGroup: (groupId: string, subtractStock?: boolean) => { success: boolean; message: string };
   deleteDevolucionItem: (groupId: string, codigo: string, subtractStock?: boolean) => { success: boolean; message: string };
+  /** Borra TODO el historial de devoluciones en pantalla y en la nube. */
+  clearDevolucionesHistory: () => Promise<{ success: boolean; message: string }>;
   updateDevolucionGroupSignature: (groupId: string, firmaDigital: string, firmadoPor?: string) => void;
   updateDevolucionGroupPanoleroSignature: (groupId: string, firmaPanolero: string, firmadoPor?: string) => void;
   getNextDevolucionNumber: () => number;
@@ -117,8 +127,11 @@ interface InventoryContextType {
     ubicacion?: string;
     categoria?: ItemCategory;
     precioUnitario?: number;
+    origenStock?: SalidaStockOrigen;
   }) => { success: boolean; message: string; ingreso?: IngresoRecord; newStock?: number };
   deleteIngreso: (ingresoId: string, subtractStock?: boolean) => { success: boolean; message: string };
+  /** Borra TODO el historial de ingresos en pantalla y en la nube. */
+  clearIngresosHistory: () => Promise<{ success: boolean; message: string }>;
 
   // Excel Migration / Import & Export
   // Se importan por LOTES: cada lote es una hoja del archivo con su categoría de destino.
@@ -287,26 +300,30 @@ const deduplicateSalidasList = (records: SalidaRecord[]): SalidaRecord[] => {
   return uniqueRecords;
 };
 
+// Cuántas unidades hay disponibles de un producto según el stock elegido.
+const origenDisponible = (item: InventoryItem | undefined, origen: SalidaStockOrigen | undefined): number =>
+  origen === 'servicio' ? (item?.paraServicio ?? 0) : (item?.stock ?? 0);
+
 export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [items, setItems] = useState<InventoryItem[]>([]);
 
   const [salidas, setSalidas] = useState<SalidaRecord[]>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEYS.SALIDAS);
-      if (saved) return deduplicateSalidasList(sanitizeYazObject(JSON.parse(saved)));
-      return deduplicateSalidasList(sanitizeYazObject(INITIAL_SALIDAS));
+      const list = saved ? JSON.parse(saved) : INITIAL_SALIDAS;
+      return deduplicateSalidasList(sanitizeYazObject(list)).filter(s => isValidMovementDate(s.fechaSalida));
     } catch {
-      return deduplicateSalidasList(sanitizeYazObject(INITIAL_SALIDAS));
+      return deduplicateSalidasList(sanitizeYazObject(INITIAL_SALIDAS)).filter(s => isValidMovementDate(s.fechaSalida));
     }
   });
 
   const [salidaGroups, setSalidaGroups] = useState<SalidaGroupRecord[]>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEYS.SALIDA_GROUPS);
-      if (saved) return deduplicateSalidaGroupsList(sanitizeYazObject(JSON.parse(saved)));
-      return deduplicateSalidaGroupsList(sanitizeYazObject(INITIAL_SALIDA_GROUPS));
+      const list = saved ? JSON.parse(saved) : INITIAL_SALIDA_GROUPS;
+      return deduplicateSalidaGroupsList(sanitizeYazObject(list)).filter(g => isValidMovementDate(g.fechaSalida));
     } catch {
-      return deduplicateSalidaGroupsList(sanitizeYazObject(INITIAL_SALIDA_GROUPS));
+      return deduplicateSalidaGroupsList(sanitizeYazObject(INITIAL_SALIDA_GROUPS)).filter(g => isValidMovementDate(g.fechaSalida));
     }
   });
 
@@ -409,24 +426,16 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   // Supabase is the source of truth for the inventory. Test data and browser
   // storage are deliberately not used as a fallback.
+  const [inventoryReady, setInventoryReady] = useState(false);
+  const movimientosSyncedRef = useRef(false);
+
   useEffect(() => {
     let active = true;
     getInventory()
-      .then(data => { if (active) setItems(data); })
+      .then(data => { if (active) { setItems(data); setInventoryReady(true); } })
       .catch(error => console.error('No se pudo cargar el inventario de Supabase:', error));
     return () => { active = false; };
   }, []);
-
-  // Mantiene en Supabase las firmas locales, incluidas las creadas sin conexión.
-  // El upsert hace que volver a sincronizar una firma ya compartida sea seguro.
-  useEffect(() => {
-    for (const signature of savedSignatures) {
-      void saveGlobalSignature(signature).catch(error =>
-        console.error('No se pudo sincronizar la firma a Supabase:', error)
-      );
-    }
-  }, [savedSignatures]);
-
   // Global user accounts: the shared `usuarios` table is the source of truth.
   // Local seeds/config are merged on top so existing per-browser accounts survive,
   // and any account only present locally is pushed up to the shared table.
@@ -467,30 +476,87 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       .catch(error => console.error('No se pudieron cargar los usuarios globales de Supabase:', error));
     return () => { active = false; };
   }, []);
+  // Los movimientos (salidas, ingresos, devoluciones) se guardan en Supabase y se
+  // comparten entre dispositivos. Acá se leen y se fusionan con el historial local.
+  const latestStateRef = useRef({ items, salidas, salidaGroups, ingresos, devolucionGroups });
+  latestStateRef.current = { items, salidas, salidaGroups, ingresos, devolucionGroups };
 
-  // Firmas guardadas: la tabla compartida `firmas` es la fuente de verdad.
-  // Se mezclan las locales (por si hay firmas creadas sin conexión) con las globales.
+  useEffect(() => {
+    if (!inventoryReady || movimientosSyncedRef.current) return;
+    movimientosSyncedRef.current = true;
+
+    const syncMovimientos = async () => {
+      try {
+        const rows = await getMovimientos();
+        if (!rows || rows.length === 0) return;
+        const current = latestStateRef.current;
+        const merged = mergeRemoteMovements(rows, current.items, {
+          salidas: current.salidas,
+          salidaGroups: current.salidaGroups,
+          ingresos: current.ingresos,
+          devolucionGroups: current.devolucionGroups
+        });
+        if (merged.salidas.length > current.salidas.length) setSalidas(merged.salidas);
+        if (merged.salidaGroups.length > current.salidaGroups.length) setSalidaGroups(merged.salidaGroups);
+        if (merged.ingresos.length > current.ingresos.length) setIngresos(merged.ingresos);
+        if (merged.devolucionGroups.length > current.devolucionGroups.length) setDevolucionGroups(merged.devolucionGroups);
+      } catch (error) {
+        console.error('No se pudieron sincronizar los movimientos de Supabase:', error);
+      }
+    };
+
+    void syncMovimientos();
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void syncMovimientos();
+    }, 60000);
+    const onFocus = () => void syncMovimientos();
+    window.addEventListener('focus', onFocus);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [inventoryReady]);
+
+  // Firmas guardadas: la tabla `firmas` es la fuente compartida entre todas las
+  // computadoras. Al montar se mergean con las locales: las que todavía no están
+  // en la nube se suben, y las que otro equipo borró se dan de baja acá también.
   useEffect(() => {
     let active = true;
-    getGlobalSignatures()
-      .then(globalSignatures => {
-        if (!active) return;
+    getSavedSignaturesCloud()
+      .then(cloudSignatures => {
+        // null = nube no disponible (migración pendiente o sin conexión):
+        // en ese caso seguimos solo con las firmas locales.
+        if (!active || !cloudSignatures) return;
+
+        const nube: SavedSignature[] = cloudSignatures.map(s => ({ ...s, sincronizada: true }));
+        const idsNube = new Set(nube.map(s => s.id));
+        const urlsNube = new Set(nube.map(s => s.dataUrl));
+
+        // Firmas creadas en este equipo que todavía no se subieron. Las que
+        // están marcadas como sincronizadas pero ya no están en la nube fueron
+        // borradas desde otro equipo: se eliminan también en este.
+        const pendientes = savedSignatures.filter(s =>
+          !idsNube.has(s.id) && !urlsNube.has(s.dataUrl) && !s.sincronizada
+        );
+
         setSavedSignatures(prev => {
-          const merged = new Map<string, SavedSignature>();
-          for (const s of prev) merged.set(s.dataUrl, s);
-          for (const s of globalSignatures) {
-            if (!merged.has(s.dataUrl)) merged.set(s.dataUrl, s);
-          }
-          const all = Array.from(merged.values());
-          try {
-            localStorage.setItem(STORAGE_KEYS.SAVED_SIGNATURES, JSON.stringify(all));
-          } catch (e) {
-            console.error('Failed to save savedSignatures', e);
-          }
-          return all;
+          const fusion = [...nube, ...pendientes];
+          const ids = new Set(fusion.map(s => s.id));
+          const urls = new Set(fusion.map(s => s.dataUrl));
+          // Conserva firmas nuevas guardadas mientras se sincronizaba.
+          const nuevas = prev.filter(s => !ids.has(s.id) && !urls.has(s.dataUrl));
+          return [...fusion, ...nuevas];
+        });
+
+        pendientes.forEach(signature => {
+          void saveSavedSignatureCloud(signature)
+            .then(() => setSavedSignatures(prev =>
+              prev.map(s => s.id === signature.id ? { ...s, sincronizada: true } : s)
+            ))
+            .catch(error => console.warn('No se pudo subir la firma a Supabase:', error));
         });
       })
-      .catch(error => console.error('No se pudieron cargar las firmas globales de Supabase:', error));
+      .catch(error => console.warn('No se pudieron cargar las firmas de Supabase:', error));
     return () => { active = false; };
   }, []);
 
@@ -774,6 +840,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     const now = new Date();
     const formattedDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const formattedTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
     const salidaRecord: SalidaRecord = {
       id: `sal-${Date.now()}`,
@@ -781,6 +848,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       codigo: item.codigo,
       descripcion: replaceYazWithYas(item.descripcion),
       fechaSalida: formattedDate,
+      horaSalida: formattedTime,
       cliente: replaceYazWithYas(cliente.trim() || 'Verdu y Cía (General)'),
       retira: replaceYazWithYas(retira.trim() || currentUser?.nombre || ''),
       cantidad,
@@ -831,7 +899,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     nroRemito = '',
     notas = ''
   }: {
-    items: { codigo: string; cantidad: number }[];
+    items: { codigo: string; cantidad: number; origenStock?: SalidaStockOrigen }[];
     retira: string;
     esRemitoInterno: boolean;
     cliente?: string;
@@ -848,22 +916,24 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       ? (cliente.trim() || 'Taller Interno / Flota Propia') 
       : (cliente.trim() || 'Cliente Externo'));
 
-    // Consolidate requested items by canonical product code so no product appears twice in the same dispatch
-    const aggregatedMap = new Map<string, number>();
+    // Consolidate requested items by canonical product code + stock origin
+    // so the same product can be dispatched from normal and P/SERVICIO stock
+    // in the same salida without mixing amounts.
+    const aggregatedMap = new Map<string, { codigo: string; cantidad: number; origenStock: SalidaStockOrigen }>();
     for (const req of requestedItems) {
       const clean = req.codigo.trim();
       if (clean && req.cantidad > 0) {
         const found = findItemByCode(clean);
         const canonCode = found ? found.codigo : clean;
-        const currentQty = aggregatedMap.get(canonCode) || 0;
-        aggregatedMap.set(canonCode, currentQty + req.cantidad);
+        const origen: SalidaStockOrigen = req.origenStock === 'servicio' ? 'servicio' : 'normal';
+        const key = `${canonCode}\u0000${origen}`;
+        const current = aggregatedMap.get(key) || { codigo: canonCode, cantidad: 0, origenStock: origen };
+        current.cantidad += req.cantidad;
+        aggregatedMap.set(key, current);
       }
     }
 
-    const consolidatedRequestedItems = Array.from(aggregatedMap.entries()).map(([codigo, cantidad]) => ({
-      codigo,
-      cantidad
-    }));
+    const consolidatedRequestedItems = Array.from(aggregatedMap.values());
 
     // Validation pass
     for (const req of consolidatedRequestedItems) {
@@ -876,11 +946,14 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         playBeep('error');
         return { success: false, message: `No se encontró el producto con código "${req.codigo}" en pañol.` };
       }
-      if (found.stock < req.cantidad) {
+      const disponible = origenDisponible(found, req.origenStock);
+      if (disponible < req.cantidad) {
+        const origenLabel = req.origenStock === 'servicio' ? 'P/SERVICIO' : 'normal';
+        const otroDisponible = origenDisponible(found, req.origenStock === 'servicio' ? 'normal' : 'servicio');
         playBeep('warning');
         return { 
           success: false, 
-          message: `Stock insuficiente para "${found.codigo} - ${found.descripcion}". En pañol: ${found.stock} u. Solicitado: ${req.cantidad} u.` 
+          message: `Stock insuficiente para "${found.codigo} - ${found.descripcion}" en stock ${origenLabel}: ${disponible} u. Solicitado: ${req.cantidad} u.${otroDisponible > 0 ? ` Disponible en el otro stock: ${otroDisponible} u.` : ''}`
         };
       }
     }
@@ -896,22 +969,26 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const dispatchedEntries: SalidaItemEntry[] = [];
     const newSalidaRecords: SalidaRecord[] = [];
 
-    // Deduct stock for all items deterministically
+    // Deduct stock for all items deterministically (normal or P/SERVICIO per line)
     setItems(prevItems => {
       return prevItems.map(item => {
-        const match = consolidatedRequestedItems.find(req => 
+        const matches = consolidatedRequestedItems.filter(req =>
           item.codigo.toLowerCase() === req.codigo.trim().toLowerCase() ||
           (item.codigoBarras && item.codigoBarras.toLowerCase() === req.codigo.trim().toLowerCase())
         );
-        if (match) {
-          const newStock = Math.max(0, item.stock - match.cantidad);
-          return {
-            ...item,
-            stock: newStock,
-            precioTotal: newStock * item.precio
-          };
+        if (matches.length === 0) return item;
+
+        const updated = { ...item };
+        for (const match of matches) {
+          if (match.origenStock === 'servicio') {
+            updated.paraServicio = Math.max(0, (updated.paraServicio ?? 0) - match.cantidad);
+            if (updated.paraServicio <= 0) delete updated.paraServicio;
+          } else {
+            updated.stock = Math.max(0, updated.stock - match.cantidad);
+          }
         }
-        return item;
+        updated.precioTotal = (updated.stock || 0) * (updated.precio || 0);
+        return updated;
       });
     });
 
@@ -919,7 +996,12 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     for (const req of consolidatedRequestedItems) {
       const item = findItemByCode(req.codigo);
       if (item) {
-        const newStock = Math.max(0, item.stock - req.cantidad);
+        const origen = req.origenStock;
+        const dispOrigen = origenDisponible(item, origen);
+        const remOrigen = Math.max(0, dispOrigen - req.cantidad);
+        const newStock = origen === 'servicio' ? item.stock : remOrigen;
+        const newParaServicio = origen === 'servicio' ? remOrigen : (item.paraServicio ?? 0);
+
         const entry: SalidaItemEntry = {
           id: `item-entry-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
           codigo: item.codigo,
@@ -927,18 +1009,20 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           proveedor: item.proveedor,
           ubicacion: item.ubicacion,
           cantidad: req.cantidad,
-          stockDisponible: item.stock,
-          stockRemanente: newStock,
+          stockDisponible: dispOrigen,
+          stockRemanente: remOrigen,
           precioUnitario: item.precio,
           precioTotal: req.cantidad * item.precio,
-          categoria: item.categoria
+          categoria: item.categoria,
+          origenStock: origen
         };
         dispatchedEntries.push(entry);
 
         void saveInventoryItem({
           ...item,
           stock: newStock,
-          precioTotal: newStock * item.precio
+          paraServicio: newParaServicio || undefined,
+          precioTotal: newStock * (item.precio || 0)
         }).catch(error => console.error('No se pudo actualizar el stock en Supabase:', error));
         void createMovement({
           tipo: 'Salida', codigo: item.codigo, cantidad: req.cantidad,
@@ -960,6 +1044,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           cantidad: req.cantidad,
           precioUnitario: item.precio,
           categoria: item.categoria,
+          origenStock: origen,
           esTaller: esRemitoInterno,
           esRemitoInterno,
           notas,
@@ -1010,6 +1095,31 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     };
   };
 
+  // ---------------------------------------------------------------------------
+  // Borrado del historial en la nube.
+  // Al borrar un registro local también hay que borrar su fila en Supabase,
+  // porque el historial se reconstruye desde `movimientos` (mergeRemoteMovements)
+  // al iniciar la app: si la fila queda en la nube, el registro "reaparece".
+  // ---------------------------------------------------------------------------
+  const borrarMovimientosNube = (ids: string[]) => {
+    if (!ids || ids.length === 0) return;
+    void deleteMovimientosByIds(ids).catch(error =>
+      console.warn('No se pudo borrar el movimiento en Supabase:', error)
+    );
+  };
+
+  const borrarMovimientoNube = async (
+    tipo: string,
+    seleccionar: (rows: MovimientoRow[]) => string[]
+  ) => {
+    try {
+      const rows = await getMovimientos(tipo);
+      borrarMovimientosNube(seleccionar(rows));
+    } catch (error) {
+      console.warn('No se pudieron leer los movimientos de Supabase:', error);
+    }
+  };
+
   const deleteSalidaGroup = (groupId: string, restoreStock: boolean = true) => {
     const targetGroup = salidaGroups.find(g => g.id === groupId);
     if (!targetGroup) return { success: false, message: 'Salida no encontrada.' };
@@ -1024,12 +1134,21 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           );
           if (idx !== -1) {
             const current = updated[idx];
-            const restoredStock = current.stock + itemEntry.cantidad;
-            const updatedItem = {
-              ...current,
-              stock: restoredStock,
-              precioTotal: restoredStock * current.precio
-            };
+            const updatedItem = (() => {
+              if (itemEntry.origenStock === 'servicio') {
+                return {
+                  ...current,
+                  paraServicio: (current.paraServicio ?? 0) + itemEntry.cantidad,
+                  precioTotal: (current.stock || 0) * (current.precio || 0)
+                };
+              }
+              const restoredStock = current.stock + itemEntry.cantidad;
+              return {
+                ...current,
+                stock: restoredStock,
+                precioTotal: restoredStock * current.precio
+              };
+            })();
             updated[idx] = updatedItem;
             void saveInventoryItem(updatedItem).catch(error => console.error('No se pudo actualizar el stock en Supabase:', error));
           }
@@ -1040,6 +1159,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     setSalidaGroups(prev => prev.filter(g => g.id !== groupId));
     setSalidas(prev => prev.filter(s => s.salidaGroupId !== groupId));
+    borrarMovimientoNube('Salida', rows => cloudIdsForSalidaGroup(rows, targetGroup));
     return { success: true, message: `Salida "${targetGroup.numeroSalidaFormatted}" eliminada correctamente.` };
   };
 
@@ -1047,6 +1167,8 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const firmaFecha = new Date().toLocaleString('es-AR');
     setSalidaGroups(prev => prev.map(g => {
       if (g.id === groupId) {
+        // Si el comprobante ya está firmado, la firma no se puede modificar.
+        if (g.firmaDigital) return g;
         return {
           ...g,
           firmaDigital,
@@ -1062,6 +1184,8 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const firmaPanoleroFecha = new Date().toLocaleString('es-AR');
     setSalidaGroups(prev => prev.map(g => {
       if (g.id === groupId) {
+        // Si el comprobante ya está firmado, la firma no se puede modificar.
+        if (g.firmaPanolero) return g;
         return {
           ...g,
           firmaPanolero,
@@ -1085,7 +1209,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     motivo = 'Devolución pañol',
     notas = ''
   }: {
-    items: { codigo: string; cantidad: number; motivo?: string }[];
+    items: { codigo: string; cantidad: number; motivo?: string; origenStock?: SalidaStockOrigen }[];
     empleadoDevuelve: string;
     motivo?: string;
     notas?: string;
@@ -1101,26 +1225,26 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       return { success: false, message: 'Debe ingresar el empleado que devuelve el material.' };
     }
 
-    // Consolidate requested items by canonical product code
-    const aggregatedMap = new Map<string, { cantidad: number; motivo?: string }>();
+    // Consolidate requested items by canonical product code + stock origin
+    const aggregatedMap = new Map<string, { codigo: string; cantidad: number; motivo?: string; origenStock: SalidaStockOrigen }>();
     for (const req of requestedItems) {
       const clean = req.codigo.trim();
       if (clean && req.cantidad > 0) {
         const found = findItemByCode(clean);
         const canonCode = found ? found.codigo : clean;
-        const current = aggregatedMap.get(canonCode) || { cantidad: 0, motivo: req.motivo || motivo };
-        aggregatedMap.set(canonCode, {
+        const origen: SalidaStockOrigen = req.origenStock === 'servicio' ? 'servicio' : 'normal';
+        const key = `${canonCode}\u0000${origen}`;
+        const current = aggregatedMap.get(key) || { codigo: canonCode, cantidad: 0, motivo: req.motivo || motivo, origenStock: origen };
+        aggregatedMap.set(key, {
           cantidad: current.cantidad + req.cantidad,
-          motivo: req.motivo || current.motivo
+          motivo: req.motivo || current.motivo,
+          codigo: canonCode,
+          origenStock: origen
         });
       }
     }
 
-    const consolidatedItems = Array.from(aggregatedMap.entries()).map(([codigo, val]) => ({
-      codigo,
-      cantidad: val.cantidad,
-      motivo: val.motivo
-    }));
+    const consolidatedItems = Array.from(aggregatedMap.values());
 
     if (consolidatedItems.length === 0) {
       playBeep('error');
@@ -1138,26 +1262,31 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     let totalUnidades = 0;
     let totalValor = 0;
 
-    // Increase stock for all returned items in inventory
+    // Increase stock for all returned items (normal or P/SERVICIO per line)
     setItems(prevItems => {
       return prevItems.map(item => {
-        const match = consolidatedItems.find(req => 
+        const matches = consolidatedItems.filter(req =>
           item.codigo.toLowerCase() === req.codigo.trim().toLowerCase() ||
           (item.codigoBarras && item.codigoBarras.toLowerCase() === req.codigo.trim().toLowerCase())
         );
-        if (match) {
-          const newStock = (item.stock || 0) + match.cantidad;
-          const updatedItem = {
-            ...item,
-            stock: newStock,
-            precioTotal: newStock * (item.precio || 0),
-            fechaModificacion: formattedDate,
-            usuarioModificacion: currentUser.nombre
-          };
-          void saveInventoryItem(updatedItem).catch(error => console.error('No se pudo actualizar el stock en Supabase:', error));
-          return updatedItem;
+        if (matches.length === 0) return item;
+
+        const updated = { ...item };
+        for (const match of matches) {
+          if (match.origenStock === 'servicio') {
+            updated.paraServicio = (updated.paraServicio ?? 0) + match.cantidad;
+          } else {
+            updated.stock = (updated.stock || 0) + match.cantidad;
+          }
         }
-        return item;
+        const updatedItem = {
+          ...updated,
+          precioTotal: (updated.stock || 0) * (item.precio || 0),
+          fechaModificacion: formattedDate,
+          usuarioModificacion: currentUser.nombre
+        };
+        void saveInventoryItem(updatedItem).catch(error => console.error('No se pudo actualizar el stock en Supabase:', error));
+        return updatedItem;
       });
     });
 
@@ -1172,7 +1301,8 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         cantidad: req.cantidad,
         precioUnitario: precioUnit,
         ubicacion: item?.ubicacion || 'PAÑOL',
-        motivo: req.motivo || motivo
+        motivo: req.motivo || motivo,
+        origenStock: req.origenStock
       });
     }
 
@@ -1192,6 +1322,18 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     };
 
     setDevolucionGroups(prev => [newGroup, ...prev]);
+
+    for (const entry of newGroup.items) {
+      void createMovement({
+        tipo: 'Devolucion',
+        codigo: entry.codigo,
+        cantidad: entry.cantidad,
+        comprobante: `DEV-${newGroup.numeroDevolucion}`,
+        clienteProveedor: newGroup.empleadoDevuelve,
+        responsable: newGroup.usuarioRegistro
+      }).catch(error => console.error('No se pudo registrar la devolución en Supabase:', error));
+    }
+
     playBeep('success');
 
     try {
@@ -1224,12 +1366,22 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           );
           if (idx !== -1) {
             const current = updated[idx];
-            const newStock = Math.max(0, current.stock - itemEntry.cantidad);
-            const updatedItem = {
-              ...current,
-              stock: newStock,
-              precioTotal: newStock * current.precio
-            };
+            let updatedItem;
+            if (itemEntry.origenStock === 'servicio') {
+              const newParaServicio = Math.max(0, (current.paraServicio ?? 0) - itemEntry.cantidad);
+              updatedItem = {
+                ...current,
+                paraServicio: newParaServicio || undefined,
+                precioTotal: (current.stock || 0) * (current.precio || 0)
+              };
+            } else {
+              const newStock = Math.max(0, current.stock - itemEntry.cantidad);
+              updatedItem = {
+                ...current,
+                stock: newStock,
+                precioTotal: newStock * (current.precio || 0)
+              };
+            }
             updated[idx] = updatedItem;
             void saveInventoryItem(updatedItem).catch(error => console.error('No se pudo actualizar el stock en Supabase:', error));
           }
@@ -1239,6 +1391,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
 
     setDevolucionGroups(prev => prev.filter(g => g.id !== groupId));
+    borrarMovimientoNube('Devolucion', rows => cloudIdsForDevolucion(rows, targetGroup));
     return { success: true, message: `Devolución "${targetGroup.numeroDevolucionFormatted}" eliminada.` };
   };
 
@@ -1261,12 +1414,22 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           );
           if (idx !== -1) {
             const current = updated[idx];
-            const newStock = Math.max(0, current.stock - itemEntry.cantidad);
-            const updatedItem = {
-              ...current,
-              stock: newStock,
-              precioTotal: newStock * current.precio
-            };
+            let updatedItem;
+            if (itemEntry.origenStock === 'servicio') {
+              const newParaServicio = Math.max(0, (current.paraServicio ?? 0) - itemEntry.cantidad);
+              updatedItem = {
+                ...current,
+                paraServicio: newParaServicio || undefined,
+                precioTotal: (current.stock || 0) * (current.precio || 0)
+              };
+            } else {
+              const newStock = Math.max(0, current.stock - itemEntry.cantidad);
+              updatedItem = {
+                ...current,
+                stock: newStock,
+                precioTotal: newStock * (current.precio || 0)
+              };
+            }
             updated[idx] = updatedItem;
             changed = true;
             void saveInventoryItem(updatedItem).catch(error => console.error('No se pudo actualizar el stock en Supabase:', error));
@@ -1296,6 +1459,8 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const firmaFecha = new Date().toLocaleString('es-AR');
     setDevolucionGroups(prev => prev.map(g => {
       if (g.id === groupId) {
+        // Si el comprobante ya está firmado, la firma no se puede modificar.
+        if (g.firmaDigital) return g;
         return {
           ...g,
           firmaDigital,
@@ -1311,6 +1476,8 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const firmaPanoleroFecha = new Date().toLocaleString('es-AR');
     setDevolucionGroups(prev => prev.map(g => {
       if (g.id === groupId) {
+        // Si el comprobante ya está firmado, la firma no se puede modificar.
+        if (g.firmaPanolero) return g;
         return {
           ...g,
           firmaPanolero,
@@ -1333,13 +1500,19 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       fechaCreacion: new Date().toLocaleString('es-AR')
     };
     setSavedSignatures(prev => [newSignature, ...prev]);
+    // Se sube a la nube para que aparezca en todos los perfiles y equipos.
+    void saveSavedSignatureCloud(newSignature)
+      .then(() => setSavedSignatures(prev =>
+        prev.map(s => s.id === newSignature.id ? { ...s, sincronizada: true } : s)
+      ))
+      .catch(error => console.warn('No se pudo sincronizar la firma con Supabase:', error));
   };
 
   const deleteSavedSignature = (id: string) => {
     setSavedSignatures(prev => prev.filter(s => s.id !== id));
-    void deleteGlobalSignature(id).catch(error =>
-      console.error('No se pudo eliminar la firma compartida de Supabase:', error)
-    );
+    // Se borra también de la nube para que desaparezca en todos los equipos.
+    void deleteSavedSignatureCloud(id)
+      .catch(error => console.warn('No se pudo borrar la firma de Supabase:', error));
   };
 
   const deleteSalida = (salidaId: string, restoreStock: boolean = true) => {
@@ -1355,12 +1528,21 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         if (idx !== -1) {
           const updated = [...prevItems];
           const current = updated[idx];
-          const restoredStock = current.stock + target.cantidad;
-          const updatedItem = {
-            ...current,
-            stock: restoredStock,
-            precioTotal: restoredStock * current.precio
-          };
+          const updatedItem = (() => {
+            if (target.origenStock === 'servicio') {
+              return {
+                ...current,
+                paraServicio: (current.paraServicio ?? 0) + target.cantidad,
+                precioTotal: (current.stock || 0) * (current.precio || 0)
+              };
+            }
+            const restoredStock = current.stock + target.cantidad;
+            return {
+              ...current,
+              stock: restoredStock,
+              precioTotal: restoredStock * current.precio
+            };
+          })();
           updated[idx] = updatedItem;
           void saveInventoryItem(updatedItem).catch(error => console.error('No se pudo actualizar el stock en Supabase:', error));
           return updated;
@@ -1388,6 +1570,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       });
     }
 
+    borrarMovimientoNube(target.esDevuelto ? 'Devolucion' : 'Salida', rows => cloudIdsForSalida(rows, target));
     return { success: true, message: `Registro de "${target.codigo}" eliminado del historial.` };
   };
 
@@ -1419,7 +1602,8 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     factura,
     ubicacion = 'A',
     categoria = 'panol',
-    precioUnitario
+    precioUnitario,
+    origenStock
   }: {
     codigo: string;
     proveedor: string;
@@ -1429,33 +1613,47 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     ubicacion?: string;
     categoria?: ItemCategory;
     precioUnitario?: number;
+    origenStock?: SalidaStockOrigen;
   }) => {
     if (!codigo || cantidad <= 0) {
       playBeep('error');
       return { success: false, message: 'Código y cantidad válida son requeridos.' };
     }
 
+    const origen: SalidaStockOrigen = origenStock === 'servicio' ? 'servicio' : 'normal';
     const existing = findItemByCode(codigo);
     const now = new Date();
     const formattedDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const formattedTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
     let updatedStock = cantidad;
 
     if (existing) {
-      updatedStock = existing.stock + cantidad;
-      updateItem(existing.id, {
-        stock: updatedStock,
-        precio: precioUnitario !== undefined ? precioUnitario : existing.precio,
-        precioTotal: updatedStock * (precioUnitario !== undefined ? precioUnitario : existing.precio),
-        ubicacion: ubicacion || existing.ubicacion,
-        proveedor: proveedor || existing.proveedor
-      });
+      if (origen === 'servicio') {
+        updatedStock = (existing.paraServicio ?? 0) + cantidad;
+        updateItem(existing.id, {
+          paraServicio: updatedStock || undefined,
+          precio: precioUnitario !== undefined ? precioUnitario : existing.precio,
+          ubicacion: ubicacion || existing.ubicacion,
+          proveedor: proveedor || existing.proveedor
+        });
+      } else {
+        updatedStock = existing.stock + cantidad;
+        updateItem(existing.id, {
+          stock: updatedStock,
+          precio: precioUnitario !== undefined ? precioUnitario : existing.precio,
+          precioTotal: updatedStock * (precioUnitario !== undefined ? precioUnitario : existing.precio),
+          ubicacion: ubicacion || existing.ubicacion,
+          proveedor: proveedor || existing.proveedor
+        });
+      }
     } else {
       const p = precioUnitario || 0;
       addItem({
         codigo: codigo.trim(),
         proveedor: proveedor.trim() || 'SULLAIR',
         descripcion: descripcion.trim() || 'Nuevo Producto Ingresado',
-        stock: cantidad,
+        stock: origen === 'servicio' ? 0 : cantidad,
+        paraServicio: origen === 'servicio' ? cantidad : undefined,
         stockMinimo: 1,
         ubicacion: ubicacion.trim() || 'A',
         categoria,
@@ -1472,10 +1670,12 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       descripcion: replaceYazWithYas(descripcion.trim() || (existing ? existing.descripcion : 'Producto Ingresado')),
       cantidad,
       fechaIngreso: formattedDate,
+      horaIngreso: formattedTime,
       factura: replaceYazWithYas(factura.trim() || 'S/F'),
       precioUnitario: precioUnitario || (existing ? existing.precio : 0),
       ubicacion: ubicacion || (existing ? existing.ubicacion : 'A'),
       categoria: existing ? existing.categoria : categoria,
+      origenStock: origen,
       usuarioRegistro: replaceYazWithYas(currentUser?.nombre || '')
     };
 
@@ -1508,14 +1708,25 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         if (idx !== -1) {
           const updated = [...prevItems];
           const current = updated[idx];
-          const newStock = Math.max(0, current.stock - target.cantidad);
-          const updatedItem = {
-            ...current,
-            stock: newStock,
-            precioTotal: newStock * (current.precio || 0)
-          };
-          updated[idx] = updatedItem;
-          void saveInventoryItem(updatedItem).catch(error => console.error('No se pudo actualizar el stock en Supabase:', error));
+          if (target.origenStock === 'servicio') {
+            const newParaServicio = Math.max(0, (current.paraServicio ?? 0) - target.cantidad);
+            const updatedItem = {
+              ...current,
+              paraServicio: newParaServicio || undefined,
+              precioTotal: (current.stock || 0) * (current.precio || 0)
+            };
+            updated[idx] = updatedItem;
+            void saveInventoryItem(updatedItem).catch(error => console.error('No se pudo actualizar el stock en Supabase:', error));
+          } else {
+            const newStock = Math.max(0, current.stock - target.cantidad);
+            const updatedItem = {
+              ...current,
+              stock: newStock,
+              precioTotal: newStock * (current.precio || 0)
+            };
+            updated[idx] = updatedItem;
+            void saveInventoryItem(updatedItem).catch(error => console.error('No se pudo actualizar el stock en Supabase:', error));
+          }
           return updated;
         }
         return prevItems;
@@ -1523,7 +1734,57 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
 
     setIngresos(prev => prev.filter(i => i.id !== ingresoId));
+    borrarMovimientoNube('Ingreso', rows => cloudIdsForIngreso(rows, target));
     return { success: true, message: `Ingreso de "${target.codigo}" eliminado del historial.` };
+  };
+
+  /**
+   * "Vaciar historial": borra TODOS los registros de una sección, en pantalla y en
+   * la nube, para que no vuelvan a aparecer al recargar. No modifica el stock: el
+   * movimiento del stock es independiente y revertirlo sobre registros reconstruidos
+   * desde la nube descuadraría las existencias.
+   */
+  const clearSalidasHistory = async (): Promise<{ success: boolean; message: string }> => {
+    try {
+      const salidaRows = await getMovimientos('Salida');
+      const devRows = await getMovimientos('Devolucion');
+      const ids = [
+        ...salidaRows.map(r => r.id_movimiento),
+        // Los ítems "devueltos" de una salida se guardan como Devolucion sin DEV-.
+        ...devRows.filter(r => !esDevolucionDev(r)).map(r => r.id_movimiento)
+      ];
+      await deleteMovimientosByIds(ids);
+    } catch (error) {
+      console.warn('No se pudo vaciar el historial de salidas en Supabase:', error);
+      return { success: false, message: 'No se pudo vaciar el historial en la nube. Revisá la conexión e intentá de nuevo.' };
+    }
+    setSalidas([]);
+    setSalidaGroups([]);
+    return { success: true, message: 'Historial de salidas vaciado. El stock quedó sin cambios.' };
+  };
+
+  const clearIngresosHistory = async (): Promise<{ success: boolean; message: string }> => {
+    try {
+      const rows = await getMovimientos('Ingreso');
+      await deleteMovimientosByIds(rows.map(r => r.id_movimiento));
+    } catch (error) {
+      console.warn('No se pudo vaciar el historial de ingresos en Supabase:', error);
+      return { success: false, message: 'No se pudo vaciar el historial en la nube. Revisá la conexión e intentá de nuevo.' };
+    }
+    setIngresos([]);
+    return { success: true, message: 'Historial de ingresos vaciado. El stock quedó sin cambios.' };
+  };
+
+  const clearDevolucionesHistory = async (): Promise<{ success: boolean; message: string }> => {
+    try {
+      const rows = await getMovimientos('Devolucion');
+      await deleteMovimientosByIds(rows.filter(esDevolucionDev).map(r => r.id_movimiento));
+    } catch (error) {
+      console.warn('No se pudo vaciar el historial de devoluciones en Supabase:', error);
+      return { success: false, message: 'No se pudo vaciar el historial en la nube. Revisá la conexión e intentá de nuevo.' };
+    }
+    setDevolucionGroups([]);
+    return { success: true, message: 'Historial de devoluciones vaciado. El stock quedó sin cambios.' };
   };
 
   // Excel Importer from Array of parsed rows
@@ -1571,7 +1832,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           return; // Skip empty rows
         }
 
-        const codigo = String(rawCode).trim().replace(/^´|^`/, '');
+        const codigo = normalizeCodigo(rawCode);
         const proveedor = String(getVal(row, ['proveedor', 'marca', 'supplier', 'brand', 'fabricante']) || 'SULLAIR').trim();
         const descripcion = String(getVal(row, ['descripcion', 'desc', 'detalle', 'nombre', 'denominacion', 'repuesto', 'concepto']) || '').trim() || codigo;
 
@@ -1654,6 +1915,9 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             notas: existing.notas ?? newItem.notas,
             codigoBarras: existing.codigoBarras ?? newItem.codigoBarras,
             porEncargo: existing.porEncargo ?? newItem.porEncargo,
+            // Si la hoja no trae columna de p/servicio, el valor llega como undefined:
+            // se conserva el stock de servicio ya cargado en lugar de dejarlo en 0.
+            paraServicio: newItem.paraServicio ?? existing.paraServicio,
             precioTotal: newItem.stock * newItem.precio
           });
           updated++;
@@ -1725,9 +1989,9 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     items.forEach(i => itemPorCodigo.set(i.codigo.toLowerCase().trim(), i));
 
     const claveSalida = (r: any) =>
-      `${String(r.codigo).toLowerCase().trim()}|${r.fechaSalida}|${r.cantidad}|${r.nroRemito}|${r.cliente}`;
+      `${normalizeCodigo(r.codigo).toLowerCase()}|${r.fechaSalida}|${r.cantidad}|${r.nroRemito}|${r.cliente}`;
     const claveIngreso = (r: any) =>
-      `${String(r.codigo).toLowerCase().trim()}|${r.fechaIngreso}|${r.cantidad}|${r.factura}`;
+      `${normalizeCodigo(r.codigo).toLowerCase()}|${r.fechaIngreso}|${r.cantidad}|${r.factura}`;
 
     const yaCargadas = new Set<string>();
     salidas.forEach(s => yaCargadas.add(claveSalida({
@@ -1744,7 +2008,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     batches.forEach(batch => {
       batch.rows.forEach((row: any, idx: number) => {
-        const codigo = replaceYazWithYas(String(row.codigo ?? '').trim());
+        const codigo = replaceYazWithYas(normalizeCodigo(row.codigo));
         const cantidad = Math.max(0, Math.trunc(Number(row.cantidad) || 0));
         if (!codigo || cantidad <= 0) return;
 
@@ -2067,72 +2331,36 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return res.success;
   };
 
-  const resetUserPassword = async (
-    username: string,
-    newPassword: string
-  ): Promise<{ success: boolean; message: string }> => {
+  const resetUserPassword = async (username: string, newPassword: string): Promise<{ success: boolean; message: string }> => {
     const cleanUsername = (username || '').trim().toLowerCase();
-    if (!cleanUsername) {
-      return { success: false, message: 'Por favor ingresa tu nombre de usuario.' };
-    }
-    if (!newPassword) {
-      return { success: false, message: 'Por favor ingresa la nueva contraseña.' };
-    }
-    if (newPassword.length < 8) {
-      return { success: false, message: 'La contraseña debe tener al menos 8 caracteres.' };
-    }
-    if (!/[A-Z]/.test(newPassword)) {
-      return { success: false, message: 'La contraseña debe contener al menos una letra mayúscula.' };
-    }
-    if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?~`§±°]/.test(newPassword)) {
-      return { success: false, message: 'La contraseña debe contener al menos un carácter especial (ej: ! @ # $ % * - _).' };
+    if (!cleanUsername) return { success: false, message: 'Por favor ingresa tu nombre de usuario.' };
+    if (newPassword.length < 8 || !/[A-Z]/.test(newPassword) || !/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?~`§±°]/.test(newPassword)) {
+      return { success: false, message: 'La contraseña debe tener al menos 8 caracteres, una mayúscula y un carácter especial.' };
     }
 
-    let user = users.find(u => u.username.toLowerCase() === cleanUsername);
+    let user = users.find(candidate => candidate.username.toLowerCase() === cleanUsername);
+    if (!user) user = (await hasGlobalUsers()).find(candidate => candidate.username.toLowerCase() === cleanUsername);
+    if (!user) return { success: false, message: `El usuario "${cleanUsername}" no está registrado.` };
 
-    if (!user) {
-      const globalUsers = await hasGlobalUsers();
-      const serverUser = globalUsers.find(u => u.username.toLowerCase() === cleanUsername);
-      if (serverUser) {
-        user = serverUser;
-      }
-    }
-
-    if (!user) {
-      return { success: false, message: `El usuario "${cleanUsername}" no está registrado.` };
-    }
-
-    const updatedUser: UserAccount = { ...user, password: newPassword };
-
+    const updatedUser = { ...user, password: newPassword };
     try {
       await saveGlobalUser(updatedUser);
-    } catch (e) {
-      console.error('No se pudo actualizar la contraseña en Supabase:', e);
-      return { success: false, message: 'No se pudo guardar la contraseña en el servidor. Revisa tu conexión e inténtalo nuevamente.' };
+    } catch (error) {
+      console.error('No se pudo actualizar la contraseña en Supabase:', error);
+      return { success: false, message: 'No se pudo guardar la contraseña en el servidor. Revisá la conexión e intentá de nuevo.' };
     }
 
-    setUsers(prev => {
-      const exists = prev.some(u => u.username.toLowerCase() === cleanUsername);
-      const next = exists
-        ? prev.map(u => (u.username.toLowerCase() === cleanUsername ? updatedUser : u))
-        : [...prev, updatedUser];
-      try {
-        localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(next));
-      } catch (e) {
-        console.error('Error storing users in localStorage:', e);
-      }
+    setUsers(previous => {
+      const next = previous.some(candidate => candidate.username.toLowerCase() === cleanUsername)
+        ? previous.map(candidate => candidate.username.toLowerCase() === cleanUsername ? updatedUser : candidate)
+        : [...previous, updatedUser];
+      try { localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(next)); } catch (error) { console.error('Error guardando usuarios:', error); }
       return next;
     });
-
     if (currentUser?.username.toLowerCase() === cleanUsername) {
       setCurrentUser(updatedUser);
-      try {
-        localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(updatedUser));
-      } catch (e) {
-        console.error('Error storing user in localStorage:', e);
-      }
+      try { localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(updatedUser)); } catch (error) { console.error('Error guardando sesión:', error); }
     }
-
     return { success: true, message: `Contraseña de "${cleanUsername}" actualizada correctamente.` };
   };
 
@@ -2392,14 +2620,17 @@ backupHistory,
         updateSalidaGroupPanoleroSignature,
         deleteSalida,
         cleanDuplicateSalidas,
+        clearSalidasHistory,
         registerDevolucionGroup,
         deleteDevolucionGroup,
         deleteDevolucionItem,
+        clearDevolucionesHistory,
         updateDevolucionGroupSignature,
         updateDevolucionGroupPanoleroSignature,
         getNextDevolucionNumber,
         registerIngreso,
         deleteIngreso,
+        clearIngresosHistory,
         importExcelRows,
         importMovimientosRows,
         exportCategoryToExcel,

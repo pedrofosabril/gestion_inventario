@@ -43,6 +43,7 @@ export const DevolucionReceiptModal: React.FC<DevolucionReceiptModalProps> = ({
   const [isSigning, setIsSigning] = useState<boolean>(false);
   const [isSigningPanolero, setIsSigningPanolero] = useState<boolean>(false);
   const [showPanoleroPicker, setShowPanoleroPicker] = useState<boolean>(false);
+  const [showDevuelvePicker, setShowDevuelvePicker] = useState<boolean>(false);
 
   // Keep synced with context
   const currentDevolucionGroup = devolucionGroup
@@ -54,6 +55,7 @@ export const DevolucionReceiptModal: React.FC<DevolucionReceiptModalProps> = ({
       setIsSigning(false);
       setIsSigningPanolero(false);
       setShowPanoleroPicker(false);
+      setShowDevuelvePicker(false);
       setConfirmDelete(false);
     }
   }, [isOpen]);
@@ -88,7 +90,24 @@ export const DevolucionReceiptModal: React.FC<DevolucionReceiptModalProps> = ({
       dataUrl,
       currentDevolucionGroup.empleadoDevuelve
     );
+    saveSignature(dataUrl, currentDevolucionGroup.empleadoDevuelve);
     setIsSigning(false);
+  };
+
+  const handlePickDevuelveSignature = (dataUrl: string, nombre: string) => {
+    if (!currentDevolucionGroup) return;
+    updateDevolucionGroupSignature(currentDevolucionGroup.id, dataUrl, nombre);
+    setShowDevuelvePicker(false);
+  };
+
+  const handleClearDevolucionSignature = () => {
+    if (!currentDevolucionGroup) return;
+    updateDevolucionGroupSignature(currentDevolucionGroup.id, '', currentDevolucionGroup.empleadoDevuelve);
+  };
+
+  const handleClearPanoleroSignature = () => {
+    if (!currentDevolucionGroup) return;
+    updateDevolucionGroupPanoleroSignature(currentDevolucionGroup.id, '', panoleroName);
   };
 
   const handleSavePanoleroSignature = (dataUrl: string) => {
@@ -126,7 +145,7 @@ export const DevolucionReceiptModal: React.FC<DevolucionReceiptModalProps> = ({
                   Devolución a Pañol
                 </span>
                 <span className="text-xs text-amber-100 font-medium">
-                  {formatDisplayDate(currentDevolucionGroup.fechaDevolucion)} • {currentDevolucionGroup.horaDevolucion} hs
+                  {formatDisplayDate(currentDevolucionGroup.fechaDevolucion)}{currentDevolucionGroup.horaDevolucion ? ` • ${currentDevolucionGroup.horaDevolucion} hs` : ''}
                 </span>
               </div>
               <h2 className="text-xl sm:text-2xl font-black tracking-tight mt-0.5">
@@ -217,9 +236,16 @@ export const DevolucionReceiptModal: React.FC<DevolucionReceiptModalProps> = ({
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {currentDevolucionGroup.items.map((item, idx) => (
-                    <tr key={idx} className="hover:bg-amber-50/40 transition-colors">
+                    <tr key={`${item.codigo}-${item.origenStock || 'normal'}-${idx}`} className="hover:bg-amber-50/40 transition-colors">
                       <td className="py-2 px-3 text-center text-slate-400 font-medium">{idx + 1}</td>
-                      <td className="py-2 px-3 font-bold text-slate-900 font-mono">{item.codigo}</td>
+                      <td className="py-2 px-3">
+                        <span className="font-bold text-slate-900 font-mono">{item.codigo}</span>
+                        {item.origenStock === 'servicio' && (
+                          <span className="ml-1.5 text-[9px] px-1.5 py-0.5 rounded bg-amber-600 text-white font-black uppercase align-middle">
+                            P/SERVICIO
+                          </span>
+                        )}
+                      </td>
                       <td className="py-2 px-3 text-slate-700 max-w-xs">{item.descripcion}</td>
                       <td className="py-2 px-3 text-slate-500">
                         <span className="inline-flex items-center gap-1 bg-slate-100 px-2 py-0.5 rounded text-[11px]">
@@ -255,14 +281,8 @@ export const DevolucionReceiptModal: React.FC<DevolucionReceiptModalProps> = ({
                     alt="Firma pañolero/emisor" 
                     className="h-12 max-w-[180px] object-contain"
                   />
+                  {/* Firma cerrada: no se puede modificar desde el comprobante. */}
                   <div className="w-48 border-b border-slate-400 mb-1"></div>
-                  <button
-                    type="button"
-                    onClick={() => setShowPanoleroPicker(true)}
-                    className="text-[10px] text-amber-700 hover:text-amber-900 underline font-semibold cursor-pointer mb-1"
-                  >
-                    Cambiar firma
-                  </button>
                 </div>
               ) : (
                 <button
@@ -292,19 +312,13 @@ export const DevolucionReceiptModal: React.FC<DevolucionReceiptModalProps> = ({
                     alt="Firma digital" 
                     className="h-12 max-w-[180px] object-contain"
                   />
+                  {/* Firma cerrada: no se puede modificar desde el comprobante. */}
                   <div className="w-48 border-b border-slate-400 mb-1"></div>
-                  <button
-                    type="button"
-                    onClick={() => setIsSigning(true)}
-                    className="text-[10px] text-amber-700 hover:text-amber-900 underline font-semibold cursor-pointer mb-1"
-                  >
-                    Volver a firmar
-                  </button>
                 </div>
               ) : (
                 <button
                   type="button"
-                  onClick={() => setIsSigning(true)}
+                  onClick={() => setShowDevuelvePicker(true)}
                   className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-xl text-xs font-bold shadow-2xs transition-all cursor-pointer"
                 >
                   <PenLine className="w-3.5 h-3.5 text-amber-600" />
@@ -425,6 +439,22 @@ export const DevolucionReceiptModal: React.FC<DevolucionReceiptModalProps> = ({
           }}
           onDelete={deleteSavedSignature}
           onClose={() => setShowPanoleroPicker(false)}
+        />
+      )}
+
+      {/* Saved Signatures Picker - Empleado que Devuelve */}
+      {showDevuelvePicker && (
+        <SavedSignaturePicker
+          ownerName={currentDevolucionGroup.empleadoDevuelve}
+          savedSignatures={savedSignatures}
+          accentColor="#d97706"
+          onPick={handlePickDevuelveSignature}
+          onCreateNew={() => {
+            setShowDevuelvePicker(false);
+            setIsSigning(true);
+          }}
+          onDelete={deleteSavedSignature}
+          onClose={() => setShowDevuelvePicker(false)}
         />
       )}
     </div>

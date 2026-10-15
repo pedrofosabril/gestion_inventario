@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect, useDeferredValue } from 'react';
 import { 
   ArrowDownLeft, 
   Search, 
@@ -20,20 +20,29 @@ import { useInventory } from '../context/InventoryContext';
 import { ItemCategory } from '../types';
 import { formatDisplayDate } from '../utils/dateUtils';
 import { matchesUbicacion } from '../utils/locationSearch';
+import { useUndoableAction } from '../hooks/useUndoableAction';
 
 interface IngresosLogViewProps {
   onOpenScanner?: (code?: string, mode?: 'salida' | 'ingreso') => void;
+  /** Versión para el perfil de pañol: sin banner de título (la pestaña de arriba
+   *  ya identifica el movimiento) y sin acciones duplicadas con los botones
+   *  grandes de la pantalla principal. */
+  paraPanol?: boolean;
 }
 
-export const IngresosLogView: React.FC<IngresosLogViewProps> = ({ onOpenScanner }) => {
-  const { ingresos, registerIngreso, exportCategoryToExcel, deleteIngreso, currentUser } = useInventory();
+export const IngresosLogView: React.FC<IngresosLogViewProps> = ({ onOpenScanner, paraPanol }) => {
+  const { ingresos, registerIngreso, exportCategoryToExcel, deleteIngreso, clearIngresosHistory, currentUser } = useInventory();
   
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [selectedSupplier, setSelectedSupplier] = useState<string>('all');
   const [isReceivingModalOpen, setIsReceivingModalOpen] = useState<boolean>(false);
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
+  const deferredSearch = useDeferredValue(searchTerm);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [confirmClearHistory, setConfirmClearHistory] = useState<boolean>(false);
+  const [clearing, setClearing] = useState<boolean>(false);
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'info' } | null>(null);
+  const undoDelete = useUndoableAction();
 
   const isVentas = currentUser?.rol === 'ventas';
 
@@ -43,6 +52,7 @@ export const IngresosLogView: React.FC<IngresosLogViewProps> = ({ onOpenScanner 
   };
 
   const handleConfirmDelete = (ingresoId: string, revertStock: boolean) => {
+    undoDelete.schedule(() => {
     const res = deleteIngreso(ingresoId, revertStock);
     setPendingDeleteId(null);
     if (res.success) {
@@ -53,6 +63,17 @@ export const IngresosLogView: React.FC<IngresosLogViewProps> = ({ onOpenScanner 
         'success'
       );
     }
+    });
+    setToastMessage({ text: 'Borrado pendiente. Podés deshacerlo durante 8 segundos.', type: 'info' });
+    setPendingDeleteId(null);
+  };
+
+  const handleClearHistory = async () => {
+    setConfirmClearHistory(false);
+    setClearing(true);
+    const res = await clearIngresosHistory();
+    setClearing(false);
+    showToast(res.message, res.success ? 'success' : 'info');
   };
 
   // Reception form state
@@ -65,12 +86,15 @@ export const IngresosLogView: React.FC<IngresosLogViewProps> = ({ onOpenScanner 
   const [categoria, setCategoria] = useState<ItemCategory>('panol');
   const [precioUnitario, setPrecioUnitario] = useState<number>(0);
 
-  const uniqueSuppliers = Array.from(new Set(ingresos.map(i => i.proveedor).filter(Boolean))).sort();
+  const uniqueSuppliers = useMemo(
+    () => Array.from(new Set(ingresos.map(i => i.proveedor).filter(Boolean))).sort(),
+    [ingresos]
+  );
 
-  const filteredIngresos = ingresos.filter(i => {
+  const filteredIngresos = useMemo(() => ingresos.filter(i => {
     if (selectedSupplier !== 'all' && i.proveedor !== selectedSupplier) return false;
-    if (searchTerm.trim()) {
-      const q = searchTerm.toLowerCase();
+    if (deferredSearch.trim()) {
+      const q = deferredSearch.toLowerCase();
       return (
         i.codigo.toLowerCase().includes(q) ||
         i.descripcion.toLowerCase().includes(q) ||
@@ -83,9 +107,20 @@ export const IngresosLogView: React.FC<IngresosLogViewProps> = ({ onOpenScanner 
   }).sort((a, b) => {
     const comparison = a.fechaIngreso.localeCompare(b.fechaIngreso);
     return sortOrder === 'desc' ? -comparison : comparison;
-  });
+  }), [ingresos, selectedSupplier, deferredSearch, sortOrder]);
 
-  const totalUnidadesIngresadas = filteredIngresos.reduce((sum, i) => sum + i.cantidad, 0);
+  const totalUnidadesIngresadas = useMemo(
+    () => filteredIngresos.reduce((sum, i) => sum + i.cantidad, 0),
+    [filteredIngresos]
+  );
+
+  // Renderizado progresivo para historiales largos.
+  const ITEMS_STEP = 80;
+  const [visibleItems, setVisibleItems] = useState(ITEMS_STEP);
+  useEffect(() => {
+    setVisibleItems(ITEMS_STEP);
+  }, [deferredSearch, selectedSupplier, sortOrder]);
+  const visibleIngresos = filteredIngresos.slice(0, visibleItems);
 
   const handleSubmitIngreso = (e: React.FormEvent) => {
     e.preventDefault();
@@ -121,7 +156,10 @@ export const IngresosLogView: React.FC<IngresosLogViewProps> = ({ onOpenScanner 
             <History className="w-5 h-5 text-sky-300" />
           )}
           <span className="flex-1">{toastMessage.text}</span>
-          <button onClick={() => setToastMessage(null)} className="text-slate-300 hover:text-white cursor-pointer">
+          {undoDelete.isPending && (
+            <button type="button" onClick={() => { undoDelete.cancel(); setToastMessage({ text: 'Borrado cancelado.', type: 'info' }); }} className="px-2 py-1 rounded-lg bg-white/15 hover:bg-white/25 text-white font-black whitespace-nowrap">Deshacer</button>
+          )}
+          <button onClick={() => { if (undoDelete.isPending) undoDelete.cancel(); setToastMessage(null); }} className="text-slate-300 hover:text-white cursor-pointer">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -129,37 +167,44 @@ export const IngresosLogView: React.FC<IngresosLogViewProps> = ({ onOpenScanner 
       
       {/* Header Banner */}
       <div className="bg-[#f4f9fd] rounded-2xl p-5 border border-[#c4e1f7] shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center border border-emerald-200">
-              <ArrowDownLeft className="w-5 h-5" />
-            </div>
-            <div>
-              <h1 className="text-xl font-extrabold text-sky-950 tracking-tight">
-                Recepción de Mercadería e Ingresos
-              </h1>
+        {!paraPanol && (
+          <div>
+            <div className="flex items-center gap-2">
+              <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center border border-emerald-200">
+                <ArrowDownLeft className="w-5 h-5" />
+              </div>
+              <div>
+                <h1 className="text-xl font-extrabold text-sky-950 tracking-tight">
+                  Recepción de Mercadería e Ingresos
+                </h1>
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         <div className="flex flex-wrap items-center gap-2">
-          {onOpenScanner && (
-            <button
-              onClick={() => onOpenScanner(undefined, 'ingreso')}
-              className="px-4 py-2 bg-[#0080D0] hover:bg-[#0070b8] text-white text-xs font-bold rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
-            >
-              <Scan className="w-4 h-4" />
-              Escanear para Sumar Stock
-            </button>
+          {/* En el pañol ya están los botones grandes de Entrada arriba */}
+          {!paraPanol && (
+            <>
+              {onOpenScanner && (
+                <button
+                  onClick={() => onOpenScanner(undefined, 'ingreso')}
+                  className="px-4 py-2 bg-[#0080D0] hover:bg-[#0070b8] text-white text-xs font-bold rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Scan className="w-4 h-4" />
+                  Escanear para Sumar Stock
+                </button>
+              )}
+
+              <button
+                onClick={() => setIsReceivingModalOpen(true)}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+              >
+                <PackagePlus className="w-4 h-4" />
+                Registrar Manualmente
+              </button>
+            </>
           )}
-          
-          <button
-            onClick={() => setIsReceivingModalOpen(true)}
-            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
-          >
-            <PackagePlus className="w-4 h-4" />
-            Registrar Manualmente
-          </button>
           
           <button
             onClick={() => exportCategoryToExcel('ingresos')}
@@ -178,6 +223,39 @@ export const IngresosLogView: React.FC<IngresosLogViewProps> = ({ onOpenScanner 
             <ArrowDownUp className="w-3.5 h-3.5 text-[#006bb0]" />
             {sortOrder === 'desc' ? 'Más reciente primero' : 'Más antiguo primero'}
           </button>
+
+          {!isVentas && (
+            confirmClearHistory ? (
+              <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-rose-300 bg-rose-50">
+                <span className="text-[11px] font-bold text-rose-800">¿Vaciar todo el historial?</span>
+                <button
+                  type="button"
+                  onClick={handleClearHistory}
+                  className="px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-bold cursor-pointer"
+                >
+                  Sí, vaciar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmClearHistory(false)}
+                  className="px-2.5 py-1 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700 text-[11px] font-bold cursor-pointer"
+                >
+                  Cancelar
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setConfirmClearHistory(true)}
+                disabled={clearing}
+                className="px-3.5 py-2 border border-rose-200 bg-white hover:bg-rose-50 text-rose-700 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-60 disabled:cursor-wait"
+                title="Borrar todo el historial de ingresos (también en la nube)"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                {clearing ? 'Vaciando…' : 'Vaciar historial'}
+              </button>
+            )
+          )}
         </div>
       </div>
 
@@ -252,8 +330,8 @@ export const IngresosLogView: React.FC<IngresosLogViewProps> = ({ onOpenScanner 
                 </tr>
               </thead>
             <tbody className="divide-y divide-[#e2effa] bg-white">
-              {filteredIngresos.length > 0 ? (
-                filteredIngresos.map((ingreso, idx) => (
+                {filteredIngresos.length > 0 ? (
+                  visibleIngresos.map((ingreso, idx) => (
                   <tr key={ingreso.id} className={`hover:bg-[#e5f3fd] transition-colors ${idx % 2 === 1 ? 'bg-[#f4f9fd]' : 'bg-white'}`}>
                     
                     {/* Factura */}
@@ -265,7 +343,12 @@ export const IngresosLogView: React.FC<IngresosLogViewProps> = ({ onOpenScanner 
 
                     {/* Código */}
                     <td className="px-2 py-2.5 font-mono font-bold text-emerald-700 truncate" title={ingreso.codigo}>
-                      {ingreso.codigo}
+                      <span className="flex items-center gap-1.5">
+                        <span className="truncate">{ingreso.codigo}</span>
+                        {ingreso.origenStock === 'servicio' && (
+                          <span className="shrink-0 text-[9px] px-1.5 py-0.5 rounded bg-emerald-600 text-white font-black uppercase">P/SERVICIO</span>
+                        )}
+                      </span>
                     </td>
 
                     {/* Proveedor */}
@@ -284,6 +367,7 @@ export const IngresosLogView: React.FC<IngresosLogViewProps> = ({ onOpenScanner 
                     {/* Fecha */}
                     <td className="px-2 py-2.5 font-mono text-slate-600 whitespace-nowrap">
                       {formatDisplayDate(ingreso.fechaIngreso)}
+                      {ingreso.horaIngreso && <span className="text-slate-400"> · {ingreso.horaIngreso} hs</span>}
                     </td>
 
                     {/* Ubicación */}
@@ -356,6 +440,17 @@ export const IngresosLogView: React.FC<IngresosLogViewProps> = ({ onOpenScanner 
             </tbody>
           </table>
         </div>
+        {filteredIngresos.length > visibleItems && (
+          <div className="flex justify-center py-3 border-t border-[#cce4f8] bg-[#f4f9fd]">
+            <button
+              type="button"
+              onClick={() => setVisibleItems(v => v + ITEMS_STEP)}
+              className="px-5 py-2.5 bg-white hover:bg-[#eaf4fb] text-[#006bb0] border border-[#badbf5] text-xs font-bold rounded-xl transition-all cursor-pointer shadow-2xs"
+            >
+              Mostrar más ({filteredIngresos.length - visibleItems} restantes)
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Modal for Receiving New Stock */}

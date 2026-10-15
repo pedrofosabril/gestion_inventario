@@ -67,7 +67,7 @@ export const generateSalidaPDF = (rawSalidaGroup: SalidaGroupRecord) => {
   doc.text('FECHA Y HORA:', 18, startY + 6);
   doc.setFontSize(9);
   doc.setTextColor(...darkColor);
-  doc.text(`${formatDisplayDate(salidaGroup.fechaSalida)} - ${salidaGroup.horaSalida} hs`, 18, startY + 11);
+  doc.text(salidaGroup.horaSalida ? `${formatDisplayDate(salidaGroup.fechaSalida)} - ${salidaGroup.horaSalida} hs` : formatDisplayDate(salidaGroup.fechaSalida), 18, startY + 11);
 
   doc.setFontSize(8);
   doc.setTextColor(...slateColor);
@@ -138,7 +138,7 @@ export const generateSalidaPDF = (rawSalidaGroup: SalidaGroupRecord) => {
   // Consolidate Items
   const consolidatedItems: SalidaItemEntry[] = Array.from(
     (salidaGroup.items || []).reduce((map, item) => {
-      const k = (item.codigo || '').trim().toLowerCase();
+      const k = `${(item.codigo || '').trim().toLowerCase()}\u0000${item.origenStock || ''}`;
       if (!k) return map;
       if (map.has(k)) {
         const existing = map.get(k)!;
@@ -156,7 +156,7 @@ export const generateSalidaPDF = (rawSalidaGroup: SalidaGroupRecord) => {
 
   const tableRows = consolidatedItems.map((item, idx) => [
     (idx + 1).toString(),
-    item.codigo,
+    item.origenStock === 'servicio' ? `${item.codigo} (P/SERVICIO)` : item.codigo,
     item.descripcion,
     item.proveedor || '-',
     item.ubicacion || 'A',

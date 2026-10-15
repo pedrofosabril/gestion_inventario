@@ -14,19 +14,18 @@ import {
   Tag, 
   Sparkles, 
   Keyboard,
-  Boxes,
   Calculator,
   RotateCcw
 } from 'lucide-react';
-import { InventoryItem, ItemCategory, PARAMETRIZED_SUPPLIERS } from '../types';
+import { InventoryItem, ItemCategory, SalidaStockOrigen, PARAMETRIZED_SUPPLIERS } from '../types';
 
 interface ManualEntryModalProps {
   isOpen: boolean;
   onClose: () => void;
   mode: 'salida' | 'ingreso' | 'devolucion';
   availableItems: InventoryItem[];
-  onAddSalidaItem: (item: InventoryItem, qty: number) => void;
-  onAddExistingIngresoItem: (item: InventoryItem, qty: number, precio?: number) => void;
+  onAddSalidaItem: (item: InventoryItem, qty: number, origenStock?: SalidaStockOrigen) => void;
+  onAddExistingIngresoItem: (item: InventoryItem, qty: number, precio?: number, origenStock?: SalidaStockOrigen) => void;
   onAddNewIngresoItem: (newItem: {
     codigo: string;
     descripcion: string;
@@ -36,7 +35,7 @@ interface ManualEntryModalProps {
     cantidad: number;
     precioUnitario: number;
   }) => void;
-  onAddDevolucionItem?: (item: InventoryItem, qty: number) => void;
+  onAddDevolucionItem?: (item: InventoryItem, qty: number, origenStock?: SalidaStockOrigen) => void;
   defaultProveedor?: string;
 }
 
@@ -61,12 +60,13 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
   onAddDevolucionItem,
   defaultProveedor = 'SULLAIR'
 }) => {
-  const [ingresoTab, setIngresoTab] = useState<'existente' | 'nuevo'>('existente');
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
   const [salidaQty, setSalidaQty] = useState<number>(1);
+  const [salidaOrigen, setSalidaOrigen] = useState<SalidaStockOrigen>('normal');
   const [ingresoQty, setIngresoQty] = useState<number>(1);
   const [ingresoPrecio, setIngresoPrecio] = useState<number>(0);
+  const [ingresoOrigen, setIngresoOrigen] = useState<SalidaStockOrigen>('normal');
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -86,8 +86,10 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
       setSearchTerm('');
       setSelectedItem(null);
       setSalidaQty(1);
+      setSalidaOrigen('normal');
       setIngresoQty(1);
       setIngresoPrecio(0);
+      setIngresoOrigen('normal');
       setSuccessMsg(null);
       setErrorMsg(null);
       setNewCodigo('');
@@ -100,6 +102,21 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
       setTimeout(() => searchInputRef.current?.focus(), 150);
     }
   }, [isOpen, mode, defaultProveedor]);
+
+  // Al elegir producto para salida, prefijar el origen según disponibilidad
+  useEffect(() => {
+    if (selectedItem) {
+      setSalidaOrigen(selectedItem.stock > 0 ? 'normal' : 'servicio');
+      setSalidaQty(1);
+    }
+  }, [selectedItem]);
+
+  // Unidades disponibles del origen elegido del producto seleccionado
+  const salidaCap = selectedItem
+    ? salidaOrigen === 'servicio'
+      ? (selectedItem.paraServicio ?? 0)
+      : selectedItem.stock
+    : 0;
 
   if (!isOpen) return null;
 
@@ -135,7 +152,7 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
     setErrorMsg(null);
     setSuccessMsg(null);
     if (mode === 'salida') {
-      setSalidaQty(item.stock > 0 ? 1 : 0);
+      setSalidaQty(1);
     } else if (mode === 'devolucion') {
       setSalidaQty(1);
     } else {
@@ -156,11 +173,11 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
     }
 
     if (onAddDevolucionItem) {
-      onAddDevolucionItem(selectedItem, salidaQty);
+      onAddDevolucionItem(selectedItem, salidaQty, salidaOrigen);
     } else {
       onAddSalidaItem(selectedItem, salidaQty);
     }
-    setSuccessMsg(`✓ Se agregaron ${salidaQty} u. de "${selectedItem.codigo}" a la lista de devolución.`);
+    setSuccessMsg(`✓ Se agregaron ${salidaQty} u. de "${selectedItem.codigo}" a la lista de devolución (${salidaOrigen === 'servicio' ? 'P/SERVICIO' : 'original'}).`);
     setErrorMsg(null);
     setSelectedItem(null);
     setSearchTerm('');
@@ -173,7 +190,7 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
       setErrorMsg('Debes seleccionar un producto.');
       return;
     }
-    if (selectedItem.stock <= 0) {
+    if (selectedItem.stock <= 0 && (selectedItem.paraServicio ?? 0) <= 0) {
       setErrorMsg(`El producto ${selectedItem.codigo} no tiene stock disponible.`);
       return;
     }
@@ -181,13 +198,13 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
       setErrorMsg('La cantidad a retirar debe ser al menos 1.');
       return;
     }
-    if (salidaQty > selectedItem.stock) {
-      setErrorMsg(`No puedes retirar más de ${selectedItem.stock} unidades de este producto.`);
+    if (salidaQty > salidaCap) {
+      setErrorMsg(`No puedes retirar más de ${salidaCap} unidades de stock ${salidaOrigen === 'servicio' ? 'P/SERVICIO' : 'original'} de este producto.`);
       return;
     }
 
-    onAddSalidaItem(selectedItem, salidaQty);
-    setSuccessMsg(`✓ Se agregaron ${salidaQty} u. de "${selectedItem.codigo}" a la lista de salida.`);
+    onAddSalidaItem(selectedItem, salidaQty, salidaOrigen);
+    setSuccessMsg(`✓ Se agregaron ${salidaQty} u. de "${selectedItem.codigo}" a la lista de salida (${salidaOrigen === 'servicio' ? 'P/SERVICIO' : 'original'}).`);
     setErrorMsg(null);
     setSelectedItem(null);
     setSearchTerm('');
@@ -205,8 +222,8 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
       return;
     }
 
-    onAddExistingIngresoItem(selectedItem, ingresoQty, ingresoPrecio > 0 ? ingresoPrecio : undefined);
-    setSuccessMsg(`✓ Se agregaron ${ingresoQty} u. de "${selectedItem.codigo}" al lote de entrada.`);
+    onAddExistingIngresoItem(selectedItem, ingresoQty, ingresoPrecio > 0 ? ingresoPrecio : undefined, ingresoOrigen);
+    setSuccessMsg(`✓ Se agregaron ${ingresoQty} u. de "${selectedItem.codigo}" al lote de entrada (${ingresoOrigen === 'servicio' ? 'P/SERVICIO' : 'original'}).`);
     setErrorMsg(null);
     setSelectedItem(null);
     setSearchTerm('');
@@ -266,7 +283,7 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-base sm:text-lg font-black text-sky-950">
-                  {mode === 'salida' ? 'Carga Manual de Salida' : mode === 'devolucion' ? 'Carga Manual de Devolución' : 'Carga Manual de Entrada'}
+                  {mode === 'salida' ? 'Carga Manual de Salida' : mode === 'devolucion' ? 'Carga Manual de Devolución' : 'Registrar Producto Nuevo'}
                 </h3>
                 <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
                   mode === 'salida' ? 'bg-rose-100 text-rose-800' : mode === 'devolucion' ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'
@@ -279,7 +296,7 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
                   ? 'Busca y selecciona repuestos del inventario para cargar a la salida'
                   : mode === 'devolucion'
                   ? 'Busca y selecciona repuestos para reintegrar a pañol'
-                  : 'Ingresa repuestos al pañol buscando del catálogo o creando un nuevo ítem'}
+                  : 'Completá los datos para registrar el repuesto nuevo en el pañol'}
               </p>
             </div>
           </div>
@@ -295,43 +312,6 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
         </div>
 
         {/* Ingreso Mode Selector Tabs */}
-        {mode === 'ingreso' && (
-          <div className="flex border-b border-slate-200 bg-[#f8fbfe] px-4 pt-2 shrink-0">
-            <button
-              type="button"
-              onClick={() => {
-                setIngresoTab('existente');
-                setErrorMsg(null);
-                setSuccessMsg(null);
-              }}
-              className={`px-4 py-2.5 text-xs font-black rounded-t-xl transition-all border-b-2 flex items-center gap-2 cursor-pointer ${
-                ingresoTab === 'existente'
-                  ? 'border-emerald-600 text-emerald-900 bg-white shadow-2xs'
-                  : 'border-transparent text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <Boxes className="w-4 h-4 text-emerald-600" />
-              <span>Repuesto Existente</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setIngresoTab('nuevo');
-                setErrorMsg(null);
-                setSuccessMsg(null);
-              }}
-              className={`px-4 py-2.5 text-xs font-black rounded-t-xl transition-all border-b-2 flex items-center gap-2 cursor-pointer ${
-                ingresoTab === 'nuevo'
-                  ? 'border-emerald-600 text-emerald-900 bg-white shadow-2xs'
-                  : 'border-transparent text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <Sparkles className="w-4 h-4 text-amber-500" />
-              <span>Nuevo Repuesto a Crear</span>
-            </button>
-          </div>
-        )}
 
         {/* Modal Body */}
         <div className="p-4 sm:p-5 overflow-y-auto flex-1 space-y-4">
@@ -351,7 +331,7 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
             </div>
           )}
 
-          {(mode === 'salida' || ingresoTab === 'existente') && (
+          {mode !== 'ingreso' && (
             <div className="space-y-3">
               {/* Search Bar */}
               <div>
@@ -508,6 +488,32 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
                         </div>
                       </div>
 
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-[11px] font-bold text-slate-500 uppercase">Se suma a:</span>
+                        <button
+                          type="button"
+                          onClick={() => setSalidaOrigen('normal')}
+                          className={`px-3 py-1.5 text-xs font-bold rounded-lg border cursor-pointer transition-colors ${
+                            salidaOrigen === 'normal'
+                              ? 'bg-amber-600 text-white border-amber-600 shadow-2xs'
+                              : 'border-amber-300 bg-white hover:bg-amber-50 text-slate-700'
+                          }`}
+                        >
+                          Original{selectedItem.stock > 0 ? ` (${selectedItem.stock} u.)` : ''}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSalidaOrigen('servicio')}
+                          className={`px-3 py-1.5 text-xs font-bold rounded-lg border cursor-pointer transition-colors ${
+                            salidaOrigen === 'servicio'
+                              ? 'bg-amber-600 text-white border-amber-600 shadow-2xs'
+                              : 'border-amber-300 bg-white hover:bg-amber-50 text-slate-700'
+                          }`}
+                        >
+                          P/SERVICIO{(selectedItem.paraServicio ?? 0) > 0 ? ` (${selectedItem.paraServicio ?? 0} u.)` : ''}
+                        </button>
+                      </div>
+
                       <div className="flex items-center justify-end gap-2 pt-2">
                         <button
                           type="button"
@@ -543,14 +549,14 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
                             <input
                               type="number"
                               min="1"
-                              max={selectedItem.stock}
+                              max={salidaCap}
                               value={salidaQty}
-                              onChange={e => setSalidaQty(Math.max(1, Math.min(selectedItem.stock, parseInt(e.target.value) || 1)))}
+                              onChange={e => setSalidaQty(Math.max(1, Math.min(salidaCap, parseInt(e.target.value) || 1)))}
                               className="w-16 text-center font-mono font-black text-sm text-slate-900 focus:outline-none"
                             />
                             <button
                               type="button"
-                              onClick={() => setSalidaQty(prev => Math.min(selectedItem.stock, prev + 1))}
+                              onClick={() => setSalidaQty(prev => Math.min(salidaCap, prev + 1))}
                               className="w-10 h-10 flex items-center justify-center hover:bg-sky-50 text-slate-700 transition-colors cursor-pointer"
                             >
                               <Plus className="w-4 h-4" />
@@ -565,7 +571,7 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
                             >
                               1 u.
                             </button>
-                            {selectedItem.stock >= 5 && (
+                            {salidaCap >= 5 && (
                               <button
                                 type="button"
                                 onClick={() => setSalidaQty(5)}
@@ -574,16 +580,44 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
                                 5 u.
                               </button>
                             )}
-                            {selectedItem.stock > 0 && (
+                            {salidaCap > 0 && (
                               <button
                                 type="button"
-                                onClick={() => setSalidaQty(selectedItem.stock)}
+                                onClick={() => setSalidaQty(salidaCap)}
                                 className="px-2.5 py-1.5 text-xs font-bold rounded-lg border border-[#badbf5] bg-sky-50 text-[#006bb0] hover:bg-sky-100 cursor-pointer"
                               >
-                                Todo ({selectedItem.stock})
+                                Todo ({salidaCap})
                               </button>
                             )}
                           </div>
+                        </div>
+
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-[11px] font-bold text-slate-500 uppercase">Desde:</span>
+                          <button
+                            type="button"
+                            disabled={selectedItem.stock <= 0}
+                            onClick={() => { setSalidaOrigen('normal'); setSalidaQty(1); }}
+                            className={`px-2.5 py-1.5 text-xs font-bold rounded-lg border transition-colors ${
+                              salidaOrigen === 'normal'
+                                ? 'border-[#006bb0] bg-[#006bb0] text-white'
+                                : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-600'
+                            } ${selectedItem.stock <= 0 ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}
+                          >
+                            Original{selectedItem.stock > 0 ? ` (${selectedItem.stock} u.)` : ''}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={(selectedItem.paraServicio ?? 0) <= 0}
+                            onClick={() => { setSalidaOrigen('servicio'); setSalidaQty(1); }}
+                            className={`px-2.5 py-1.5 text-xs font-bold rounded-lg border transition-colors ${
+                              salidaOrigen === 'servicio'
+                                ? 'border-[#006bb0] bg-[#006bb0] text-white'
+                                : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-600'
+                            } ${(selectedItem.paraServicio ?? 0) <= 0 ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}
+                          >
+                            P/SERVICIO{(selectedItem.paraServicio ?? 0) > 0 ? ` (${selectedItem.paraServicio ?? 0} u.)` : ''}
+                          </button>
                         </div>
                       </div>
 
@@ -597,9 +631,9 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
                         </button>
                         <button
                           type="submit"
-                          disabled={selectedItem.stock <= 0}
+                          disabled={salidaCap <= 0}
                           className={`px-5 py-2.5 rounded-xl text-white font-black text-xs shadow-xs transition-all flex items-center gap-2 ${
-                            selectedItem.stock > 0
+                            salidaCap > 0
                               ? 'bg-rose-600 hover:bg-rose-700 cursor-pointer'
                               : 'bg-slate-300 text-slate-500 cursor-not-allowed'
                           }`}
@@ -656,6 +690,32 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
                         </div>
                       </div>
 
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-[11px] font-bold text-slate-500 uppercase">Se suma a:</span>
+                        <button
+                          type="button"
+                          onClick={() => setIngresoOrigen('normal')}
+                          className={`px-3 py-1.5 text-xs font-bold rounded-lg border cursor-pointer transition-colors ${
+                            ingresoOrigen === 'normal'
+                              ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs'
+                              : 'border-emerald-300 bg-white hover:bg-emerald-50 text-slate-700'
+                          }`}
+                        >
+                          Original{selectedItem.stock > 0 ? ` (${selectedItem.stock} u.)` : ''}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setIngresoOrigen('servicio')}
+                          className={`px-3 py-1.5 text-xs font-bold rounded-lg border cursor-pointer transition-colors ${
+                            ingresoOrigen === 'servicio'
+                              ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs'
+                              : 'border-emerald-300 bg-white hover:bg-emerald-50 text-slate-700'
+                          }`}
+                        >
+                          P/SERVICIO{(selectedItem.paraServicio ?? 0) > 0 ? ` (${selectedItem.paraServicio ?? 0} u.)` : ''}
+                        </button>
+                      </div>
+
                       {/* Live Valuation Calculation */}
                       <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between text-xs">
                         <div className="flex items-center gap-2 text-emerald-900 font-semibold">
@@ -691,7 +751,7 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
           )}
 
           {/* New Item Form (Ingreso Mode Only) */}
-          {mode === 'ingreso' && ingresoTab === 'nuevo' && (
+          {mode === 'ingreso' && (
             <form onSubmit={handleConfirmNewIngreso} className="space-y-3">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>

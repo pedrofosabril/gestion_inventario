@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { InventoryItem, ItemCategory, UserAccount, UserRole, SavedSignature } from '../types';
+import { InventoryItem, ItemCategory, SavedSignature, UserAccount, UserRole } from '../types';
 import { CATEGORY_MAP, type CategoryEntry } from '../data/categoryMap';
 import { isSullairProveedor } from '../utils/barcodeUtils';
 import { mergeSameProductPairs } from '../utils/productMerge';
@@ -38,13 +38,21 @@ type StockRow = {
 
 const numberOf = (value: number | string | null | undefined) => Number(value ?? 0);
 
-/** Fetch all rows from a table, paginating past Supabase's 1000-row default limit. */
-async function fetchAllRows<T>(table: string, columns: string): Promise<T[]> {
+/** Fetch all rows from a table, paginating past Supabase's 1000-row default limit.
+ *  `filter` permite acotar la consulta (p. ej. por tipo de movimiento) para no
+ *  traer toda la tabla cuando solo se necesita una parte. */
+async function fetchAllRows<T>(
+  table: string,
+  columns: string,
+  filter?: (query: any) => any
+): Promise<T[]> {
   const all: T[] = [];
   const pageSize = 1000;
   let from = 0;
   while (true) {
-    const { data, error } = await supabase.from(table).select(columns).range(from, from + pageSize - 1);
+    let query: any = supabase.from(table).select(columns);
+    if (filter) query = filter(query);
+    const { data, error } = await query.range(from, from + pageSize - 1);
     if (error) throw error;
     const rows = (data ?? []) as T[];
     all.push(...rows);
@@ -283,9 +291,12 @@ export type MovementInput = {
 };
 
 export async function createMovement(input: MovementInput): Promise<void> {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const localDateTime = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
   const { error } = await supabase.from('movimientos').insert({
     id_movimiento: crypto.randomUUID(), tipo_movimiento: input.tipo, codigo: input.codigo,
-    cantidad: input.cantidad, fecha: input.fecha || new Date().toISOString().slice(0, 10),
+    cantidad: input.cantidad, fecha: input.fecha || localDateTime,
     comprobante: input.comprobante ?? '', cliente_proveedor: input.clienteProveedor ?? '',
     retira_responsable: input.responsable ?? ''
   });
@@ -325,6 +336,53 @@ export async function createMovementsBulk(
   return { inserted, errors };
 }
 
+type FirmaRow = {
+  id: string;
+  nombre: string | null;
+  data_url: string;
+  fecha_creacion: string | null;
+};
+
+/**
+ * Lee las firmas guardadas en la tabla `firmas` (compartidas entre todas las
+ * computadoras). Devuelve `null` cuando la tabla todavía no existe o no se pudo
+ * leer (migración pendiente), para que la app siga funcionando con las firmas
+ * locales de `localStorage`.
+ */
+export async function getSavedSignaturesCloud(): Promise<SavedSignature[] | null> {
+  try {
+    const rows = await fetchAllRows<FirmaRow>('firmas', 'id, nombre, data_url, fecha_creacion');
+    return (rows ?? [])
+      .map(row => ({
+        id: row.id,
+        nombre: row.nombre ?? '',
+        dataUrl: row.data_url ?? '',
+        fechaCreacion: row.fecha_creacion ?? ''
+      }))
+      .filter(signature => signature.dataUrl !== '');
+  } catch (error) {
+    console.warn('No se pudieron leer las firmas de Supabase (¿migración pendiente?):', error);
+    return null;
+  }
+}
+
+/** Sube (o actualiza) una firma a la nube para que la vean todos los equipos. */
+export async function saveSavedSignatureCloud(signature: SavedSignature): Promise<void> {
+  const { error } = await supabase.from('firmas').upsert({
+    id: signature.id,
+    nombre: signature.nombre,
+    data_url: signature.dataUrl,
+    fecha_creacion: signature.fechaCreacion,
+  }, { onConflict: 'id' });
+  if (error) throw error;
+}
+
+/** Borra una firma de la nube (y por lo tanto de todos los equipos). */
+export async function deleteSavedSignatureCloud(id: string): Promise<void> {
+  const { error } = await supabase.from('firmas').delete().eq('id', id);
+  if (error) throw error;
+}
+
 type GlobalUserRow = {
   username: string;
   nombre: string;
@@ -361,37 +419,39 @@ export async function deleteGlobalUser(username: string): Promise<void> {
   if (error) throw error;
 }
 
-type GlobalSignatureRow = {
-  id: string;
-  nombre: string;
-  data_url: string;
-  fecha_creacion: string | null;
+export type MovimientoRow = {
+  id_movimiento: string;
+  tipo_movimiento?: string | null;
+  codigo?: string | null;
+  cantidad?: number | null;
+  fecha?: string | null;
+  comprobante?: string | null;
+  cliente_proveedor?: string | null;
+  retira_responsable?: string | null;
 };
 
-/** Fetches every saved signature from the shared table (used across all computers). */
-export async function getGlobalSignatures(): Promise<SavedSignature[]> {
-  const rows = await fetchAllRows<GlobalSignatureRow>('firmas', 'id, nombre, data_url, fecha_creacion');
-  return (rows ?? []).map(row => ({
-    id: row.id,
-    nombre: row.nombre,
-    dataUrl: row.data_url,
-    fechaCreacion: row.fecha_creacion || '',
-  }));
+/** Lee los movimientos registrados en Supabase (compartidos entre dispositivos).
+ *  Si se indica `tipo`, solo trae ese tipo ('Salida' | 'Ingreso' | 'Devolucion'). */
+export async function getMovimientos(tipo?: string): Promise<MovimientoRow[]> {
+  if (!tipo) return fetchAllRows<MovimientoRow>('movimientos', '*');
+  return fetchAllRows<MovimientoRow>('movimientos', '*', q => q.eq('tipo_movimiento', tipo));
 }
 
-/** Upserts a signature into the shared table so other computers can reuse it. */
-export async function saveGlobalSignature(signature: SavedSignature): Promise<void> {
-  const { error } = await supabase.from('firmas').upsert({
-    id: signature.id,
-    nombre: signature.nombre,
-    data_url: signature.dataUrl,
-    fecha_creacion: signature.fechaCreacion,
-  }, { onConflict: 'id' });
-  if (error) throw error;
-}
-
-/** Deletes a signature from the shared table. */
-export async function deleteGlobalSignature(id: string): Promise<void> {
-  const { error } = await supabase.from('firmas').delete().eq('id', id);
-  if (error) throw error;
+/** Borra movimientos de la nube por sus ids. Devuelve cuántas filas se borraron.
+ *  El `.select()` posterior permite confirmar que RLS no bloqueó el borrado. */
+export async function deleteMovimientosByIds(ids: string[]): Promise<number> {
+  if (!ids || ids.length === 0) return 0;
+  const chunkSize = 200;
+  let deleted = 0;
+  for (let i = 0; i < ids.length; i += chunkSize) {
+    const chunk = ids.slice(i, i + chunkSize);
+    const { data, error } = await supabase
+      .from('movimientos')
+      .delete()
+      .in('id_movimiento', chunk)
+      .select('id_movimiento');
+    if (error) throw error;
+    deleted += data?.length ?? 0;
+  }
+  return deleted;
 }
