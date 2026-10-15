@@ -154,7 +154,7 @@ export interface UserAccount {
 
 export interface SavedSignature {
   id: string;
-  nombre: string;      // Pañolero / emisor dueño de la firma
+  nombre: string;      // Pañolero/emisor o empleado (retira/devuelve) dueño de la firma
   dataUrl: string;     // PNG data URL
   fechaCreacion: string; // Formatted local (ex: "14/09/2026 15:30:22")
 }

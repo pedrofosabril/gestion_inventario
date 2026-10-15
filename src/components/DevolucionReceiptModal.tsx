@@ -43,6 +43,7 @@ export const DevolucionReceiptModal: React.FC<DevolucionReceiptModalProps> = ({
   const [isSigning, setIsSigning] = useState<boolean>(false);
   const [isSigningPanolero, setIsSigningPanolero] = useState<boolean>(false);
   const [showPanoleroPicker, setShowPanoleroPicker] = useState<boolean>(false);
+  const [showDevuelvePicker, setShowDevuelvePicker] = useState<boolean>(false);
 
   // Keep synced with context
   const currentDevolucionGroup = devolucionGroup
@@ -54,6 +55,7 @@ export const DevolucionReceiptModal: React.FC<DevolucionReceiptModalProps> = ({
       setIsSigning(false);
       setIsSigningPanolero(false);
       setShowPanoleroPicker(false);
+      setShowDevuelvePicker(false);
       setConfirmDelete(false);
     }
   }, [isOpen]);
@@ -88,7 +90,14 @@ export const DevolucionReceiptModal: React.FC<DevolucionReceiptModalProps> = ({
       dataUrl,
       currentDevolucionGroup.empleadoDevuelve
     );
+    saveSignature(dataUrl, currentDevolucionGroup.empleadoDevuelve);
     setIsSigning(false);
+  };
+
+  const handlePickDevuelveSignature = (dataUrl: string, nombre: string) => {
+    if (!currentDevolucionGroup) return;
+    updateDevolucionGroupSignature(currentDevolucionGroup.id, dataUrl, nombre);
+    setShowDevuelvePicker(false);
   };
 
   const handleSavePanoleroSignature = (dataUrl: string) => {
@@ -302,16 +311,16 @@ export const DevolucionReceiptModal: React.FC<DevolucionReceiptModalProps> = ({
                   <div className="w-48 border-b border-slate-400 mb-1"></div>
                   <button
                     type="button"
-                    onClick={() => setIsSigning(true)}
+                    onClick={() => setShowDevuelvePicker(true)}
                     className="text-[10px] text-amber-700 hover:text-amber-900 underline font-semibold cursor-pointer mb-1"
                   >
-                    Volver a firmar
+                    Cambiar firma
                   </button>
                 </div>
               ) : (
                 <button
                   type="button"
-                  onClick={() => setIsSigning(true)}
+                  onClick={() => setShowDevuelvePicker(true)}
                   className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-xl text-xs font-bold shadow-2xs transition-all cursor-pointer"
                 >
                   <PenLine className="w-3.5 h-3.5 text-amber-600" />
@@ -432,6 +441,22 @@ export const DevolucionReceiptModal: React.FC<DevolucionReceiptModalProps> = ({
           }}
           onDelete={deleteSavedSignature}
           onClose={() => setShowPanoleroPicker(false)}
+        />
+      )}
+
+      {/* Saved Signatures Picker - Empleado que Devuelve */}
+      {showDevuelvePicker && (
+        <SavedSignaturePicker
+          ownerName={currentDevolucionGroup.empleadoDevuelve}
+          savedSignatures={savedSignatures}
+          accentColor="#d97706"
+          onPick={handlePickDevuelveSignature}
+          onCreateNew={() => {
+            setShowDevuelvePicker(false);
+            setIsSigning(true);
+          }}
+          onDelete={deleteSavedSignature}
+          onClose={() => setShowDevuelvePicker(false)}
         />
       )}
     </div>
