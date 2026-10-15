@@ -5,6 +5,7 @@ import { DevolucionGroupRecord } from '../types';
 import { formatDisplayDate } from '../utils/dateUtils';
 import { matchesUbicacion } from '../utils/locationSearch';
 import { DevolucionReceiptModal } from './DevolucionReceiptModal';
+import { useUndoableAction } from '../hooks/useUndoableAction';
 
 interface DevolucionesLogViewProps {
   /** Versión para el perfil de pañol: sin banner de título (la pestaña de arriba
@@ -22,6 +23,7 @@ export const DevolucionesLogView: React.FC<DevolucionesLogViewProps> = ({ paraPa
   const [confirmClearHistory, setConfirmClearHistory] = useState<boolean>(false);
   const [clearing, setClearing] = useState<boolean>(false);
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'info' } | null>(null);
+  const undoDelete = useUndoableAction();
 
   const isVentas = currentUser?.rol === 'ventas';
 
@@ -31,6 +33,7 @@ export const DevolucionesLogView: React.FC<DevolucionesLogViewProps> = ({ paraPa
   };
 
   const handleConfirmDelete = (groupId: string, revertStock: boolean) => {
+    undoDelete.schedule(() => {
     const res = deleteDevolucionGroup(groupId, revertStock);
     setPendingDeleteId(null);
     if (res.success) {
@@ -41,6 +44,9 @@ export const DevolucionesLogView: React.FC<DevolucionesLogViewProps> = ({ paraPa
         'success'
       );
     }
+    });
+    setToastMessage({ text: 'Borrado pendiente. Podés deshacerlo durante 8 segundos.', type: 'info' });
+    setPendingDeleteId(null);
   };
 
   const handleClearHistory = async () => {
@@ -87,7 +93,10 @@ export const DevolucionesLogView: React.FC<DevolucionesLogViewProps> = ({ paraPa
         <div className="fixed top-20 right-5 z-50 bg-slate-900 text-white px-4 py-3 rounded-xl shadow-xl flex items-center gap-2 text-sm font-bold animate-in slide-in-from-top-4 duration-200 max-w-xs">
           <Check className="w-5 h-5 text-emerald-400" />
           <span className="flex-1">{toastMessage.text}</span>
-          <button onClick={() => setToastMessage(null)} className="text-slate-300 hover:text-white cursor-pointer">
+          {undoDelete.isPending && (
+            <button type="button" onClick={() => { undoDelete.cancel(); setToastMessage({ text: 'Borrado cancelado.', type: 'info' }); }} className="px-2 py-1 rounded-lg bg-white/15 hover:bg-white/25 text-white font-black whitespace-nowrap">Deshacer</button>
+          )}
+          <button onClick={() => { if (undoDelete.isPending) undoDelete.cancel(); setToastMessage(null); }} className="text-slate-300 hover:text-white cursor-pointer">
             <X className="w-4 h-4" />
           </button>
         </div>

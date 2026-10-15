@@ -25,7 +25,8 @@ interface PanoleroSimpleViewProps {
 }
 
 export const PanoleroSimpleView: React.FC<PanoleroSimpleViewProps> = ({
-  onOpenScanner
+  onOpenScanner,
+  onOpenDetail
 }) => {
   const { items, currentUser, salidas, ingresos, devolucionGroups } = useInventory();
   const isVentas = currentUser?.rol === 'ventas';
@@ -278,9 +279,9 @@ export const PanoleroSimpleView: React.FC<PanoleroSimpleViewProps> = ({
                         )}
                       </div>
 
-                      <h3 className="text-base sm:text-xl font-black text-slate-900 leading-snug">
+                      <button type="button" onClick={() => onOpenDetail?.(item)} className="text-left text-base sm:text-xl font-black text-slate-900 leading-snug hover:text-sky-800">
                         {item.descripcion}
-                      </h3>
+                      </button>
 
                       {item.equivalencias && item.equivalencias !== '-' && (
                         <p className="text-xs text-slate-600 font-semibold mt-1">

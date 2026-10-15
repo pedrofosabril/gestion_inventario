@@ -162,6 +162,7 @@ interface InventoryContextType {
   }) => Promise<{ success: boolean; message: string; user?: UserAccount }>;
   hasGerente: boolean;
   logout: () => void;
+  resetUserPassword: (username: string, newPassword: string) => Promise<{ success: boolean; message: string }>;
   
   // Helpers & Stats
   findItemByCode: (code: string) => InventoryItem | undefined;
@@ -952,7 +953,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         playBeep('warning');
         return { 
           success: false, 
-          message: `Stock insuficiente para "${found.codigo} - ${found.descripcion}" en stock ${origenLabel}: ${disponible} u. Solicitado: ${req.cantidad} u.${otroDisponible > 0 ? ` Disponible en el otro stock: ${otroDisponible} u.` : ''}` 
+          message: `Stock insuficiente para "${found.codigo} - ${found.descripcion}" en stock ${origenLabel}: ${disponible} u. Solicitado: ${req.cantidad} u.${otroDisponible > 0 ? ` Disponible en el otro stock: ${otroDisponible} u.` : ''}`
         };
       }
     }
@@ -971,7 +972,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     // Deduct stock for all items deterministically (normal or P/SERVICIO per line)
     setItems(prevItems => {
       return prevItems.map(item => {
-        const matches = consolidatedRequestedItems.filter(req => 
+        const matches = consolidatedRequestedItems.filter(req =>
           item.codigo.toLowerCase() === req.codigo.trim().toLowerCase() ||
           (item.codigoBarras && item.codigoBarras.toLowerCase() === req.codigo.trim().toLowerCase())
         );
@@ -1264,7 +1265,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     // Increase stock for all returned items (normal or P/SERVICIO per line)
     setItems(prevItems => {
       return prevItems.map(item => {
-        const matches = consolidatedItems.filter(req => 
+        const matches = consolidatedItems.filter(req =>
           item.codigo.toLowerCase() === req.codigo.trim().toLowerCase() ||
           (item.codigoBarras && item.codigoBarras.toLowerCase() === req.codigo.trim().toLowerCase())
         );
@@ -2330,6 +2331,39 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return res.success;
   };
 
+  const resetUserPassword = async (username: string, newPassword: string): Promise<{ success: boolean; message: string }> => {
+    const cleanUsername = (username || '').trim().toLowerCase();
+    if (!cleanUsername) return { success: false, message: 'Por favor ingresa tu nombre de usuario.' };
+    if (newPassword.length < 8 || !/[A-Z]/.test(newPassword) || !/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?~`§±°]/.test(newPassword)) {
+      return { success: false, message: 'La contraseña debe tener al menos 8 caracteres, una mayúscula y un carácter especial.' };
+    }
+
+    let user = users.find(candidate => candidate.username.toLowerCase() === cleanUsername);
+    if (!user) user = (await hasGlobalUsers()).find(candidate => candidate.username.toLowerCase() === cleanUsername);
+    if (!user) return { success: false, message: `El usuario "${cleanUsername}" no está registrado.` };
+
+    const updatedUser = { ...user, password: newPassword };
+    try {
+      await saveGlobalUser(updatedUser);
+    } catch (error) {
+      console.error('No se pudo actualizar la contraseña en Supabase:', error);
+      return { success: false, message: 'No se pudo guardar la contraseña en el servidor. Revisá la conexión e intentá de nuevo.' };
+    }
+
+    setUsers(previous => {
+      const next = previous.some(candidate => candidate.username.toLowerCase() === cleanUsername)
+        ? previous.map(candidate => candidate.username.toLowerCase() === cleanUsername ? updatedUser : candidate)
+        : [...previous, updatedUser];
+      try { localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(next)); } catch (error) { console.error('Error guardando usuarios:', error); }
+      return next;
+    });
+    if (currentUser?.username.toLowerCase() === cleanUsername) {
+      setCurrentUser(updatedUser);
+      try { localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(updatedUser)); } catch (error) { console.error('Error guardando sesión:', error); }
+    }
+    return { success: true, message: `Contraseña de "${cleanUsername}" actualizada correctamente.` };
+  };
+
   const registerUser = async (userData: {
     username: string;
     nombre: string;
@@ -2606,6 +2640,7 @@ backupHistory,
         registerUser,
         hasGerente,
         logout,
+        resetUserPassword,
         findItemByCode,
         getLowStockItems,
         getOutOfStockItems,

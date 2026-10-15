@@ -29,6 +29,7 @@ import { SalidaReceiptModal } from './SalidaReceiptModal';
 import { generateSalidaPDF } from '../utils/pdfGenerator';
 import { formatDisplayDate } from '../utils/dateUtils';
 import { matchesUbicacion } from '../utils/locationSearch';
+import { useUndoableAction } from '../hooks/useUndoableAction';
 
 interface SalidasLogViewProps {
   onOpenScanner: (code?: string) => void;
@@ -104,6 +105,7 @@ export const SalidasLogView: React.FC<SalidasLogViewProps> = ({ onOpenScanner, p
   const [confirmClearHistory, setConfirmClearHistory] = useState<boolean>(false);
   const [clearing, setClearing] = useState<boolean>(false);
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'info' } | null>(null);
+  const undoDelete = useUndoableAction();
 
   const showToast = (text: string, type: 'success' | 'info' = 'success') => {
     setToastMessage({ text, type });
@@ -118,6 +120,7 @@ export const SalidasLogView: React.FC<SalidasLogViewProps> = ({ onOpenScanner, p
   };
 
   const handleConfirmDeleteGroup = (groupId: string, revertStock: boolean) => {
+    undoDelete.schedule(() => {
     const res = deleteSalidaGroup(groupId, revertStock);
     setPendingDeleteGroupId(null);
     if (res.success) {
@@ -128,9 +131,13 @@ export const SalidasLogView: React.FC<SalidasLogViewProps> = ({ onOpenScanner, p
         'success'
       );
     }
+    });
+    setToastMessage({ text: 'Borrado pendiente. Podés deshacerlo durante 8 segundos.', type: 'info' });
+    setPendingDeleteGroupId(null);
   };
 
   const handleConfirmDeleteSalida = (salidaId: string, revertStock: boolean) => {
+    undoDelete.schedule(() => {
     const res = deleteSalida(salidaId, revertStock);
     setPendingDeleteSalidaId(null);
     if (res.success) {
@@ -141,6 +148,9 @@ export const SalidasLogView: React.FC<SalidasLogViewProps> = ({ onOpenScanner, p
         'success'
       );
     }
+    });
+    setToastMessage({ text: 'Borrado pendiente. Podés deshacerlo durante 8 segundos.', type: 'info' });
+    setPendingDeleteSalidaId(null);
   };
 
   const handleClearHistory = async () => {
@@ -248,9 +258,12 @@ export const SalidasLogView: React.FC<SalidasLogViewProps> = ({ onOpenScanner, p
         <div className="fixed top-20 right-5 z-50 flex items-center gap-2.5 bg-slate-900 text-white text-xs font-semibold px-4 py-3 rounded-2xl shadow-xl border border-slate-700 animate-in slide-in-from-top duration-200">
           <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
           <span>{toastMessage.text}</span>
+          {undoDelete.isPending && (
+            <button type="button" onClick={() => { undoDelete.cancel(); setToastMessage({ text: 'Borrado cancelado.', type: 'info' }); }} className="ml-2 font-black text-sky-200 hover:text-white whitespace-nowrap">Deshacer</button>
+          )}
           <button 
             type="button" 
-            onClick={() => setToastMessage(null)}
+            onClick={() => { if (undoDelete.isPending) undoDelete.cancel(); setToastMessage(null); }}
             className="ml-2 text-slate-400 hover:text-white p-0.5 cursor-pointer"
           >
             <X className="w-3.5 h-3.5" />
