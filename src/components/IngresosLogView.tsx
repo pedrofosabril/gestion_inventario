@@ -30,13 +30,14 @@ interface IngresosLogViewProps {
 }
 
 export const IngresosLogView: React.FC<IngresosLogViewProps> = ({ onOpenScanner, paraPanol }) => {
-  const { ingresos, registerIngreso, exportCategoryToExcel, deleteIngreso, currentUser } = useInventory();
+  const { ingresos, registerIngreso, exportCategoryToExcel, deleteIngreso, clearIngresosHistory, currentUser } = useInventory();
   
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [selectedSupplier, setSelectedSupplier] = useState<string>('all');
   const [isReceivingModalOpen, setIsReceivingModalOpen] = useState<boolean>(false);
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [confirmClearHistory, setConfirmClearHistory] = useState<boolean>(false);
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'info' } | null>(null);
 
   const isVentas = currentUser?.rol === 'ventas';
@@ -57,6 +58,12 @@ export const IngresosLogView: React.FC<IngresosLogViewProps> = ({ onOpenScanner,
         'success'
       );
     }
+  };
+
+  const handleClearHistory = async () => {
+    setConfirmClearHistory(false);
+    const res = await clearIngresosHistory();
+    showToast(res.message, res.success ? 'success' : 'info');
   };
 
   // Reception form state
@@ -189,6 +196,38 @@ export const IngresosLogView: React.FC<IngresosLogViewProps> = ({ onOpenScanner,
             <ArrowDownUp className="w-3.5 h-3.5 text-[#006bb0]" />
             {sortOrder === 'desc' ? 'Más reciente primero' : 'Más antiguo primero'}
           </button>
+
+          {!isVentas && (
+            confirmClearHistory ? (
+              <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-rose-300 bg-rose-50">
+                <span className="text-[11px] font-bold text-rose-800">¿Vaciar todo el historial?</span>
+                <button
+                  type="button"
+                  onClick={handleClearHistory}
+                  className="px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-bold cursor-pointer"
+                >
+                  Sí, vaciar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmClearHistory(false)}
+                  className="px-2.5 py-1 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700 text-[11px] font-bold cursor-pointer"
+                >
+                  Cancelar
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setConfirmClearHistory(true)}
+                className="px-3.5 py-2 border border-rose-200 bg-white hover:bg-rose-50 text-rose-700 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
+                title="Borrar todo el historial de ingresos (también en la nube)"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                Vaciar historial
+              </button>
+            )
+          )}
         </div>
       </div>
 

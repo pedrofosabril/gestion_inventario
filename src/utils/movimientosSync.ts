@@ -293,3 +293,107 @@ export function mergeRemoteMovements(
     devolucionGroups: [...sortedNewDevoluciones, ...local.devolucionGroups]
   };
 }
+
+/**
+ * Helpers para localizar en la nube las filas que corresponden a un registro del
+ * historial local, de modo que al borrar un registro también desaparezca de
+ * Supabase y no vuelva a aparecer al recargar (mergeRemoteMovements).
+ *
+ * El match se hace por contenido (tipo + código + cantidad + fecha + comprobante
+ * + cliente/responsable) porque los registros locales no guardan el id de la nube.
+ */
+
+const normUpper = (v?: string | null): string => norm(v).toUpperCase();
+
+// Valores por defecto que la reconstrucción usa cuando la columna viene vacía.
+const CLIENTES_VACIOS = new Set([
+  '',
+  'S/N',
+  'VERDU Y CÍA (GENERAL)',
+  'VERDU Y CIA (GENERAL)',
+  'CLIENTE EXTERNO',
+  'TALLER INTERNO / FLOTA PROPIA',
+]);
+
+const mismoCliente = (cloud?: string | null, local?: string | null): boolean => {
+  const c = normUpper(cloud);
+  const l = normUpper(local);
+  const cEff = CLIENTES_VACIOS.has(c) ? '' : c;
+  const lEff = CLIENTES_VACIOS.has(l) ? '' : l;
+  return cEff === lEff;
+};
+
+const mismoComprobante = (cloud?: string | null, local?: string | null): boolean => {
+  const c = normUpper(cloud);
+  const l = normUpper(local);
+  return c === (l === 'S/N' ? '' : l);
+};
+
+const mismaFecha = (cloudFecha?: string | null, localFecha?: string | null): boolean =>
+  dateKey(cloudFecha) === norm(localFecha).slice(0, 10);
+
+const mismaCantidad = (a?: number | null, b?: number | null): boolean => (a ?? 0) === (b ?? 0);
+
+/** Filas de la nube que representan a un registro plano de salida (o devuelto). */
+export function cloudIdsForSalida(rows: MovimientoRow[], salida: SalidaRecord): string[] {
+  const tipo = salida.esDevuelto ? 'Devolucion' : 'Salida';
+  return rows
+    .filter(r =>
+      r.tipo_movimiento === tipo &&
+      normUpper(r.codigo) === normUpper(salida.codigo) &&
+      mismaCantidad(r.cantidad, salida.cantidad) &&
+      mismaFecha(r.fecha, salida.fechaSalida) &&
+      mismoComprobante(r.comprobante, salida.nroRemito) &&
+      mismoCliente(r.cliente_proveedor, salida.cliente) &&
+      normUpper(r.retira_responsable) === normUpper(salida.retira)
+    )
+    .map(r => r.id_movimiento);
+}
+
+/** Filas de la nube que forman un remito de salida completo (todos sus ítems). */
+export function cloudIdsForSalidaGroup(rows: MovimientoRow[], group: SalidaGroupRecord): string[] {
+  return rows
+    .filter(r =>
+      r.tipo_movimiento === 'Salida' &&
+      mismaFecha(r.fecha, group.fechaSalida) &&
+      mismoComprobante(r.comprobante, group.nroRemito) &&
+      mismoCliente(r.cliente_proveedor, group.cliente) &&
+      normUpper(r.retira_responsable) === normUpper(group.retira)
+    )
+    .map(r => r.id_movimiento);
+}
+
+/** Fila(s) de la nube que representan un ingreso. */
+export function cloudIdsForIngreso(rows: MovimientoRow[], ingreso: IngresoRecord): string[] {
+  return rows
+    .filter(r =>
+      r.tipo_movimiento === 'Ingreso' &&
+      normUpper(r.codigo) === normUpper(ingreso.codigo) &&
+      mismaCantidad(r.cantidad, ingreso.cantidad) &&
+      mismaFecha(r.fecha, ingreso.fechaIngreso) &&
+      mismoComprobante(r.comprobante, ingreso.factura) &&
+      mismoCliente(r.cliente_proveedor, ingreso.proveedor)
+    )
+    .map(r => r.id_movimiento);
+}
+
+/** Filas de la nube que forman una devolución (comprobante DEV-…). */
+export function cloudIdsForDevolucion(rows: MovimientoRow[], dev: DevolucionGroupRecord): string[] {
+  return rows
+    .filter(r => {
+      if (r.tipo_movimiento !== 'Devolucion') return false;
+      if (!norm(r.comprobante).toUpperCase().startsWith('DEV-')) return false;
+      if (!mismaFecha(r.fecha, dev.fechaDevolucion)) return false;
+      // En los registros locales el empleado va en cliente_proveedor; en los
+      // reconstruidos desde la nube queda en retira_responsable.
+      return (
+        normUpper(r.cliente_proveedor) === normUpper(dev.empleadoDevuelve) ||
+        normUpper(r.retira_responsable) === normUpper(dev.empleadoDevuelve)
+      );
+    })
+    .map(r => r.id_movimiento);
+}
+
+/** ¿La fila es una devolución real (comprobante DEV-…) y no un ítem devuelto de salida? */
+export const esDevolucionDev = (r: MovimientoRow): boolean =>
+  r.tipo_movimiento === 'Devolucion' && norm(r.comprobante).toUpperCase().startsWith('DEV-');

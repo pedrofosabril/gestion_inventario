@@ -25,9 +25,9 @@ import {
 } from '../data/initialData';
 import { replaceYazWithYas, sanitizeYazObject } from '../utils/sanitizeUtils';
 import { normalizeCodigo } from '../utils/codeUtils';
-import { createMovement, createMovementsBulk, clearSupabaseAll, deleteInventoryItem, getInventory, saveInventoryItem, getGlobalUsers, saveGlobalUser, deleteGlobalUser, getSavedSignaturesCloud, saveSavedSignatureCloud, deleteSavedSignatureCloud, MovementInput, getMovimientos } from '../lib/supabase';
+import { createMovement, createMovementsBulk, clearSupabaseAll, deleteInventoryItem, getInventory, saveInventoryItem, getGlobalUsers, saveGlobalUser, deleteGlobalUser, getSavedSignaturesCloud, saveSavedSignatureCloud, deleteSavedSignatureCloud, deleteMovimientosByIds, MovementInput, getMovimientos, type MovimientoRow } from '../lib/supabase';
 import { mergeSameProductPairs } from '../utils/productMerge';
-import { mergeRemoteMovements } from '../utils/movimientosSync';
+import { mergeRemoteMovements, cloudIdsForSalida, cloudIdsForSalidaGroup, cloudIdsForIngreso, cloudIdsForDevolucion, esDevolucionDev } from '../utils/movimientosSync';
 
 export type MainNavSection = ItemCategory | 'salidas_log' | 'ingresos_log' | 'gerencia_dashboard';
 
@@ -90,6 +90,8 @@ interface InventoryContextType {
   deleteSavedSignature: (id: string) => void;
   deleteSalida: (salidaId: string, restoreStock?: boolean) => { success: boolean; message: string };
   cleanDuplicateSalidas: () => { removedGroups: number; removedSalidas: number; message: string };
+  /** Borra TODO el historial de salidas (incluidos los ítems devueltos) en pantalla y en la nube. */
+  clearSalidasHistory: () => Promise<{ success: boolean; message: string }>;
   
   // Devoluciones
   registerDevolucionGroup: (data: {
@@ -109,6 +111,8 @@ interface InventoryContextType {
   };
   deleteDevolucionGroup: (groupId: string, subtractStock?: boolean) => { success: boolean; message: string };
   deleteDevolucionItem: (groupId: string, codigo: string, subtractStock?: boolean) => { success: boolean; message: string };
+  /** Borra TODO el historial de devoluciones en pantalla y en la nube. */
+  clearDevolucionesHistory: () => Promise<{ success: boolean; message: string }>;
   updateDevolucionGroupSignature: (groupId: string, firmaDigital: string, firmadoPor?: string) => void;
   updateDevolucionGroupPanoleroSignature: (groupId: string, firmaPanolero: string, firmadoPor?: string) => void;
   getNextDevolucionNumber: () => number;
@@ -125,6 +129,8 @@ interface InventoryContextType {
     origenStock?: SalidaStockOrigen;
   }) => { success: boolean; message: string; ingreso?: IngresoRecord; newStock?: number };
   deleteIngreso: (ingresoId: string, subtractStock?: boolean) => { success: boolean; message: string };
+  /** Borra TODO el historial de ingresos en pantalla y en la nube. */
+  clearIngresosHistory: () => Promise<{ success: boolean; message: string }>;
 
   // Excel Migration / Import & Export
   // Se importan por LOTES: cada lote es una hoja del archivo con su categoría de destino.
@@ -1087,6 +1093,31 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     };
   };
 
+  // ---------------------------------------------------------------------------
+  // Borrado del historial en la nube.
+  // Al borrar un registro local también hay que borrar su fila en Supabase,
+  // porque el historial se reconstruye desde `movimientos` (mergeRemoteMovements)
+  // al iniciar la app: si la fila queda en la nube, el registro "reaparece".
+  // ---------------------------------------------------------------------------
+  const borrarMovimientosNube = (ids: string[]) => {
+    if (!ids || ids.length === 0) return;
+    void deleteMovimientosByIds(ids).catch(error =>
+      console.warn('No se pudo borrar el movimiento en Supabase:', error)
+    );
+  };
+
+  const borrarMovimientoNube = async (
+    tipo: string,
+    seleccionar: (rows: MovimientoRow[]) => string[]
+  ) => {
+    try {
+      const rows = await getMovimientos(tipo);
+      borrarMovimientosNube(seleccionar(rows));
+    } catch (error) {
+      console.warn('No se pudieron leer los movimientos de Supabase:', error);
+    }
+  };
+
   const deleteSalidaGroup = (groupId: string, restoreStock: boolean = true) => {
     const targetGroup = salidaGroups.find(g => g.id === groupId);
     if (!targetGroup) return { success: false, message: 'Salida no encontrada.' };
@@ -1126,6 +1157,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     setSalidaGroups(prev => prev.filter(g => g.id !== groupId));
     setSalidas(prev => prev.filter(s => s.salidaGroupId !== groupId));
+    borrarMovimientoNube('Salida', rows => cloudIdsForSalidaGroup(rows, targetGroup));
     return { success: true, message: `Salida "${targetGroup.numeroSalidaFormatted}" eliminada correctamente.` };
   };
 
@@ -1357,6 +1389,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
 
     setDevolucionGroups(prev => prev.filter(g => g.id !== groupId));
+    borrarMovimientoNube('Devolucion', rows => cloudIdsForDevolucion(rows, targetGroup));
     return { success: true, message: `Devolución "${targetGroup.numeroDevolucionFormatted}" eliminada.` };
   };
 
@@ -1535,6 +1568,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       });
     }
 
+    borrarMovimientoNube(target.esDevuelto ? 'Devolucion' : 'Salida', rows => cloudIdsForSalida(rows, target));
     return { success: true, message: `Registro de "${target.codigo}" eliminado del historial.` };
   };
 
@@ -1698,7 +1732,57 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
 
     setIngresos(prev => prev.filter(i => i.id !== ingresoId));
+    borrarMovimientoNube('Ingreso', rows => cloudIdsForIngreso(rows, target));
     return { success: true, message: `Ingreso de "${target.codigo}" eliminado del historial.` };
+  };
+
+  /**
+   * "Vaciar historial": borra TODOS los registros de una sección, en pantalla y en
+   * la nube, para que no vuelvan a aparecer al recargar. No modifica el stock: el
+   * movimiento del stock es independiente y revertirlo sobre registros reconstruidos
+   * desde la nube descuadraría las existencias.
+   */
+  const clearSalidasHistory = async (): Promise<{ success: boolean; message: string }> => {
+    try {
+      const salidaRows = await getMovimientos('Salida');
+      const devRows = await getMovimientos('Devolucion');
+      const ids = [
+        ...salidaRows.map(r => r.id_movimiento),
+        // Los ítems "devueltos" de una salida se guardan como Devolucion sin DEV-.
+        ...devRows.filter(r => !esDevolucionDev(r)).map(r => r.id_movimiento)
+      ];
+      await deleteMovimientosByIds(ids);
+    } catch (error) {
+      console.warn('No se pudo vaciar el historial de salidas en Supabase:', error);
+      return { success: false, message: 'No se pudo vaciar el historial en la nube. Revisá la conexión e intentá de nuevo.' };
+    }
+    setSalidas([]);
+    setSalidaGroups([]);
+    return { success: true, message: 'Historial de salidas vaciado. El stock quedó sin cambios.' };
+  };
+
+  const clearIngresosHistory = async (): Promise<{ success: boolean; message: string }> => {
+    try {
+      const rows = await getMovimientos('Ingreso');
+      await deleteMovimientosByIds(rows.map(r => r.id_movimiento));
+    } catch (error) {
+      console.warn('No se pudo vaciar el historial de ingresos en Supabase:', error);
+      return { success: false, message: 'No se pudo vaciar el historial en la nube. Revisá la conexión e intentá de nuevo.' };
+    }
+    setIngresos([]);
+    return { success: true, message: 'Historial de ingresos vaciado. El stock quedó sin cambios.' };
+  };
+
+  const clearDevolucionesHistory = async (): Promise<{ success: boolean; message: string }> => {
+    try {
+      const rows = await getMovimientos('Devolucion');
+      await deleteMovimientosByIds(rows.filter(esDevolucionDev).map(r => r.id_movimiento));
+    } catch (error) {
+      console.warn('No se pudo vaciar el historial de devoluciones en Supabase:', error);
+      return { success: false, message: 'No se pudo vaciar el historial en la nube. Revisá la conexión e intentá de nuevo.' };
+    }
+    setDevolucionGroups([]);
+    return { success: true, message: 'Historial de devoluciones vaciado. El stock quedó sin cambios.' };
   };
 
   // Excel Importer from Array of parsed rows
@@ -2501,14 +2585,17 @@ backupHistory,
         updateSalidaGroupPanoleroSignature,
         deleteSalida,
         cleanDuplicateSalidas,
+        clearSalidasHistory,
         registerDevolucionGroup,
         deleteDevolucionGroup,
         deleteDevolucionItem,
+        clearDevolucionesHistory,
         updateDevolucionGroupSignature,
         updateDevolucionGroupPanoleroSignature,
         getNextDevolucionNumber,
         registerIngreso,
         deleteIngreso,
+        clearIngresosHistory,
         importExcelRows,
         importMovimientosRows,
         exportCategoryToExcel,
