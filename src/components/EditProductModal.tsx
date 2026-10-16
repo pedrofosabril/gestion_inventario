@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 import { 
   X, 
   Pencil, 
@@ -68,6 +69,8 @@ export const EditProductModal: React.FC<EditProductModalProps> = ({ isOpen, item
     setError(null);
     setSuccess(false);
   }, [item, isOpen]);
+
+  useBodyScrollLock(isOpenWithItem);
 
   if (!isOpenWithItem || !item) return null;
 

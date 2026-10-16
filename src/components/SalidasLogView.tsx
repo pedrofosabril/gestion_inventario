@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useDeferredValue } from 'react';
+import React, { useState, useMemo, useEffect, useDeferredValue, useRef } from 'react';
 import { 
   ArrowUpRight, 
   Search, 
@@ -49,7 +49,8 @@ export const SalidasLogView: React.FC<SalidasLogViewProps> = ({ onOpenScanner, p
     deleteSalidaGroup,
     deleteSalida,
     cleanDuplicateSalidas,
-    clearSalidasHistory
+    clearSalidasHistory,
+    undoClearSalidasHistory
   } = useInventory();
   const isVentas = currentUser?.rol === 'ventas';
   const isGerencia = currentUser?.rol === 'gerencia';
@@ -104,6 +105,8 @@ export const SalidasLogView: React.FC<SalidasLogViewProps> = ({ onOpenScanner, p
   const [pendingDeleteSalidaId, setPendingDeleteSalidaId] = useState<string | null>(null);
   const [confirmClearHistory, setConfirmClearHistory] = useState<boolean>(false);
   const [clearing, setClearing] = useState<boolean>(false);
+  const [undoToast, setUndoToast] = useState<{ message: string } | null>(null);
+  const undoTimerRef = useRef<number | null>(null);
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'info' } | null>(null);
   const undoDelete = useUndoableAction();
 
@@ -158,8 +161,26 @@ export const SalidasLogView: React.FC<SalidasLogViewProps> = ({ onOpenScanner, p
     setClearing(true);
     const res = await clearSalidasHistory();
     setClearing(false);
+    if (res.success) {
+      setUndoToast({ message: 'Historial de salidas borrado.' });
+      if (undoTimerRef.current) window.clearTimeout(undoTimerRef.current);
+      undoTimerRef.current = window.setTimeout(() => setUndoToast(null), 10000);
+    } else {
+      showToast(res.message, 'info');
+    }
+  };
+
+  const handleUndoClear = async () => {
+    if (undoTimerRef.current) window.clearTimeout(undoTimerRef.current);
+    setUndoToast(null);
+    const res = await undoClearSalidasHistory();
     showToast(res.message, res.success ? 'success' : 'info');
   };
+
+  // Limpia el temporizador del aviso de deshacer al desmontar.
+  useEffect(() => () => {
+    if (undoTimerRef.current) window.clearTimeout(undoTimerRef.current);
+  }, []);
 
   // Extract unique clients and operators
   const uniqueClients = useMemo(() => Array.from(new Set([
@@ -265,6 +286,29 @@ export const SalidasLogView: React.FC<SalidasLogViewProps> = ({ onOpenScanner, p
             type="button" 
             onClick={() => { if (undoDelete.isPending) undoDelete.cancel(); setToastMessage(null); }}
             className="ml-2 text-slate-400 hover:text-white p-0.5 cursor-pointer"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
+      {/* Undo notification */}
+      {undoToast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[60] flex items-center gap-3 bg-slate-900 text-white text-xs font-semibold pl-4 pr-2.5 py-3 rounded-2xl shadow-xl border border-slate-700 animate-in slide-in-from-bottom duration-200 max-w-[92vw]">
+          <Trash2 className="w-4 h-4 text-rose-400 shrink-0" />
+          <span>{undoToast.message}</span>
+          <button
+            type="button"
+            onClick={handleUndoClear}
+            className="ml-1 px-3 py-1.5 rounded-lg bg-[#006bb0] hover:bg-[#005590] text-white text-xs font-bold cursor-pointer"
+          >
+            Deshacer
+          </button>
+          <button
+            type="button"
+            onClick={() => setUndoToast(null)}
+            className="text-slate-400 hover:text-white p-0.5 cursor-pointer"
+            title="Cerrar"
           >
             <X className="w-3.5 h-3.5" />
           </button>

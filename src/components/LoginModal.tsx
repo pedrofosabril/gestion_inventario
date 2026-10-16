@@ -1,4 +1,5 @@
 ﻿import React, { useState } from 'react';
+import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 import { Lock, ShieldCheck, User, X, KeyRound, AlertCircle, ShoppingBag, Wrench, Eye, EyeOff, Info, RefreshCw, HelpCircle } from 'lucide-react';
 import { useInventory } from '../context/InventoryContext';
 
@@ -20,6 +21,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
   const [showResetPass, setShowResetPass] = useState<boolean>(false);
   const [resetMsg, setResetMsg] = useState<string | null>(null);
   const [resetErr, setResetErr] = useState<string | null>(null);
+
+  useBodyScrollLock(isOpen);
 
   if (!isOpen) return null;
 

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 import JsBarcode from 'jsbarcode';
 import { jsPDF } from 'jspdf';
 import { triggerPdfDownload } from '../utils/pdfDownload';
@@ -90,6 +91,8 @@ export const BarcodeGeneratorModal: React.FC<BarcodeGeneratorModalProps> = ({
       }
     }
   }, [isOpen, item, item?.codigoBarras]);
+
+  useBodyScrollLock(isOpen && !!item);
 
   if (!isOpen || !item) return null;
 

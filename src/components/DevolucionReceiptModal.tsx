@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 import { 
   CheckCircle2, 
   Download, 
@@ -59,6 +60,8 @@ export const DevolucionReceiptModal: React.FC<DevolucionReceiptModalProps> = ({
       setConfirmDelete(false);
     }
   }, [isOpen]);
+
+  useBodyScrollLock(isOpen);
 
   if (!isOpen || !currentDevolucionGroup) return null;
 

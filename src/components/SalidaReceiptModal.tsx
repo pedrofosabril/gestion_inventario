@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 import { 
   CheckCircle2, 
   Download, 
@@ -54,6 +55,8 @@ export const SalidaReceiptModal: React.FC<SalidaReceiptModalProps> = ({
   const currentSalidaGroup = salidaGroup 
     ? (salidaGroups.find(g => g.id === salidaGroup.id) || salidaGroup)
     : null;
+
+  useBodyScrollLock(isOpen && !!currentSalidaGroup);
 
   if (!isOpen || !currentSalidaGroup) return null;
 

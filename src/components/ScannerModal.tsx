@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 import { 
   Scan, 
   Barcode, 
@@ -1094,6 +1095,9 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
 
   const totalPiezasIngreso = groupIngresoItems.reduce((sum, g) => sum + g.cantidad, 0);
   const totalValorIngreso = groupIngresoItems.reduce((sum, g) => sum + (g.cantidad * g.precioUnitario), 0);
+
+  // Fija la pantalla de atrás mientras la ventana está abierta.
+  useBodyScrollLock(isOpen);
 
   if (!isOpen) return null;
 

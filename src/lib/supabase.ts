@@ -455,3 +455,29 @@ export async function deleteMovimientosByIds(ids: string[]): Promise<number> {
   }
   return deleted;
 }
+
+/** Reinserta movimientos ya leídos (con su id original) en la nube. Se usa para
+ *  "Deshacer" un vaciado de historial sin cambiar los ids ni duplicar filas. */
+export async function restoreMovimientos(rows: MovimientoRow[]): Promise<number> {
+  if (!rows || rows.length === 0) return 0;
+  const chunkSize = 400;
+  let restored = 0;
+  for (let i = 0; i < rows.length; i += chunkSize) {
+    const chunk = rows.slice(i, i + chunkSize).map(r => ({
+      id_movimiento: r.id_movimiento,
+      tipo_movimiento: r.tipo_movimiento ?? '',
+      codigo: r.codigo ?? '',
+      cantidad: r.cantidad ?? 0,
+      fecha: r.fecha ?? '',
+      comprobante: r.comprobante ?? '',
+      cliente_proveedor: r.cliente_proveedor ?? '',
+      retira_responsable: r.retira_responsable ?? ''
+    }));
+    const { error } = await supabase
+      .from('movimientos')
+      .upsert(chunk, { onConflict: 'id_movimiento' });
+    if (error) throw error;
+    restored += chunk.length;
+  }
+  return restored;
+}

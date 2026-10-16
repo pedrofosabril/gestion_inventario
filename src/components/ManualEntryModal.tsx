@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 import { 
   X, 
   Search, 
@@ -117,6 +118,8 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
       ? (selectedItem.paraServicio ?? 0)
       : selectedItem.stock
     : 0;
+
+  useBodyScrollLock(isOpen);
 
   if (!isOpen) return null;
 

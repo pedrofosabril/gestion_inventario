@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { 
   X, 
   Package, 
@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { InventoryItem, ItemCategory } from '../types';
 import { useInventory } from '../context/InventoryContext';
+import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 
 interface ProductDetailModalProps {
   item: InventoryItem | null;
@@ -52,16 +53,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   const [copiedCode, setCopiedCode] = useState<boolean>(false);
 
   // Keep the page behind the product detail fixed while the modal is open.
-  useEffect(() => {
-    if (!isOpen || !item) return;
-
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [isOpen, item]);
+  useBodyScrollLock(isOpen && !!item);
 
   if (!isOpen || !item) return null;
 

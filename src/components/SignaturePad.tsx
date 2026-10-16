@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { PenLine, Eraser, Check, X } from 'lucide-react';
+import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 
 interface SignaturePadProps {
   onSave: (dataUrl: string) => void;
@@ -22,6 +23,8 @@ export const SignaturePad: React.FC<SignaturePadProps> = ({
   const isDrawingRef = useRef(false);
   const hasDrawnRef = useRef(false);
   const [hasDrawn, setHasDrawn] = useState(false);
+
+  useBodyScrollLock(true);
 
   const initCanvas = useCallback(() => {
     const canvas = canvasRef.current;

@@ -1,6 +1,7 @@
 import React from 'react';
 import { X, PenLine, Trash2, CheckCircle2 } from 'lucide-react';
 import { SavedSignature } from '../types';
+import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 
 interface SavedSignaturePickerProps {
   ownerName: string;
@@ -23,6 +24,7 @@ export const SavedSignaturePicker: React.FC<SavedSignaturePickerProps> = ({
 }) => {
   // Se muestran TODAS las firmas guardadas (compartidas en la nube entre
   // perfiles y equipos), no solo las del usuario de la sesión.
+  useBodyScrollLock(true);
   const signatures = savedSignatures;
 
   return (

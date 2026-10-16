@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 import { 
   X, 
   PackagePlus, 
@@ -62,6 +63,8 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
   const [success, setSuccess] = useState<boolean>(false);
   const [confirming, setConfirming] = useState<boolean>(false);
   const [pendingItem, setPendingItem] = useState<Omit<InventoryItem, 'id' | 'precioTotal'> | null>(null);
+
+  useBodyScrollLock(isOpen);
 
   if (!isOpen) return null;
 
