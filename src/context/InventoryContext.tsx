@@ -488,6 +488,9 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const latestStateRef = useRef({ items, salidas, salidaGroups, ingresos, devolucionGroups });
   latestStateRef.current = { items, salidas, salidaGroups, ingresos, devolucionGroups };
 
+  const savedSignaturesRef = useRef(savedSignatures);
+  savedSignaturesRef.current = savedSignatures;
+
   useEffect(() => {
     if (!inventoryReady || movimientosSyncedRef.current) return;
     movimientosSyncedRef.current = true;
@@ -525,26 +528,36 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   }, [inventoryReady]);
 
   // Firmas guardadas: la tabla `firmas` es la fuente compartida entre todas las
-  // computadoras. Al montar se mergean con las locales: las que todavía no están
-  // en la nube se suben, y las que otro equipo borró se dan de baja acá también.
+  // computadoras. Se sincroniza al montar, al volver a la pestaña y cada 60s:
+  // las locales que todavía no están en la nube se suben, y las que otro equipo
+  // borró se dan de baja acá también. Así una firma hecha en otra PC aparece sin
+  // tener que recargar.
   useEffect(() => {
     let active = true;
-    getSavedSignaturesCloud()
-      .then(cloudSignatures => {
+
+    const syncSignatures = async () => {
+      try {
         // null = nube no disponible (migración pendiente o sin conexión):
-        // en ese caso seguimos solo con las firmas locales.
+        // en ese caso seguimos solo con las firmas locales de este equipo.
+        const cloudSignatures = await getSavedSignaturesCloud();
         if (!active || !cloudSignatures) return;
 
         const nube: SavedSignature[] = cloudSignatures.map(s => ({ ...s, sincronizada: true }));
         const idsNube = new Set(nube.map(s => s.id));
         const urlsNube = new Set(nube.map(s => s.dataUrl));
 
-        // Firmas creadas en este equipo que todavía no se subieron. Las que
-        // están marcadas como sincronizadas pero ya no están en la nube fueron
-        // borradas desde otro equipo: se eliminan también en este.
-        const pendientes = savedSignatures.filter(s =>
+        // Firmas creadas en este equipo que todavía no se subieron.
+        const pendientes = savedSignaturesRef.current.filter(s =>
           !idsNube.has(s.id) && !urlsNube.has(s.dataUrl) && !s.sincronizada
         );
+
+        pendientes.forEach(signature => {
+          void saveSavedSignatureCloud(signature)
+            .then(() => setSavedSignatures(prev =>
+              prev.map(s => s.id === signature.id ? { ...s, sincronizada: true } : s)
+            ))
+            .catch(error => console.warn('No se pudo subir la firma a Supabase:', error));
+        });
 
         setSavedSignatures(prev => {
           const fusion = [...nube, ...pendientes];
@@ -554,17 +567,22 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           const nuevas = prev.filter(s => !ids.has(s.id) && !urls.has(s.dataUrl));
           return [...fusion, ...nuevas];
         });
+      } catch (error) {
+        console.warn('No se pudieron cargar las firmas de Supabase:', error);
+      }
+    };
 
-        pendientes.forEach(signature => {
-          void saveSavedSignatureCloud(signature)
-            .then(() => setSavedSignatures(prev =>
-              prev.map(s => s.id === signature.id ? { ...s, sincronizada: true } : s)
-            ))
-            .catch(error => console.warn('No se pudo subir la firma a Supabase:', error));
-        });
-      })
-      .catch(error => console.warn('No se pudieron cargar las firmas de Supabase:', error));
-    return () => { active = false; };
+    void syncSignatures();
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void syncSignatures();
+    }, 60000);
+    const onFocus = () => void syncSignatures();
+    window.addEventListener('focus', onFocus);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+      window.removeEventListener('focus', onFocus);
+    };
   }, []);
 
   // Persist state
