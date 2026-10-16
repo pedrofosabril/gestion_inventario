@@ -25,6 +25,7 @@ import {
 } from '../data/initialData';
 import { replaceYazWithYas, sanitizeYazObject } from '../utils/sanitizeUtils';
 import { normalizeCodigo } from '../utils/codeUtils';
+import { autoBarcodeForItem } from '../utils/barcodeUtils';
 import { isValidMovementDate } from '../utils/dateUtils';
 import { createMovement, createMovementsBulk, clearSupabaseAll, deleteInventoryItem, getInventory, saveInventoryItem, getGlobalUsers, saveGlobalUser, deleteGlobalUser, getSavedSignaturesCloud, saveSavedSignatureCloud, deleteSavedSignatureCloud, deleteMovimientosByIds, restoreMovimientos, MovementInput, getMovimientos, type MovimientoRow } from '../lib/supabase';
 import { mergeSameProductPairs } from '../utils/productMerge';
@@ -1945,7 +1946,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           precioTotal: stock * precio,
           paraServicio: pServicio || undefined,
           porEncargo: porEncargo || undefined,
-          codigoBarras: ''
+          codigoBarras: autoBarcodeForItem({ codigo: replaceYazWithYas(codigo), proveedor: replaceYazWithYas(proveedor) })
         });
       });
     });
@@ -1975,7 +1976,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             equivalencias: existing.equivalencias ?? newItem.equivalencias,
             factura: existing.factura ?? newItem.factura,
             notas: existing.notas ?? newItem.notas,
-            codigoBarras: existing.codigoBarras ?? newItem.codigoBarras,
+            codigoBarras: existing.codigoBarras?.trim() || newItem.codigoBarras,
             porEncargo: existing.porEncargo ?? newItem.porEncargo,
             // Si la hoja no trae columna de p/servicio, el valor llega como undefined:
             // se conserva el stock de servicio ya cargado en lugar de dejarlo en 0.
@@ -2004,7 +2005,8 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           proveedor: newItem.proveedor && newItem.proveedor !== 'SULLAIR' ? newItem.proveedor : existing.proveedor,
           ubicacion: newItem.ubicacion || existing.ubicacion,
           categoria: newItem.categoria || existing.categoria,
-          porEncargo: newItem.porEncargo !== undefined ? newItem.porEncargo : existing.porEncargo
+          porEncargo: newItem.porEncargo !== undefined ? newItem.porEncargo : existing.porEncargo,
+          codigoBarras: existing.codigoBarras?.trim() || newItem.codigoBarras
         });
         updated++;
         touchedItems.push(itemMap.get(key)!);
@@ -2012,6 +2014,17 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         itemMap.set(key, newItem);
         added++;
         touchedItems.push(newItem);
+      }
+    });
+
+    // Todo producto del inventario debe tener su código como código de barras cuando
+    // no tenga uno propio vinculado. Se completa acá lo que no haya venido en el Excel
+    // (no pisa los códigos de barras ya escaneados/vinculados a mano).
+    itemMap.forEach((item, key) => {
+      if (!item.codigoBarras || item.codigoBarras.trim() === '') {
+        const filled = { ...item, codigoBarras: autoBarcodeForItem({ codigo: item.codigo, proveedor: item.proveedor }) };
+        itemMap.set(key, filled);
+        touchedItems.push(filled);
       }
     });
 
